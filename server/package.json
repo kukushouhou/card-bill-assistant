@@ -1,0 +1,39 @@
+{
+  "name": "due-reminder-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@prisma/adapter-mariadb": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "imapflow": "^1.0.191",
+    "jsonwebtoken": "^9.0.2",
+    "mailparser": "^3.7.4",
+    "node-cron": "^4.2.1",
+    "prisma": "^7.0.0",
+    "tsx": "^4.20.0",
+    "unpdf": "^1.8.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

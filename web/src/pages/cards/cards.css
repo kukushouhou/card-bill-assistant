@@ -1,0 +1,735 @@
+/* 保留五套卡面色系，收敛高亮区域，确保整张卡的白色文字都有稳定对比度。 */
+.bank-card.bank-card-p0,
+.cards-mobile-action-emblem.bank-card-p0 {
+  --card-bg: linear-gradient(135deg, #10264d 0%, #183d73 56%, #245487 100%);
+  background: var(--card-bg);
+}
+
+.bank-card.bank-card-p1,
+.cards-mobile-action-emblem.bank-card-p1 {
+  --card-bg: linear-gradient(135deg, #471c2a 0%, #6f293c 56%, #8d394c 100%);
+  background: var(--card-bg);
+}
+
+.bank-card.bank-card-p2,
+.cards-mobile-action-emblem.bank-card-p2 {
+  --card-bg: linear-gradient(135deg, #0b393b 0%, #0f5552 56%, #176a62 100%);
+  background: var(--card-bg);
+}
+
+.bank-card.bank-card-p3,
+.cards-mobile-action-emblem.bank-card-p3 {
+  --card-bg: linear-gradient(135deg, #2d2048 0%, #49346a 56%, #624582 100%);
+  background: var(--card-bg);
+}
+
+.bank-card.bank-card-p4,
+.cards-mobile-action-emblem.bank-card-p4 {
+  --card-bg: linear-gradient(135deg, #463015 0%, #66481d 56%, #805f29 100%);
+  background: var(--card-bg);
+}
+
+.cards-desktop-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+@media (width < 1024px) {
+  .cards-mobile-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px 82px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .cards-mobile-controls .adm-search-bar {
+    --height: 44px;
+    --border-radius: 10px;
+    --background: #fff;
+  }
+
+  .cards-mobile-toolbar-button.ant-btn,
+  .cards-mobile-add-trigger.ant-btn {
+    min-width: 0;
+    height: 44px;
+    min-height: 44px;
+    border-radius: 11px;
+  }
+
+  .cards-mobile-toolbar-button.ant-btn {
+    width: 44px;
+    padding: 0;
+    color: #526078;
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .cards-mobile-toolbar-button.ant-btn.is-active {
+    border-color: #91a7ff;
+    color: #2f54eb;
+    background: #f0f4ff;
+  }
+
+  .cards-mobile-add-trigger.ant-btn {
+    width: 82px;
+    padding-inline: 10px;
+    font-weight: 600;
+  }
+
+  .cards-mobile-group-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    min-width: 0;
+    padding-right: 8px;
+  }
+
+  .cards-mobile-group-list > div,
+  .cards-mobile-group-list .bank-card-stack-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cards-mobile-bank-card {
+    width: 100%;
+    min-width: 0;
+    min-height: 190px;
+    touch-action: manipulation;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .cards-mobile-bank-card:active {
+    transform: scale(0.992);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  }
+
+  .cards-mobile-virtuoso {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cards-mobile-virtual-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    min-width: 0;
+    padding: 0 8px 16px 0;
+  }
+
+  .cards-mobile-virtual-card {
+    min-width: 0;
+    isolation: isolate;
+    animation: cards-mobile-card-enter 180ms cubic-bezier(0.2, 0.72, 0.25, 1) both;
+  }
+
+  .cards-mobile-virtual-card > .bank-card-stack-wrap,
+  .cards-mobile-virtual-card > .bank-card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cards-mobile-bank-card .bank-card-head {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .cards-mobile-bank-card .bank-card-head > div:first-child,
+  .cards-mobile-bank-card .bank-card-title {
+    min-width: 0;
+  }
+
+  .cards-mobile-bank-card .bank-card-title {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .cards-mobile-bank-card .bank-card-head > div:last-child {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .cards-mobile-bank-card .bank-card-no {
+    min-width: 0;
+    font-size: clamp(18px, 6vw, 22px);
+    letter-spacing: clamp(1px, 0.7vw, 3px);
+  }
+
+  .cards-mobile-bank-card .bank-card-no > span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cards-mobile-flow-card {
+    border-radius: 14px;
+  }
+
+  .cards-mobile-flow-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .cards-mobile-flow-card .ant-row {
+    row-gap: 0;
+  }
+
+  .cards-mobile-alert {
+    margin-bottom: 16px;
+  }
+
+  .cards-mobile-loading,
+  .cards-mobile-empty {
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+  }
+
+  .cards-mobile-action-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 2px 42px 14px 0;
+  }
+
+  .cards-mobile-action-summary .ant-typography {
+    margin: 0;
+  }
+
+  .cards-mobile-action-summary > div {
+    min-width: 0;
+  }
+
+  .cards-mobile-action-emblem {
+    display: grid;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border-radius: 15px;
+    color: #fff;
+    font-size: 20px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+  }
+
+  .cards-mobile-action-list {
+    display: grid;
+    gap: 2px;
+    padding-top: 8px;
+    border-top: 1px solid #e5eaf1;
+  }
+
+  .cards-mobile-action-list .ant-btn {
+    min-height: 48px;
+    justify-content: flex-start;
+    padding-inline: 12px;
+    border-radius: 10px;
+    font-size: 15px;
+  }
+
+  .cards-mobile-action-list .ant-btn .anticon {
+    width: 22px;
+    font-size: 17px;
+  }
+
+  .cards-mobile-sort-sheet,
+  .cards-mobile-action-sheet,
+  .cards-mobile-confirm-sheet {
+    max-height: min(82dvh, 640px);
+    padding: 8px 18px calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    border-radius: 22px 22px 0 0;
+    background: #f8fafc;
+    box-shadow: 0 -16px 48px rgba(15, 23, 42, 0.18);
+  }
+
+  .cards-mobile-sheet-handle {
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 14px;
+    border-radius: 999px;
+    background: #cbd5e1;
+  }
+
+  .cards-mobile-sort-sheet h4.ant-typography {
+    margin: 0 40px 12px 0;
+  }
+
+  .cards-mobile-sort-options {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .cards-mobile-sort-options .ant-radio-button-wrapper {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 14px;
+    border: 0;
+    border-radius: 11px;
+    color: #344054;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px #e6eaf0;
+  }
+
+  .cards-mobile-sort-options .ant-radio-button-wrapper::before {
+    display: none;
+  }
+
+  .cards-mobile-sort-options .ant-radio-button-wrapper-checked {
+    color: #2447c6;
+    font-weight: 600;
+    background: #edf2ff;
+    box-shadow: inset 0 0 0 1px #91a7ff;
+  }
+
+  .cards-mobile-confirm-sheet .mobile-inline-confirm.ant-card {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .cards-mobile-confirm-sheet .mobile-inline-confirm > .ant-card-body {
+    padding: 0;
+  }
+
+  .cards-mobile-status-sheet {
+    max-height: min(82dvh, 640px);
+    padding: 8px 18px calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    border-radius: 22px 22px 0 0;
+    background: #f8fafc;
+    box-shadow: 0 -16px 48px rgba(15, 23, 42, 0.18);
+  }
+
+  .cards-mobile-status-handle {
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 14px;
+    border-radius: 999px;
+    background: #cbd5e1;
+  }
+
+  .cards-mobile-status-header {
+    padding-right: 34px;
+  }
+
+  .cards-mobile-status-header .ant-typography {
+    margin: 0;
+  }
+
+  .cards-mobile-status-options {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    margin-top: 18px;
+  }
+
+  .cards-mobile-status-options .ant-radio-button-wrapper {
+    display: flex;
+    min-height: 78px;
+    height: auto;
+    flex-direction: column;
+    justify-content: center;
+    padding: 13px 15px;
+    border: 1px solid #dce3ee;
+    border-radius: 14px;
+    background: #fff;
+    line-height: 1.4;
+    white-space: normal;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+  }
+
+  .cards-mobile-status-options .ant-radio-button-wrapper::before {
+    display: none;
+  }
+
+  .cards-mobile-status-options .ant-radio-button-wrapper:active {
+    transform: scale(0.992);
+  }
+
+  .cards-mobile-status-options .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+    border-color: #2f54eb;
+    background: #eef4ff;
+    color: #183b8f;
+    box-shadow: 0 0 0 2px rgba(47, 84, 235, 0.1);
+  }
+
+  .cards-mobile-status-option-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .cards-mobile-status-option-title .ant-tag {
+    margin: 0;
+  }
+
+  .cards-mobile-status-option-desc {
+    margin-top: 5px;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .cards-mobile-status-actions {
+    position: sticky;
+    bottom: calc(-16px - env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 10px;
+    margin: 18px -18px 0;
+    padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e5eaf1;
+    background: rgba(248, 250, 252, 0.96);
+    backdrop-filter: blur(12px);
+  }
+
+  .cards-mobile-status-actions .ant-btn {
+    min-height: 48px;
+    border-radius: 12px;
+  }
+
+  .cards-mobile-detail-flow .mobile-flow-body {
+    background: linear-gradient(180deg, #25211e 0, #39332e 300px, #f3f4f6 500px);
+  }
+
+  .cards-mobile-detail-carousel {
+    display: flex;
+    gap: 12px;
+    margin-inline: -16px;
+    padding: 2px 16px 14px;
+    overflow-x: auto;
+    scroll-padding-inline: 16px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .cards-mobile-detail-carousel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cards-mobile-detail-carousel-item {
+    flex: 0 0 calc(100% - 28px);
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+
+  .cards-mobile-detail-carousel-item > .bank-card,
+  .cards-mobile-detail-carousel-item > .bank-card-stack-wrap,
+  .cards-mobile-detail-carousel-item .bank-card {
+    width: 100%;
+  }
+
+  .cards-mobile-detail-carousel .cards-mobile-bank-card {
+    min-height: 164px;
+    padding: 14px 14px 12px;
+    border-radius: 12px;
+  }
+
+  .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-no {
+    margin-block: 3px 1px;
+    font-size: 19px;
+    letter-spacing: 2px;
+  }
+
+  .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-secret-value,
+  .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-holder {
+    font-size: 11px;
+  }
+
+  .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-label {
+    font-size: 10px;
+  }
+
+  .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-value {
+    font-size: 13px;
+  }
+
+  .cards-mobile-detail-summary,
+  .cards-mobile-detail-bills {
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 8px 26px rgba(15, 23, 42, 0.08);
+  }
+
+  .cards-mobile-detail-summary {
+    min-height: 190px;
+    padding: 16px;
+  }
+
+  .cards-mobile-detail-summary-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #d46b08;
+    font-size: 14px;
+    font-weight: 650;
+  }
+
+  .cards-mobile-detail-summary-status .is-overdue {
+    color: #ff4d4f;
+  }
+
+  .cards-mobile-detail-summary-status .ant-tag {
+    margin: 0;
+  }
+
+  .cards-mobile-detail-total {
+    display: flex;
+    min-height: 62px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding-block: 8px 12px;
+  }
+
+  .cards-mobile-detail-total strong {
+    color: rgba(0, 0, 0, 0.9);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+  }
+
+  .cards-mobile-detail-total span {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+  }
+
+  .cards-mobile-detail-total.is-text strong {
+    font-size: 22px;
+    letter-spacing: -0.02em;
+  }
+
+  .cards-mobile-detail-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(5, 5, 5, 0.06);
+  }
+
+  .cards-mobile-detail-facts > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cards-mobile-detail-facts span {
+    color: rgba(0, 0, 0, 0.42);
+    font-size: 12px;
+  }
+
+  .cards-mobile-detail-facts strong {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.82);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cards-mobile-detail-bills {
+    margin-top: 12px;
+    overflow: hidden;
+  }
+
+  .cards-mobile-detail-section-heading {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+  }
+
+  .cards-mobile-detail-section-heading > div {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+  }
+
+  .cards-mobile-detail-section-heading .anticon {
+    color: #d48806;
+  }
+
+  .cards-mobile-detail-bill {
+    border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+  }
+
+  .cards-mobile-detail-bill:last-child {
+    border-bottom: 0;
+  }
+
+  .cards-mobile-detail-bill-trigger {
+    display: grid;
+    width: 100%;
+    min-height: 78px;
+    grid-template-columns: 34px minmax(0, 1fr) minmax(92px, auto) 16px;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    text-align: left;
+  }
+
+  .cards-mobile-detail-bill-trigger:active {
+    background: rgba(22, 119, 255, 0.045);
+  }
+
+  .cards-mobile-detail-period-icon {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 10px;
+    color: #d48806;
+    background: #fff7e6;
+  }
+
+  .cards-mobile-detail-period,
+  .cards-mobile-detail-bill-amount {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cards-mobile-detail-period strong,
+  .cards-mobile-detail-bill-amount strong {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.86);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cards-mobile-detail-period small,
+  .cards-mobile-detail-bill-amount small {
+    color: rgba(0, 0, 0, 0.42);
+    font-size: 12px;
+  }
+
+  .cards-mobile-detail-bill-amount {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  .cards-mobile-detail-bill-expanded {
+    padding: 0 16px 16px;
+    background: #fafafa;
+  }
+
+  .cards-mobile-detail-bill-meta {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: rgba(0, 0, 0, 0.48);
+    font-size: 12px;
+  }
+
+  .cards-mobile-detail-bill-meta .ant-btn {
+    padding-inline: 0;
+  }
+
+  .cards-mobile-detail-transactions {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cards-mobile-detail-transaction {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 12px;
+    border-top: 1px solid rgba(5, 5, 5, 0.06);
+  }
+
+  .cards-mobile-detail-transaction > div {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cards-mobile-detail-transaction strong {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.8);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cards-mobile-detail-transaction span {
+    color: rgba(0, 0, 0, 0.42);
+    font-size: 12px;
+  }
+
+  .cards-mobile-detail-transaction > .ant-typography {
+    flex: 0 0 auto;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .cards-mobile-detail-loading,
+  .cards-mobile-detail-no-transactions {
+    display: flex;
+    min-height: 76px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .cards-mobile-detail-more-bills.ant-btn {
+    min-height: 48px;
+  }
+}
+
+@media (720px <= width < 1024px) {
+  .cards-mobile-virtual-row,
+  .cards-mobile-group-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@keyframes cards-mobile-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cards-mobile-virtual-card {
+    animation: none;
+  }
+
+  .cards-mobile-bank-card,
+  .cards-mobile-status-options .ant-radio-button-wrapper {
+    transition: none;
+  }
+}

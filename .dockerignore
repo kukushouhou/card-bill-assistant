@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+**/.env
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.trae
+.playwright-mcp
+cards-alignment-check.png
+server/src/generated
+server/tmp-*
+server/scripts/tmp-*
+test_debug*.log

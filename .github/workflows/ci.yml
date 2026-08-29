@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/due_reminder
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      JWT_SECRET: ci-only-secret
+      COOKIE_SECURE: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            web/package-lock.json
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci --no-audit --no-fund
+      - name: Generate Prisma client
+        working-directory: server
+        run: npx prisma generate
+      - name: Run server tests
+        working-directory: server
+        run: npm test
+      - name: Check server types
+        working-directory: server
+        run: npm run typecheck
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Build web application
+        working-directory: web
+        run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_ROOT_PASSWORD: ci-root-password
+      MYSQL_PASSWORD: ci-app-password
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/due_reminder
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      JWT_SECRET: ci-only-secret
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate bundled MySQL Compose configuration
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Validate external MySQL Compose configuration
+        run: docker compose -f docker-compose.external.yml config --quiet
+      - name: Build production image
+        run: docker build --tag card-bill-assistant:ci .

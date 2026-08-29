@@ -1,0 +1,59 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: due-reminder-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      MYSQL_DATABASE: due_reminder
+      MYSQL_USER: reminder
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-please_change_me}
+      TZ: Asia/Shanghai
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build: .
+    container_name: due-reminder-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://reminder:${MYSQL_PASSWORD:-please_change_me}@db:3306/due_reminder
+      # 32 字节 hex（64 字符）。生成：node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?请在 .env 中设置 ENCRYPTION_KEY（64 位 hex，部署后不可更改）}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      PORT: 3000
+      TZ: Asia/Shanghai
+      APP_NAME: ${APP_NAME:-}
+      REMINDER_HOUR: ${REMINDER_HOUR:-8}
+      BARK_URL: ${BARK_URL:-}
+    ports:
+      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  db-data:

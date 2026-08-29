@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Admin {
+  id             Int       @id @default(autoincrement())
+  username       String    @unique
+  passwordHash   String
+  pinSalt        Bytes?
+  pinVerifier    Bytes?
+  pinFailCount   Int       @default(0)
+  pinLockedUntil DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}
+
+/**
+ * 通知渠道实例。type 对应通知提供方注册表（当前内置 bark），config 由各提供方自行校验。
+ * 单管理员场景下同一种渠道只保留一份配置；新增渠道类型无需再改表结构。
+ */
+model NotificationChannel {
+  id        Int      @id @default(autoincrement())
+  type      String   @unique
+  name      String
+  config    Json
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailAccount {
+  id              Int       @id @default(autoincrement())
+  email           String
+  imapHost        String
+  imapPort        Int       @default(993)
+  tls             Boolean   @default(true)
+  authUser        String
+  authPasswordEnc Bytes
+  enabled         Boolean   @default(true)
+  lastUid         Int       @default(0)
+  lastSyncAt      DateTime?
+  syncDaysBack    Int       @default(90)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  mailLogs        MailLog[]
+}
+
+model Card {
+  id                 Int       @id @default(autoincrement())
+  bankName           String
+  /** 匹配尾号：用于邮件账单匹配；占位为 ----；编辑时只读 */
+  cardLast4          String
+  /** 展示尾号：给用户看、用于搜索；占位时默认 ----；匹配尾号非占位时必须与之一致 */
+  displayLast4       String    @default("----")
+  cardNoFullEnc      Bytes?
+  expDateEnc         Bytes?
+  cvvEnc             Bytes?
+  holderName         String?
+  /** 卡片别名（明文，用户自定义辨识名，如"银联钻石卡"） */
+  nickname           String?
+  currency           String    @default("CNY")
+  statementDay       Int
+  dueRule            String    @default("offset")
+  dueDay             Int?
+  dueOffsetDays      Int?
+  remindDaysBefore   Json
+  source             String    @default("manual")
+  status             String    @default("active")
+  annualFeeDate      DateTime?
+  annualFeeDateManual Boolean  @default(false)
+  /** 套卡内优先显示卡：primaryManual 压过自动，否则 priority 降序，并列 ID 升序；hidden 卡不参与候选。单卡组恒 false。不表示银行主副卡，不承担主卡权限。 */
+  isPrimary          Boolean  @default(false)
+  /** 用户指定的优先显示卡（true 时自动推导不覆盖该组） */
+  primaryManual      Boolean  @default(false)
+  /** 内部优先级：消费金额累加值，仅用于封面选定，不向用户展示 */
+  priority           Float     @default(0)
+  /** 隐藏标记：未完善占位卡在同账期出现真尾号卡后隐藏，不物理删除 */
+  hidden             Boolean   @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime  @updatedAt
+  bills              Bill[]
+  billCards          BillCard[]
+  transactions       BillTransaction[]
+
+  @@unique([bankName, cardLast4])
+}
+
+model Bill {
+  id            Int       @id @default(autoincrement())
+  cardId        Int
+  card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  period        String
+  /** 银行明确给出的账期开始日；用于正式账单接管未出账明细。 */
+  cycleStartDate DateTime?
+  statementDate DateTime
+  dueDate       DateTime
+  amount        Decimal?  @db.Decimal(12, 2)
+  minAmount     Decimal?  @db.Decimal(12, 2)
+  currency      String    @default("CNY")
+  paidStatus    String    @default("unpaid") // 'unpaid' | 'partial' | 'paid'
+  paidAt        DateTime?
+  /** 已还金额（partial 时有意义；full 时等于应还金额） */
+  paidAmount    Decimal?  @db.Decimal(12, 2)
+  mailLogId     Int?
+  mailLog       MailLog?  @relation(fields: [mailLogId], references: [id], onDelete: SetNull)
+  hasDetails    Boolean   @default(false)
+  annualFeeAmount Decimal? @db.Decimal(12, 2)
+  source        String    @default("email")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  cards         BillCard[]
+  transactions  BillTransaction[]
+
+  @@unique([cardId, period, currency])
+  @@index([mailLogId])
+}
+
+model BillCard {
+  id     Int  @id @default(autoincrement())
+  billId Int
+  bill   Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  cardId Int
+  card   Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([billId, cardId])
+  @@index([cardId])
+}
+
+model BillTransaction {
+  id               Int       @id @default(autoincrement())
+  /** null 表示交易仍处于未出账状态。 */
+  billId           Int?
+  bill             Bill?     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  /** 银行快照；未出账记录不依赖 Bill 也能查询与筛选。 */
+  bankName         String    @db.VarChar(64)
+  /** 仅日度邮件来源使用；正式账单明细通过 Bill.mailLogId 追溯。 */
+  dailyMailLogId   Int?
+  dailyMailLog     MailLog?  @relation("DailyTransactionSource", fields: [dailyMailLogId], references: [id], onDelete: Cascade)
+  cardId           Int?
+  card             Card?     @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  /** 解析当时的展示卡尾；卡档案后续删除时仍可展示来源。 */
+  cardLast4        String?   @db.VarChar(8)
+  /** 规范化交易日；银行只给月日且无法可靠归年时允许为空。 */
+  transactionDate  DateTime?
+  /** 银行原始交易日文本。 */
+  dateText         String?   @db.VarChar(32)
+  description      String    @db.VarChar(512)
+  /** 入账金额与入账币种，决定该明细所属的独立币种账单。 */
+  amount           Decimal   @db.Decimal(12, 2)
+  currency         String    @db.VarChar(8)
+  /** 可提取时保留原始交易金额与币种。 */
+  originalAmount   Decimal?  @db.Decimal(12, 2)
+  originalCurrency String?   @db.VarChar(8)
+  sequence         Int
+
+  @@unique([billId, sequence])
+  @@unique([dailyMailLogId, sequence])
+  @@index([bankName, transactionDate])
+  @@index([transactionDate, id])
+  @@index([cardId, transactionDate])
+}
+
+model CustomReminder {
+  id                   Int       @id @default(autoincrement())
+  name                 String
+  /** general | fixed_bill | dynamic_bill */
+  businessType         String    @default("general")
+  /** once | daily | weekly | monthly | yearly */
+  type                 String
+  interval             Int       @default(1)
+  /** 周期创建或周期字段最后一次修改的上海业务日期 */
+  anchorDate           DateTime  @default(now())
+  /** 1=周一 ... 7=周日，仅按周使用 */
+  dayOfWeek            Int?
+  /** 按月：1-28=固定日、29=月末前2天、30=月末前1天、31=月末当天；按年为真实日 */
+  dayOfMonth           Int?
+  /** 1-12，仅按年使用 */
+  monthOfYear          Int?
+  specificDate         DateTime?
+  daysBefore           Json
+  fixedAmount          Decimal?  @db.Decimal(12, 2)
+  note                 String?
+  enabled              Boolean   @default(true)
+  disabledAt           DateTime?
+  hideOpenWhenDisabled Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  occurrences          CustomReminderOccurrence[]
+}
+
+model CustomReminderOccurrence {
+  id             Int             @id @default(autoincrement())
+  reminderId     Int?
+  reminder       CustomReminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+  name           String
+  businessType   String
+  targetDate     DateTime
+  /** 内部期次生成日期，不向用户展示 */
+  availableDate  DateTime
+  daysBefore     Json
+  note           String?
+  amount         Decimal?        @db.Decimal(12, 2)
+  /** open | completed | paid */
+  status         String          @default("open")
+  completedAt    DateTime?
+  suspended      Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([reminderId, targetDate])
+  @@index([targetDate, status, suspended])
+}
+
+model MailLog {
+  id          Int          @id @default(autoincrement())
+  accountId   Int
+  account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  uid         Int
+  messageId   String?      @db.VarChar(255)
+  fromAddress String       @db.VarChar(255)
+  subject     String       @db.VarChar(512)
+  mailDate    DateTime
+  status      String       @default("unmatched")
+  parserId    String?
+  error       String?      @db.VarChar(512)
+  processedAt DateTime     @default(now())
+  bills       Bill[]
+  dailyTransactions BillTransaction[] @relation("DailyTransactionSource")
+
+  @@unique([accountId, uid])
+}
+
+model NotifyLog {
+  id       Int      @id @default(autoincrement())
+  type     String
+  refId    Int
+  fireDate DateTime
+  channel  String
+  status   String   @default("sent")
+  detail   String?  @db.VarChar(512)
+  sentAt   DateTime @default(now())
+
+  @@unique([type, refId, fireDate, channel])
+}

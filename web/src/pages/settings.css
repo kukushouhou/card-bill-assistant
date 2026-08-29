@@ -1,0 +1,207 @@
+.settings-grid {
+  display: grid;
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.settings-grid-alert,
+.settings-grid-notifications {
+  grid-column: 1 / -1;
+}
+
+.settings-grid-password,
+.settings-grid-pin,
+.settings-grid-notifications,
+.settings-card {
+  min-width: 0;
+}
+
+.settings-card {
+  height: 100%;
+}
+
+.settings-grid-password .settings-card,
+.settings-grid-pin .settings-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-grid-password .settings-card > .ant-card-body,
+.settings-grid-pin .settings-card > .ant-card-body,
+.settings-grid-password .settings-form,
+.settings-grid-pin .settings-form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.settings-form-actions {
+  margin-top: auto;
+}
+
+.settings-form {
+  width: 100%;
+}
+
+.settings-notification-form {
+  max-width: 720px;
+}
+
+.settings-notification-form .ant-select,
+.settings-notification-form .ant-input,
+.settings-notification-form .ant-input-affix-wrapper {
+  max-width: 620px;
+}
+
+.settings-notification-description {
+  max-width: 720px;
+}
+
+.settings-card-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.settings-card-title .ant-tag {
+  margin-inline-end: 0;
+}
+
+.settings-security-trigger {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  place-items: center;
+  color: var(--ant-color-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings-security-trigger:hover,
+.settings-security-trigger:focus-visible {
+  background: var(--ant-color-primary-bg);
+  outline: none;
+}
+
+.settings-security-content {
+  max-width: 360px;
+  color: var(--ant-color-text);
+}
+
+.settings-security-content .ant-typography:first-child {
+  margin: 0 0 10px;
+}
+
+.settings-security-content ul {
+  margin: 0;
+  padding-inline-start: 20px;
+  color: var(--ant-color-text-secondary);
+}
+
+.settings-security-content li + li {
+  margin-top: 6px;
+}
+
+.settings-security-sheet {
+  padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
+}
+
+.settings-security-sheet-handle {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 18px;
+  border-radius: 999px;
+  background: var(--ant-color-border);
+}
+
+.settings-security-sheet-action {
+  margin-top: 14px;
+}
+
+@media (max-width: 767px) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .settings-grid-alert,
+  .settings-grid-notifications {
+    grid-column: auto;
+  }
+
+  .settings-card-title {
+    gap: 5px;
+  }
+
+  .settings-security-trigger {
+    width: 44px;
+    height: 44px;
+    margin: -8px -8px -8px 0;
+  }
+}
+
+@media (width < 1024px) {
+  .settings-form-actions {
+    width: 100%;
+  }
+
+  .settings-form-actions .ant-space-item,
+  .settings-form-actions .ant-btn,
+  .settings-single-primary-action .ant-space-item,
+  .settings-single-primary-action .ant-btn,
+  .settings-notification-actions .ant-btn {
+    width: auto;
+  }
+
+  .settings-single-primary-action {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .settings-paired-actions {
+    justify-content: space-between;
+  }
+
+  .settings-mobile-confirm-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 10px;
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .settings-mobile-confirm-actions .ant-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settings-notification-remove-confirm {
+    margin-bottom: 16px;
+  }
+
+  .settings-notification-remove-confirm .settings-mobile-confirm-actions {
+    margin-top: 10px;
+  }
+
+  .settings-notification-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .settings-notification-primary-action {
+    margin-left: auto;
+  }
+}

@@ -1,0 +1,35 @@
+# 外置 MySQL 版编排：仅启动应用容器，连接已存在的 MySQL 实例
+# 使用方式：
+#   1. 复制 .env.docker.example 为 .env 并填写 DATABASE_URL / ENCRYPTION_KEY / JWT_SECRET
+#   2. docker compose -f docker-compose.external.yml up -d --build
+services:
+  app:
+    build: .
+    container_name: due-reminder-app
+    restart: unless-stopped
+    environment:
+      # 外置数据库连接串，如 mysql://user:pass@192.168.1.10:3306/due_reminder?connection_limit=10
+      # 密码含特殊字符需 URL 编码（! → %21、@ → %40、& → %26、# → %23 等）
+      DATABASE_URL: ${DATABASE_URL:?请在 .env 中填写 DATABASE_URL（外置 MySQL 连接串）}
+      # 32 字节 hex（64 字符）。生成：node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?请在 .env 中设置 ENCRYPTION_KEY（64 位 hex，部署后不可更改）}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      PORT: 3000
+      TZ: Asia/Shanghai
+      APP_NAME: ${APP_NAME:-}
+      REMINDER_HOUR: ${REMINDER_HOUR:-8}
+      BARK_URL: ${BARK_URL:-}
+    ports:
+      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,488 @@
+/* AntD 6 已弃用 List，首页用语义列表保留原有视觉密度与操作位置。 */
+.dashboard-list {
+  width: 100%;
+}
+
+.dashboard-list-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 12px;
+  border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+}
+
+.dashboard-list-item:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-list-compact .dashboard-list-item {
+  padding-block: 8px;
+}
+
+.dashboard-list-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.dashboard-list-title {
+  margin-bottom: 4px;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 14px;
+  line-height: 1.5715;
+}
+
+.dashboard-list-description {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  line-height: 1.5715;
+}
+
+.dashboard-list-item[role='link'] {
+  cursor: pointer;
+}
+
+.annual-fee-notice {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px 16px 14px 14px;
+  border: 1px solid #f1d49a;
+  border-left: 4px solid #d89614;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #fffaf0 0%, #fffdf7 100%);
+  box-shadow: 0 3px 12px rgba(135, 82, 0, 0.06);
+}
+
+.annual-fee-notice-icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #d48806;
+  background: #fff1c7;
+  font-size: 18px;
+}
+
+.annual-fee-notice-content {
+  min-width: 0;
+}
+
+.annual-fee-notice-title {
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.annual-fee-notice-details {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin-top: 5px;
+}
+
+.annual-fee-notice-bank {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.annual-fee-notice-bank-name {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 13px;
+}
+
+.annual-fee-notice-bank-name > strong {
+  color: rgba(0, 0, 0, 0.78);
+}
+
+.annual-fee-notice-amount {
+  color: #873800;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.annual-fee-notice-actions {
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.annual-fee-notice-view.ant-btn {
+  border-color: rgba(135, 82, 0, 0.2);
+  color: #7a4b00;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+}
+
+.annual-fee-notice-ack.ant-btn {
+  border-color: #d48806;
+  color: #fff;
+  background: #d48806;
+  box-shadow: none;
+}
+
+.annual-fee-notice-ack.ant-btn:hover:not(:disabled),
+.annual-fee-notice-ack.ant-btn:focus-visible:not(:disabled) {
+  border-color: #ad6800;
+  color: #fff;
+  background: #ad6800;
+}
+
+.annual-fee-panel-list {
+  display: grid;
+  max-height: 520px;
+  gap: 10px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.annual-fee-panel-item {
+  display: grid;
+  width: 100%;
+  min-height: 72px;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(135, 82, 0, 0.16);
+  border-radius: 12px;
+  color: inherit;
+  background: #fffdf8;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.annual-fee-panel-item:hover,
+.annual-fee-panel-item:focus-visible {
+  border-color: #d89614;
+  outline: none;
+  background: #fffaf0;
+  box-shadow: 0 4px 14px rgba(135, 82, 0, 0.08);
+}
+
+.annual-fee-panel-item-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.annual-fee-panel-item-main > strong {
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 15px;
+}
+
+.annual-fee-panel-item-main > span {
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+}
+
+.annual-fee-panel-item-amount {
+  color: #873800;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.annual-fee-panel-item-chevron {
+  color: rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 1023px) {
+  .mobile-dashboard-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .annual-fee-notice.mobile-dashboard-alert {
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 13px 13px 12px 11px;
+    border-radius: 14px;
+  }
+
+  .annual-fee-notice-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 17px;
+  }
+
+  .annual-fee-notice-title {
+    padding-top: 3px;
+    font-size: 15px;
+  }
+
+  .annual-fee-notice-details {
+    display: grid;
+    gap: 6px;
+    margin-top: 7px;
+  }
+
+  .annual-fee-notice-bank {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .annual-fee-notice-bank-name {
+    flex: 1;
+    font-size: 13px;
+  }
+
+  .annual-fee-notice-amount {
+    flex: 0 0 auto;
+  }
+
+  .annual-fee-notice-actions.ant-space {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    margin-top: 3px;
+  }
+
+  .annual-fee-notice-actions > .ant-space-item,
+  .annual-fee-notice-actions .ant-btn {
+    width: 100%;
+  }
+
+  .annual-fee-notice-actions .ant-btn {
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .annual-fee-panel-list {
+    max-height: none;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .annual-fee-panel-item {
+    min-height: 82px;
+    padding: 14px;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(35, 47, 78, 0.06);
+  }
+
+  .mobile-dashboard-key-stats .ant-col {
+    display: flex;
+  }
+
+  .mobile-dashboard-key-stat.ant-card {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #ffffff 0%, #f5f7fb 100%);
+    box-shadow: 0 4px 16px rgba(35, 47, 78, 0.08);
+  }
+
+  .mobile-dashboard-key-stat-primary.ant-card {
+    background: linear-gradient(145deg, #fffdf8 0%, #fff6df 100%);
+  }
+
+  .mobile-dashboard-key-stat .ant-card-body {
+    display: flex;
+    min-height: 94px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 12px 14px;
+  }
+
+  .mobile-dashboard-key-stat strong {
+    color: rgba(0, 0, 0, 0.88);
+    font-size: 24px;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  .mobile-dashboard-key-stat-primary strong {
+    color: #d46b08;
+  }
+
+  .mobile-dashboard-key-stat-detail {
+    min-width: 0;
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.52);
+    font-size: 12px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-dashboard-unknown-note {
+    display: block;
+    padding: 2px 4px 0;
+    font-size: 12px;
+  }
+
+  .mobile-todo-card.dashboard-list-item {
+    display: block;
+    margin-inline: -12px;
+    padding: 14px 12px 15px;
+    transition: background-color 140ms ease;
+  }
+
+  .mobile-todo-card.is-card {
+    cursor: pointer;
+  }
+
+  .mobile-todo-card.is-card:active {
+    background: rgba(22, 119, 255, 0.045);
+  }
+
+  .mobile-todo-card-heading,
+  .mobile-todo-card-title,
+  .mobile-todo-card-facts {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .mobile-todo-card-heading {
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .mobile-todo-card-title {
+    flex: 1;
+    gap: 9px;
+  }
+
+  .mobile-todo-card-title .ant-typography {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-todo-bank-mark {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #1677ff;
+    background: #eaf3ff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .mobile-todo-bank-mark.is-overdue {
+    color: #cf1322;
+    background: #fff1f0;
+  }
+
+  .mobile-todo-card-chevron {
+    color: rgba(0, 0, 0, 0.28);
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1;
+  }
+
+  .mobile-todo-card-facts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(88px, auto) auto;
+    gap: 12px;
+  }
+
+  .mobile-todo-card-amount,
+  .mobile-todo-card-due {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .mobile-todo-card-amount > .amount-strong {
+    overflow: hidden;
+    font-size: 20px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-todo-card-amount > span,
+  .mobile-todo-card-due > span {
+    color: rgba(0, 0, 0, 0.42);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .mobile-todo-card-due {
+    justify-content: center;
+  }
+
+  .mobile-todo-card-due strong {
+    color: #d46b08;
+    font-size: 16px;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+
+  .mobile-todo-card-due.is-overdue strong {
+    color: #ff4d4f;
+  }
+
+  .mobile-todo-card-facts > .ant-btn {
+    align-self: center;
+    min-width: 82px;
+    border-radius: 999px;
+  }
+
+  .mobile-todo-card-note {
+    display: block;
+    margin-top: 8px;
+    padding-left: 39px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 390px) {
+    .mobile-todo-card-facts {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .mobile-todo-card-facts > .ant-btn {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-desktop-lower-card {
+    display: flex;
+    height: 600px;
+    flex-direction: column;
+  }
+
+  .dashboard-desktop-lower-card > .ant-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}

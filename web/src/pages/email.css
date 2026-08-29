@@ -1,0 +1,38 @@
+@media (max-width: 1023px) {
+  .mobile-email-editor-actions {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .mobile-email-editor-aux-row {
+    display: flex;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .mobile-email-editor-aux-row .ant-btn {
+    min-height: 44px;
+    height: auto;
+    padding-inline: 8px;
+    color: #667085;
+  }
+
+  .mobile-email-editor-main-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mobile-email-editor-main-row .ant-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    height: auto;
+  }
+
+  .mobile-email-account-unbind.ant-btn {
+    grid-column: 2;
+  }
+}

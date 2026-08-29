@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+*.local
+server/src/generated/
+server/prisma/migrations/*/migration.sql.bak
+.DS_Store
+
+# 本地 AI 协作约束（不对外发布）
+/agents.md
+/AGENTS.md
+
+# 本地开发计划、研究样本与浏览器调试产物
+/.trae/
+/.playwright-mcp/
+/cards-alignment-check.png
+
+# 隐私研究样本（真实邮件元数据/原文，含持卡人姓名/卡尾/金额，禁止入库）
+.trae/research/
+.trae/research-*.json
+server/scripts/tmp-samples/
+
+# 临时产物
+server/tmp-*.out
+*.tsbuildinfo
+tmp-*.ts
+docs/sessions/
+test_debug*.log
