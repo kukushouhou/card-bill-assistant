@@ -265,9 +265,17 @@ NODE_ENV=production npm start
 
 ## 使用 AI 协助部署
 
-仓库根目录提供了 [AI 部署提示词](./AI_DEPLOYMENT_PROMPT.md)。它是上述手动说明的辅助入口，而不是唯一部署方式。将提示词复制给能访问目标环境的 AI 助手后，AI 会先确认安装/升级状态、官方镜像或源码构建、内置或外置 MySQL、NAS 架构、HTTPS、端口和备份位置，再帮助生成安全配置。
+一键复制以下提示词到任意 AI 工具即可：
 
-提示词要求 AI 不在对话中回显密钥、不覆盖既有 `.env`、不删除数据卷，并为每项选择说明推荐默认值。
+```text
+我希望部署「守候信用卡小管家」。请先完整阅读并严格遵循下面的 AI 部署提示词：
+https://raw.githubusercontent.com/kukushouhou/card-bill-assistant/main/AI_DEPLOYMENT_PROMPT.md
+
+项目仓库：
+https://github.com/kukushouhou/card-bill-assistant
+
+阅读后请不要立即执行部署。先按照部署提示词询问我尚未提供的必要信息，为每项选择给出推荐默认值并说明影响；待方案确认后，再指导我完成环境变量配置、Docker Compose 启动、健康检查和备份。涉及密码、密钥或完整数据库连接串时，请提示安全风险并推荐优先在目标设备本地填写；是否在对话中提供由我自行决定。
+```
 
 ### HTTPS 与登录 Cookie
 
