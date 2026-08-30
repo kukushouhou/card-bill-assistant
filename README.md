@@ -2,6 +2,9 @@
 
 一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过 Bark 等通知渠道推送当日事项。
 
+- 当前稳定版本：`v0.1.0`
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.1.0`
+
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
 ## 主要功能
@@ -12,7 +15,25 @@
 - 招商银行「每日信用管家」本账期未出账单日度明细同步。
 - 信用卡、账单、交易明细、还款状态、年费日和自定义提醒统一管理。
 - 每日提醒与每两小时邮件同步，提醒时间可配置。
-- 桌面端和移动端响应式界面。
+- 同时适配电脑端与触屏端：桌面布局支持鼠标键盘操作，手机和平板提供触屏响应式界面。
+
+## 界面预览与设备支持
+
+本项目是响应式 Web 应用，无需安装原生客户端。电脑浏览器、手机和平板浏览器访问同一地址即可使用；桌面端会充分利用宽屏空间，触屏端会切换为适合手指操作的导航和信息布局。
+
+| 使用设备 | 支持情况 | 交互形态 |
+| --- | :---: | --- |
+| 电脑端 | ✓ | 宽屏卡片/表格布局，适合鼠标与键盘 |
+| 手机触屏端 | ✓ | 移动导航、单列信息流与大触控区域 |
+| 平板触屏端 | ✓ | 根据可用宽度在移动与多列布局间自适应 |
+
+### 卡片中心（电脑端）
+
+![卡片中心电脑端效果图](./docs/images/card-center-desktop.png)
+
+### 首页（触屏端）
+
+![首页触屏端效果图](./docs/images/dashboard-touch.png)
 
 ## 支持的银行邮件与解析层级
 
@@ -56,19 +77,11 @@
 - `ENCRYPTION_KEY` 一旦用于写入数据便不能更换，否则已有密文无法解密。
 - 本项目不代替银行官方账单、还款通知或账户安全措施。
 
-## 使用 AI 协助部署
+## 部署方式
 
-仓库根目录提供了 [AI 部署提示词](./AI_DEPLOYMENT_PROMPT.md)。将其完整复制给能访问部署环境的 AI 助手，AI 会先确认：
+项目同时提供官方 Docker 镜像部署、Docker 源码构建和不使用 Docker 的源码部署。NAS 用户优先选择官方镜像；需要修改代码时再选择源码构建。
 
-- 全新安装还是已有数据升级。
-- 使用 Docker 内置 MySQL 还是现有的外置 MySQL。
-- NAS/服务器系统、CPU 架构、部署路径与 Docker Compose 版本。
-- 局域网 HTTP 还是 HTTPS 反向代理、绑定地址和端口。
-- 应用名称、提醒时间、通知渠道和备份位置。
-
-AI 提示词明确禁止在对话中回显密钥、覆盖既有 `.env` 或删除数据卷。
-
-## Docker Compose 快速部署
+## 方式一：使用官方 Docker 镜像（推荐）
 
 ### 前置条件
 
@@ -78,18 +91,27 @@ AI 提示词明确禁止在对话中回显密钥、覆盖既有 `.env` 或删除
 
 ### 方案 A：内置 MySQL（推荐）
 
-Linux/NAS：
+先克隆 `v0.1.0` 的部署文件：
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+cd card-bill-assistant
+```
+
+Linux/NAS（内置 MySQL）：
 
 ```bash
 sh ./scripts/gen-env.sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-Windows PowerShell：
+Windows PowerShell（内置 MySQL）：
 
 ```powershell
 pwsh ./scripts/gen-env.ps1
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 该方案会启动应用与 MySQL 两个容器，数据保存在 `db-data` Docker 卷中。MySQL 没有对宿主机暴露端口。
@@ -101,7 +123,8 @@ Linux/NAS：
 ```bash
 sh ./scripts/gen-env.sh --external
 # 在目标主机本地编辑 .env 中的 DATABASE_URL
-docker compose -f docker-compose.external.yml up -d --build
+docker compose -f docker-compose.external.yml pull
+docker compose -f docker-compose.external.yml up -d
 ```
 
 Windows PowerShell：
@@ -109,7 +132,8 @@ Windows PowerShell：
 ```powershell
 pwsh ./scripts/gen-env.ps1 -External
 # 在目标主机本地编辑 .env 中的 DATABASE_URL
-docker compose -f docker-compose.external.yml up -d --build
+docker compose -f docker-compose.external.yml pull
+docker compose -f docker-compose.external.yml up -d
 ```
 
 MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`&` 为 `%26`、`#` 为 `%23`。
@@ -118,6 +142,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
+| `APP_VERSION` | 否 | `0.1.0` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
@@ -131,6 +156,53 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 | `BARK_URL` | 否 | 空 | Bark 推送地址，也可在 Web 安装向导中配置 |
 
 启动脚本默认不覆盖已有 `.env`。升级或迁移时必须保留原来的 `ENCRYPTION_KEY`。
+
+## 方式二：使用 Docker 从源码构建
+
+需要审阅、修改源码或自行生成本地镜像时，在对应数据库编排上叠加 `docker-compose.build.yml`：
+
+```bash
+# 内置 MySQL
+sh ./scripts/gen-env.sh
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+# 外置 MySQL
+sh ./scripts/gen-env.sh --external
+# 在目标主机本地编辑 .env 中的 DATABASE_URL
+docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d --build
+```
+
+本地构建镜像名为 `card-bill-assistant:local`，不会覆盖官方 GHCR 镜像。
+
+## 方式三：手动源码部署（不使用 Docker）
+
+适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+cd card-bill-assistant
+
+cd web
+npm ci
+npm run build
+
+cd ../server
+cp ../.env.example .env
+# 在本机编辑 server/.env，至少填写 DATABASE_URL、ENCRYPTION_KEY、JWT_SECRET
+# 通过 HTTPS 部署时将 COOKIE_SECURE 改为 true
+npm ci --omit=dev
+npx prisma generate
+npx prisma migrate deploy
+NODE_ENV=production npm start
+```
+
+服务端会直接托管 `web/dist`，默认监听 `3000` 端口。生产环境应使用 systemd、Supervisor 或 NAS 套件守护进程，并通过 HTTPS 反向代理访问。Windows PowerShell 可将最后一行改为 `$env:NODE_ENV='production'; npm start`。完整的升级、服务守护与备份说明见 [DEPLOY.md](./DEPLOY.md)。
+
+## 使用 AI 协助部署
+
+仓库根目录提供了 [AI 部署提示词](./AI_DEPLOYMENT_PROMPT.md)。它是上述手动说明的辅助入口，而不是唯一部署方式。将提示词复制给能访问目标环境的 AI 助手后，AI 会先确认安装/升级状态、官方镜像或源码构建、内置或外置 MySQL、NAS 架构、HTTPS、端口和备份位置，再帮助生成安全配置。
+
+提示词要求 AI 不在对话中回显密钥、不覆盖既有 `.env`、不删除数据卷，并为每项选择说明推荐默认值。
 
 ### HTTPS 与登录 Cookie
 

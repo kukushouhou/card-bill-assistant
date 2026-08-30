@@ -1,8 +1,19 @@
-# Docker 部署与运维指南
+# 部署与运维指南
 
 如果希望由 AI 根据 NAS/服务器环境生成具体方案，请使用 [AI_DEPLOYMENT_PROMPT.md](./AI_DEPLOYMENT_PROMPT.md)。
 
-## 1. 选择数据库模式
+当前发布版本为 `v0.1.0`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.1.0`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
+
+## 1. 官方镜像部署
+
+先获取与镜像版本一致的部署文件：
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+cd card-bill-assistant
+```
+
+### 选择数据库模式
 
 ### 内置 MySQL
 
@@ -11,7 +22,8 @@
 ```bash
 sh ./scripts/gen-env.sh
 docker compose config --quiet
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ### 外置 MySQL
@@ -22,12 +34,75 @@ docker compose up -d --build
 sh ./scripts/gen-env.sh --external
 # 在目标主机本地编辑 .env 中的 DATABASE_URL
 docker compose -f docker-compose.external.yml config --quiet
-docker compose -f docker-compose.external.yml up -d --build
+docker compose -f docker-compose.external.yml pull
+docker compose -f docker-compose.external.yml up -d
 ```
 
 不要在终端记录、Issue 或对话中粘贴完整连接串。MySQL 密码含特殊字符时必须进行 URL 编码。
 
-## 2. HTTPS 与网络
+## 2. Docker 源码构建
+
+仅在需要审阅或修改源码时叠加构建覆盖文件：
+
+```bash
+# 内置 MySQL
+docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+# 外置 MySQL
+docker compose -f docker-compose.external.yml -f docker-compose.build.yml config --quiet
+docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d --build
+```
+
+构建产物固定命名为 `card-bill-assistant:local`。应用启动时仍会先自动执行 `prisma migrate deploy`。
+
+## 3. 手动源码部署（不使用 Docker）
+
+环境要求：Node.js 24、MySQL 8，以及可长期守护 Node.js 进程的系统服务。
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+cd card-bill-assistant
+
+cd web
+npm ci
+npm run build
+
+cd ../server
+cp ../.env.example .env
+# 在 server/.env 中填写 DATABASE_URL、ENCRYPTION_KEY、JWT_SECRET 等配置
+# 通过 HTTPS 部署时将 COOKIE_SECURE 改为 true
+npm ci --omit=dev
+npx prisma generate
+npx prisma migrate deploy
+NODE_ENV=production npm start
+```
+
+`server` 会从相邻目录读取 `web/dist`。若目录结构不同，可将 `WEB_DIST_DIR` 指向前端构建产物的绝对路径。建议用 systemd、Supervisor 或 NAS 自带进程管理器守护，并将 HTTPS 反向代理指向 `127.0.0.1:3000`。
+
+最小 systemd 服务示例（根据实际用户与路径修改）：
+
+```ini
+[Unit]
+Description=Card Bill Assistant
+After=network-online.target mysql.service
+
+[Service]
+Type=simple
+User=card-assistant
+WorkingDirectory=/opt/card-bill-assistant/server
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`.env` 保存在 `server/` 中且权限应限制为仅服务用户可读。每次升级先备份数据库和 `.env`，再更新代码、重新构建前端、执行 `npm ci --omit=dev` 与 `npx prisma migrate deploy`，最后重启服务。
+
+## 4. HTTPS 与网络
 
 生产配置默认 `COOKIE_SECURE=true`，建议使用 NAS 反向代理、Caddy、Nginx Proxy Manager 或其他可信入口提供 HTTPS：
 
@@ -41,7 +116,7 @@ http://NAS_IP:3000
 
 仅在受信任局域网使用纯 HTTP 时，可在 `.env` 设置 `COOKIE_SECURE=false`。此模式没有传输加密，不得用于公网。
 
-## 3. 首次启动
+## 5. 首次启动
 
 ```bash
 docker compose ps
@@ -53,7 +128,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 应用容器每次启动前会自动执行 `prisma migrate deploy`。首次访问时，Web 安装向导会完成数据库检查、管理员密码/可选 PIN、通知渠道和安装标记。
 
-## 4. 备份
+## 6. 备份
 
 ### 内置 MySQL 逻辑备份
 
@@ -78,21 +153,22 @@ docker compose start app
 
 恢复是覆盖性操作，请优先在临时数据库中演练。
 
-## 5. 升级
+## 7. 升级
 
 升级前必须完成数据库和 `.env` 备份，且不得重新运行密钥生成脚本。
 
 ```bash
-git pull --ff-only
-docker compose build --pull app
+git fetch --tags
+# 将 .env 中 APP_VERSION 改为准备升级并已阅读发布说明的版本
+docker compose pull
 docker compose up -d
 docker compose ps
 docker compose logs --tail=200 app
 ```
 
-外置 MySQL 模式将上述 Compose 命令改为 `docker compose -f docker-compose.external.yml ...`。数据库迁移失败时不要跳过迁移强制启动，应保留日志和备份后诊断。
+外置 MySQL 模式将上述 Compose 命令改为 `docker compose -f docker-compose.external.yml ...`。源码构建模式则使用对应双 `-f` 命令并增加 `--build`。数据库迁移失败时不要跳过迁移强制启动，应保留日志和备份后诊断。
 
-## 6. 常用运维命令
+## 8. 常用运维命令
 
 ```bash
 docker compose ps
@@ -105,7 +181,7 @@ docker compose down
 
 `docker compose down` 不会删除命名数据卷。不要执行 `docker compose down -v`，除非你已明确决定永久删除内置 MySQL 全部数据并已验证备份可恢复。
 
-## 7. 常见故障
+## 9. 常见故障
 
 ### 页面可打开，登录后立即返回登录页
 

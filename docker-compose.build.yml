@@ -1,0 +1,10 @@
+# 从当前源码构建应用的 Compose 覆盖文件。
+# 内置 MySQL：
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# 外置 MySQL：
+#   docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d --build
+services:
+  app:
+    build:
+      context: .
+    image: card-bill-assistant:local

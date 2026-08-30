@@ -24,7 +24,7 @@ services:
         max-file: "3"
 
   app:
-    build: .
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.1.0}
     container_name: due-reminder-app
     restart: unless-stopped
     depends_on:

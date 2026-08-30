@@ -1,10 +1,11 @@
 # 外置 MySQL 版编排：仅启动应用容器，连接已存在的 MySQL 实例
 # 使用方式：
 #   1. 复制 .env.docker.example 为 .env 并填写 DATABASE_URL / ENCRYPTION_KEY / JWT_SECRET
-#   2. docker compose -f docker-compose.external.yml up -d --build
+#   2. docker compose -f docker-compose.external.yml pull
+#   3. docker compose -f docker-compose.external.yml up -d
 services:
   app:
-    build: .
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.1.0}
     container_name: due-reminder-app
     restart: unless-stopped
     environment:

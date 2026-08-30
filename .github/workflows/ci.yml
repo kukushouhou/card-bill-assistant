@@ -57,5 +57,9 @@ jobs:
         run: docker compose -f docker-compose.yml config --quiet
       - name: Validate external MySQL Compose configuration
         run: docker compose -f docker-compose.external.yml config --quiet
+      - name: Validate source-build Compose overrides
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+          docker compose -f docker-compose.external.yml -f docker-compose.build.yml config --quiet
       - name: Build production image
         run: docker build --tag card-bill-assistant:ci .

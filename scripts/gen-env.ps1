@@ -30,6 +30,8 @@ $jwtSecret = New-Hex 32
 if ($External) {
     $content = @"
 # ===== 外置 MySQL 模式（docker-compose.external.yml）=====
+APP_VERSION=0.1.0
+
 # 【必填】目标数据库连接串（应用将自动建表；库需已创建且账号有建表权限）
 # 密码含特殊字符需 URL 编码：! → %21  @ → %40  & → %26  # → %23
 DATABASE_URL=mysql://user:password@192.168.1.10:3306/due_reminder?connection_limit=10
@@ -55,6 +57,7 @@ APP_PORT=3000
 } else {
     $content = @"
 # ===== 内置 MySQL 模式（docker-compose.yml，密钥已随机生成）=====
+APP_VERSION=0.1.0
 
 # MySQL root 密码（随机生成，务必备份）
 MYSQL_ROOT_PASSWORD=$rootPassword
@@ -84,7 +87,9 @@ APP_PORT=3000
 Set-Content -Path $target -Value $content -Encoding utf8NoBOM
 Write-Host "已生成 $mode 模式的 .env：$target" -ForegroundColor Green
 if ($External) {
-    Write-Host "请打开 .env 填写 DATABASE_URL 后，执行：docker compose -f docker-compose.external.yml up -d --build" -ForegroundColor Cyan
+    Write-Host "请打开 .env 填写 DATABASE_URL 后，依次执行：" -ForegroundColor Cyan
+    Write-Host "docker compose -f docker-compose.external.yml pull" -ForegroundColor Cyan
+    Write-Host "docker compose -f docker-compose.external.yml up -d" -ForegroundColor Cyan
 } else {
-    Write-Host "直接执行：docker compose up -d --build" -ForegroundColor Cyan
+    Write-Host "依次执行：docker compose pull；docker compose up -d" -ForegroundColor Cyan
 }

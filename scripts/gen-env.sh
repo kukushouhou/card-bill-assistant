@@ -33,6 +33,8 @@ JWT_SECRET=$(hex 32)
 if [ "$MODE" = "external" ]; then
   cat > "$TARGET" <<EOF
 # ===== 外置 MySQL 模式（docker-compose.external.yml）=====
+APP_VERSION=0.1.0
+
 # 【必填】目标数据库连接串（应用将自动建表；库需已创建且账号有建表权限）
 # 密码含特殊字符需 URL 编码：! → %21  @ → %40  & → %26  # → %23
 DATABASE_URL=mysql://user:password@192.168.1.10:3306/due_reminder?connection_limit=10
@@ -55,10 +57,13 @@ APP_BIND_IP=0.0.0.0
 APP_PORT=3000
 EOF
   echo "已生成外置 MySQL 模式的 .env：$TARGET"
-  echo "请打开 .env 填写 DATABASE_URL 后，执行：docker compose -f docker-compose.external.yml up -d --build"
+  echo "请打开 .env 填写 DATABASE_URL 后，依次执行："
+  echo "docker compose -f docker-compose.external.yml pull"
+  echo "docker compose -f docker-compose.external.yml up -d"
 else
   cat > "$TARGET" <<EOF
 # ===== 内置 MySQL 模式（docker-compose.yml，密钥已随机生成）=====
+APP_VERSION=0.1.0
 
 # MySQL root 密码（随机生成，务必备份）
 MYSQL_ROOT_PASSWORD=$ROOT_PASSWORD
@@ -83,5 +88,5 @@ APP_BIND_IP=0.0.0.0
 APP_PORT=3000
 EOF
   echo "已生成内置 MySQL 模式的 .env：$TARGET"
-  echo "直接执行：docker compose up -d --build"
+  echo "依次执行：docker compose pull && docker compose up -d"
 fi
