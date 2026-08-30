@@ -194,14 +194,14 @@ function AccountForm({
             placeholder="选择或输入服务器地址"
           />
         </Form.Item>
-        <Space style={{ display: 'flex' }} align="start">
+        <div className="email-connection-fields">
           <Form.Item name="imapPort" label="端口" rules={[{ required: true }]}>
-            <InputNumber min={1} max={65535} style={{ width: 120 }} />
+            <InputNumber min={1} max={65535} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="tls" label="SSL/TLS" valuePropName="checked" style={{ paddingTop: 30 }}>
+          <Form.Item name="tls" label="SSL/TLS" valuePropName="checked">
             <Switch />
           </Form.Item>
-        </Space>
+        </div>
         <Form.Item name="authUser" label="登录账号" rules={[{ required: true, message: '必填' }]}>
           <Input placeholder="通常为邮箱地址" autoComplete="off" />
         </Form.Item>

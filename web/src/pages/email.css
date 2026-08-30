@@ -1,3 +1,10 @@
+.email-connection-fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 150px) minmax(120px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
 @media (max-width: 1023px) {
   .mobile-email-editor-actions {
     display: grid;
