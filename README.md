@@ -33,7 +33,7 @@
 
 ### 首页（触屏端）
 
-![首页触屏端效果图](./docs/images/dashboard-touch.png)
+![首页触屏端效果图](./docs/images/dashboard-touch.jpg)
 
 ## 支持的银行邮件与解析层级
 
