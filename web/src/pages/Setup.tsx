@@ -11,6 +11,20 @@ import {
   type NotificationConfigValue,
 } from '../components/NotificationConfigFields';
 
+interface SetupAccountValues {
+  password: string;
+  pin?: string;
+}
+
+interface SetupNotificationValues {
+  notificationConfigs?: Record<string, NotificationConfigValue>;
+}
+
+interface SetupFormValues extends SetupAccountValues, SetupNotificationValues {
+  confirm: string;
+  pinConfirm?: string;
+}
+
 /**
  * 安装向导（全屏独立页，不进 Layout）：
  * ① 环境检查 → ② 管理员账户与可选 PIN → ③ 通知渠道 → ④ 完成
@@ -25,9 +39,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [installing, setInstalling] = useState(false);
   const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
   const [expandedNotificationType, setExpandedNotificationType] = useState<string>();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<SetupFormValues>();
   const checkingRef = useRef(false);
   const installingRef = useRef(false);
+  const accountValuesRef = useRef<SetupAccountValues | null>(null);
 
   const check = useCallback(async () => {
     if (checkingRef.current) return;
@@ -50,18 +65,20 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     void check();
   }, [check]);
 
-  const onInstall = async (values: {
-    password: string;
-    pin?: string;
-    notificationConfigs?: Record<string, NotificationConfigValue>;
-  }) => {
+  const onInstall = async (values: SetupNotificationValues) => {
     if (installingRef.current) return;
+    const accountValues = accountValuesRef.current;
+    if (!accountValues) {
+      message.error('请重新设置管理员账户');
+      setStep(1);
+      return;
+    }
     installingRef.current = true;
     setInstalling(true);
     try {
       await api.post('/api/setup/install', {
-        password: values.password,
-        pin: values.pin || undefined,
+        password: accountValues.password,
+        pin: accountValues.pin || undefined,
         notifications: notificationTypes.map((type) => ({
           type,
           config: values.notificationConfigs?.[type] ?? {},
@@ -69,10 +86,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       });
       message.success('安装完成');
       form.resetFields();
+      accountValuesRef.current = null;
       setStep(3);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         form.resetFields();
+        accountValuesRef.current = null;
         setStep(3); // 已被并发安装
       } else {
         message.error(err instanceof ApiError ? err.message : '安装失败，请重试');
@@ -255,7 +274,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                 onClick={() => {
                   void form
                     .validateFields(['password', 'confirm', 'pin', 'pinConfirm'])
-                    .then(() => setStep(2))
+                    .then((values) => {
+                      accountValuesRef.current = {
+                        password: values.password,
+                        pin: values.pin,
+                      };
+                      setStep(2);
+                    })
                     .catch(() => undefined);
                 }}
               >

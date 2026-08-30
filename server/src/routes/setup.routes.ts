@@ -45,7 +45,7 @@ router.get(
 );
 
 const installSchema = z.object({
-  password: z.string().min(8, '密码长度至少 8 位').max(72, '密码过长'),
+  password: z.string({ error: '请输入密码' }).min(8, '密码长度至少 8 位').max(72, '密码过长'),
   // PIN 可跳过；填写则必须为 6 位数字
   pin: z.union([z.literal(''), z.string().regex(/^\d{6}$/, 'PIN 必须为 6 位数字')]).optional(),
   notifications: z.array(z.object({

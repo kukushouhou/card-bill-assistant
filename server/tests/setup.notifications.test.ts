@@ -72,6 +72,22 @@ describe('安装向导通知渠道', () => {
     expect(unsealNotificationConfig(upsert.create.config)).toEqual({ url: 'https://api.day.app/setup-key' });
   });
 
+  it('缺少管理员密码时返回明确提示且不写入安装数据', async () => {
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/setup/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: [] }),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: '请输入密码' });
+    });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.admin.create).not.toHaveBeenCalled();
+    expect(prisma.appSetting.create).not.toHaveBeenCalled();
+  });
+
   it('安装时可以一次绑定多个通知渠道', async () => {
     await withServer(async (url) => {
       const response = await fetch(`${url}/api/setup/install`, {

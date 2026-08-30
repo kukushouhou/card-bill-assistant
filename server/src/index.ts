@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
-import { ApiError } from './lib/errors';
+import { ApiError, formatValidationIssues } from './lib/errors';
 import { prisma } from './lib/prisma';
 import { recomputePrimary } from './lib/card-groups';
 import { startScheduler } from './jobs/scheduler';
@@ -75,9 +75,8 @@ async function main(): Promise<void> {
     }
     // zod 校验错误
     if (err && typeof err === 'object' && 'issues' in err && Array.isArray((err as { issues: unknown }).issues)) {
-      const issues = (err as { issues: Array<{ message: string; path: Array<string | number> }> }).issues;
-      const detail = issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
-      res.status(400).json({ error: detail || '参数校验失败' });
+      const issues = (err as { issues: Array<{ code?: string; message: string }> }).issues;
+      res.status(400).json({ error: formatValidationIssues(issues) });
       return;
     }
     console.error('[http] 未处理异常:', err);
