@@ -1,11 +1,34 @@
 # 守候信用卡小管家
 
+[![CI](https://github.com/kukushouhou/card-bill-assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kukushouhou/card-bill-assistant/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kukushouhou/card-bill-assistant)](https://github.com/kukushouhou/card-bill-assistant/releases)
+[![License](https://img.shields.io/github/license/kukushouhou/card-bill-assistant)](./LICENSE)
+[![GHCR](https://img.shields.io/badge/GHCR-card--bill--assistant-2496ED?logo=docker&logoColor=white)](https://github.com/users/kukushouhou/packages/container/package/card-bill-assistant)
+![Platforms](https://img.shields.io/badge/platform-linux%2Famd64%20%7C%20linux%2Farm64-555?logo=linux&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
+
 一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过用户启用的通知渠道推送当日事项。
 
 - 当前稳定版本：`v0.2.0`
 - 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.2.0`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
+
+## 目录
+
+- [完整功能](#完整功能)
+- [界面预览与设备支持](#界面预览与设备支持)
+- [支持的银行邮件与解析层级](#支持的银行邮件与解析层级)
+- [安全与数据边界](#安全与数据边界)
+- [部署方式](#部署方式)
+  - [使用 AI 协助部署（推荐）](#方式一使用-ai-协助部署推荐)
+  - [手动使用官方 Docker 镜像](#方式二手动使用官方-docker-镜像)
+  - [使用 Docker 从源码构建](#方式三使用-docker-从源码构建)
+  - [手动源码部署（不使用 Docker）](#方式四手动源码部署不使用-docker)
+- [本地开发](#本地开发)
+- [新增银行解析器](#新增银行解析器)
+- [技术栈](#技术栈)
+- [许可证](#许可证)
 
 ## 完整功能
 
@@ -162,13 +185,25 @@ https://github.com/kukushouhou/card-bill-assistant
 
 ## 方式二：手动使用官方 Docker 镜像
 
-### 前置条件
+### 图形化 Docker 管理界面
+
+适用于任何支持粘贴或导入 Docker Compose YAML 的图形化管理界面。点击下面的链接进入源文件页面，使用页面右上角的复制按钮复制全部内容，再粘贴到新建项目、Stack 或编排任务中：
+
+- **内置 MySQL：** [打开并复制 docker-compose.yml](./docker-compose.yml)
+- **外置 MySQL：** [打开并复制 docker-compose.external.yml](./docker-compose.external.yml)
+- **环境变量：** [打开并复制 .env.docker.example](./.env.docker.example)
+
+### 命令行部署
+
+#### 前置条件
 
 - 64 位 `amd64` 或 `arm64` 主机。
 - Docker Engine 与 Docker Compose v2。
 - 内置模式使用项目提供的 MySQL 8.4；外置模式需要已创建的 MySQL 数据库及建表权限。
 
-### 方案 A：内置 MySQL
+#### 方案 A：内置 MySQL
+
+使用 [docker-compose.yml](./docker-compose.yml)，点击链接可直接查看或复制完整配置。
 
 先克隆 `v0.2.0` 的部署文件：
 
@@ -195,7 +230,9 @@ docker compose up -d
 
 该方案会启动应用与 MySQL 两个容器，数据保存在 `db-data` Docker 卷中。MySQL 没有对宿主机暴露端口。
 
-### 方案 B：外置 MySQL
+#### 方案 B：外置 MySQL
+
+使用 [docker-compose.external.yml](./docker-compose.external.yml)，点击链接可直接查看或复制完整配置。
 
 Linux/NAS：
 
@@ -238,7 +275,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 ## 方式三：使用 Docker 从源码构建
 
-需要审阅、修改源码或自行生成本地镜像时，在对应数据库编排上叠加 `docker-compose.build.yml`：
+需要审阅、修改源码或自行生成本地镜像时，在对应数据库编排上叠加 [docker-compose.build.yml](./docker-compose.build.yml)：
 
 ```bash
 # 内置 MySQL
