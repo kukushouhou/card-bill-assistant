@@ -144,9 +144,23 @@
 
 ## 部署方式
 
-项目同时提供官方 Docker 镜像部署、Docker 源码构建和不使用 Docker 的源码部署。NAS 用户优先选择官方镜像；需要修改代码时再选择源码构建。
+推荐优先使用 AI 协助部署；也可以手动使用官方 Docker 镜像、从 Docker 源码构建，或完全不使用 Docker 进行源码部署。
 
-## 方式一：使用官方 Docker 镜像（推荐）
+## 方式一：使用 AI 协助部署（推荐）
+
+一键复制以下提示词到任意 AI 工具即可：
+
+```text
+我希望部署「守候信用卡小管家」。请先完整阅读并严格遵循下面的 AI 部署提示词：
+https://raw.githubusercontent.com/kukushouhou/card-bill-assistant/main/AI_DEPLOYMENT_PROMPT.md
+
+项目仓库：
+https://github.com/kukushouhou/card-bill-assistant
+
+阅读后请不要立即执行部署。先按照部署提示词询问我尚未提供的必要信息，为每项选择给出推荐默认值并说明影响；待方案确认后，再指导我完成环境变量配置、Docker Compose 启动、健康检查和备份。涉及密码、密钥或完整数据库连接串时，请提示安全风险并推荐优先在目标设备本地填写；是否在对话中提供由我自行决定。
+```
+
+## 方式二：手动使用官方 Docker 镜像
 
 ### 前置条件
 
@@ -154,7 +168,7 @@
 - Docker Engine 与 Docker Compose v2。
 - 内置模式使用项目提供的 MySQL 8.4；外置模式需要已创建的 MySQL 数据库及建表权限。
 
-### 方案 A：内置 MySQL（推荐）
+### 方案 A：内置 MySQL
 
 先克隆 `v0.2.0` 的部署文件：
 
@@ -222,7 +236,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 启动脚本默认不覆盖已有 `.env`。升级或迁移时必须保留原来的 `ENCRYPTION_KEY`。
 
-## 方式二：使用 Docker 从源码构建
+## 方式三：使用 Docker 从源码构建
 
 需要审阅、修改源码或自行生成本地镜像时，在对应数据库编排上叠加 `docker-compose.build.yml`：
 
@@ -239,7 +253,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 
 本地构建镜像名为 `card-bill-assistant:local`，不会覆盖官方 GHCR 镜像。
 
-## 方式三：手动源码部署（不使用 Docker）
+## 方式四：手动源码部署（不使用 Docker）
 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
@@ -262,20 +276,6 @@ NODE_ENV=production npm start
 ```
 
 服务端会直接托管 `web/dist`，默认监听 `3000` 端口。生产环境应使用 systemd、Supervisor 或 NAS 套件守护进程，并通过 HTTPS 反向代理访问。Windows PowerShell 可将最后一行改为 `$env:NODE_ENV='production'; npm start`。完整的升级、服务守护与备份说明见 [DEPLOY.md](./DEPLOY.md)。
-
-## 使用 AI 协助部署
-
-一键复制以下提示词到任意 AI 工具即可：
-
-```text
-我希望部署「守候信用卡小管家」。请先完整阅读并严格遵循下面的 AI 部署提示词：
-https://raw.githubusercontent.com/kukushouhou/card-bill-assistant/main/AI_DEPLOYMENT_PROMPT.md
-
-项目仓库：
-https://github.com/kukushouhou/card-bill-assistant
-
-阅读后请不要立即执行部署。先按照部署提示词询问我尚未提供的必要信息，为每项选择给出推荐默认值并说明影响；待方案确认后，再指导我完成环境变量配置、Docker Compose 启动、健康检查和备份。涉及密码、密钥或完整数据库连接串时，请提示安全风险并推荐优先在目标设备本地填写；是否在对话中提供由我自行决定。
-```
 
 ### HTTPS 与登录 Cookie
 
