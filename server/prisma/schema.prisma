@@ -25,7 +25,7 @@ model AppSetting {
 }
 
 /**
- * 通知渠道实例。type 对应通知提供方注册表（当前内置 bark），config 由各提供方自行校验。
+ * 通知渠道实例。type 对应通知提供方注册表，config 使用环境密钥加密后由各提供方自行校验。
  * 单管理员场景下同一种渠道只保留一份配置；新增渠道类型无需再改表结构。
  */
 model NotificationChannel {

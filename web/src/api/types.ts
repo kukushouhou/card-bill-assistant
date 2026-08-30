@@ -31,6 +31,7 @@ export interface NotificationProviderDefinition {
   name: string;
   description: string;
   fields: NotificationProviderField[];
+  configMode?: 'fields' | 'custom-http';
 }
 
 export interface NotificationChannelInfo {

@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Card, Col, Divider, Form, Input, Radio, Row, Steps, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Checkbox, Col, Collapse, Divider, Form, Input, Row, Steps, Tag, Typography } from 'antd';
 import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { api, ApiError } from '../api/client';
 import { useAppName } from '../appName';
 import type { SetupStatus } from '../api/types';
 import { useResponsive } from '../responsive';
+import {
+  defaultNotificationConfig,
+  NotificationConfigFields,
+  type NotificationConfigValue,
+} from '../components/NotificationConfigFields';
 
 /**
  * 安装向导（全屏独立页，不进 Layout）：
@@ -18,7 +23,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [notificationType, setNotificationType] = useState('none');
+  const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
+  const [expandedNotificationType, setExpandedNotificationType] = useState<string>();
   const [form] = Form.useForm();
   const checkingRef = useRef(false);
   const installingRef = useRef(false);
@@ -47,7 +53,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const onInstall = async (values: {
     password: string;
     pin?: string;
-    notificationConfig?: Record<string, string>;
+    notificationConfigs?: Record<string, NotificationConfigValue>;
   }) => {
     if (installingRef.current) return;
     installingRef.current = true;
@@ -56,9 +62,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       await api.post('/api/setup/install', {
         password: values.password,
         pin: values.pin || undefined,
-        notification: notificationType === 'none'
-          ? { type: 'none' }
-          : { type: notificationType, config: values.notificationConfig ?? {} },
+        notifications: notificationTypes.map((type) => ({
+          type,
+          config: values.notificationConfigs?.[type] ?? {},
+        })),
       });
       message.success('安装完成');
       form.resetFields();
@@ -259,28 +266,38 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 2 && (
-          <Form form={form} layout="vertical" onFinish={onInstall} initialValues={{ notificationConfig: {} }}>
+          <Form form={form} layout="vertical" onFinish={onInstall} initialValues={{ notificationConfigs: {} }}>
             <div className="setup-notification-heading" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               <BellOutlined />
               <div>
                 <Typography.Title level={5} style={{ margin: 0 }}>选择通知渠道</Typography.Title>
-                <Typography.Text type="secondary">可暂不配置，安装完成后也能在系统设置中添加或更换。</Typography.Text>
+                <Typography.Text type="secondary">可选择多个渠道同时发送，也可暂不配置，安装后再到系统设置中添加。</Typography.Text>
               </div>
             </div>
 
-            <Radio.Group
+            <Checkbox.Group
               className="setup-notification-options"
-              value={notificationType}
-              onChange={(event) => setNotificationType(event.target.value)}
+              value={notificationTypes}
+              onChange={(values) => {
+                const nextTypes = values.map(String);
+                const added = nextTypes.find((type) => !notificationTypes.includes(type));
+                if (added) {
+                  const provider = (status?.notificationProviders ?? []).find((item) => item.type === added);
+                  if (provider && form.getFieldValue(['notificationConfigs', added]) == null) {
+                    form.setFieldValue(['notificationConfigs', added], defaultNotificationConfig(provider));
+                  }
+                  setExpandedNotificationType(added);
+                }
+                setNotificationTypes(nextTypes);
+              }}
               style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 20 }}
             >
-              <Radio.Button value="none">暂不配置</Radio.Button>
               {(status?.notificationProviders ?? []).map((provider) => (
-                <Radio.Button key={provider.type} value={provider.type}>{provider.name}</Radio.Button>
+                <Checkbox key={provider.type} value={provider.type}>{provider.name}</Checkbox>
               ))}
-            </Radio.Group>
+            </Checkbox.Group>
 
-            {notificationType === 'none' ? (
+            {notificationTypes.length === 0 ? (
               <Alert
                 type="info"
                 showIcon
@@ -289,32 +306,28 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                 style={{ marginTop: 20 }}
               />
             ) : (
-              (() => {
-                const provider = (status?.notificationProviders ?? []).find((item) => item.type === notificationType);
-                if (!provider) return null;
-                return (
-                  <Card size="small" className="setup-notification-config" style={{ marginTop: 20 }}>
-                    <Typography.Paragraph type="secondary">{provider.description}</Typography.Paragraph>
-                    {provider.fields.map((field) => (
-                      <Form.Item
-                        key={field.key}
-                        name={['notificationConfig', field.key]}
-                        label={field.label}
-                        rules={[
-                          ...(field.required ? [{ required: true, message: `请输入${field.label}` }] : []),
-                          ...(field.type === 'url' ? [{ type: 'url' as const, message: `${field.label}格式不正确` }] : []),
-                        ]}
-                      >
-                        {field.type === 'password' ? (
-                          <Input.Password placeholder={field.placeholder} />
-                        ) : (
-                          <Input type={field.type === 'url' ? 'url' : 'text'} placeholder={field.placeholder} />
-                        )}
-                      </Form.Item>
-                    ))}
-                  </Card>
-                );
-              })()
+              <Collapse
+                accordion
+                className="setup-notification-config"
+                style={{ marginTop: 20 }}
+                activeKey={expandedNotificationType}
+                onChange={(key) => setExpandedNotificationType(Array.isArray(key) ? key[0] : key)}
+                items={(status?.notificationProviders ?? [])
+                  .filter((provider) => notificationTypes.includes(provider.type))
+                  .map((provider) => ({
+                    key: provider.type,
+                    label: provider.name,
+                    children: (
+                      <>
+                        <Typography.Paragraph type="secondary">{provider.description}</Typography.Paragraph>
+                        <NotificationConfigFields
+                          provider={provider}
+                          prefix={['notificationConfigs', provider.type]}
+                        />
+                      </>
+                    ),
+                  }))}
+              />
             )}
 
             <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>

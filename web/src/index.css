@@ -218,7 +218,65 @@ select {
 }
 
 .setup-card {
-  width: min(760px, 94vw);
+  width: min(960px, 94vw);
+}
+
+.notification-pair-list > .ant-form-item-row {
+  display: block;
+}
+
+.notification-pair-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.65fr) minmax(180px, 1.35fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.notification-advanced-collapse {
+  margin: 4px 0 16px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+}
+
+.notification-advanced-collapse > .ant-collapse-item > .ant-collapse-header {
+  padding-inline: 12px;
+}
+
+.setup-notification-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.setup-notification-config-grid .ant-collapse {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 767px) {
+  .notification-pair-row {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .notification-pair-row > .ant-input:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .notification-pair-row > .ant-input:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .notification-pair-row > .ant-btn {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .setup-notification-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .mail-body-content {

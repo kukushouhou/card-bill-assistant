@@ -10,7 +10,7 @@
 
 1. 先阅读仓库中的 `README.md`、`DEPLOY.md`、`.env.docker.example`、`docker-compose.yml`、`docker-compose.external.yml`、`docker-compose.build.yml` 和 `Dockerfile`，以当前代码为准，不凭经验臆测变量名称或默认值。
 2. 先检查是全新安装还是既有部署升级。发现 `.env` 或已有数据卷时，不得覆盖、重新生成密钥或清空数据。
-3. 不要让用户在对话中发送 MySQL 密码、`ENCRYPTION_KEY`、`JWT_SECRET`、Bark Key、邮箱授权码、管理员密码或 PIN。密钥应在目标主机本地生成，密码由用户在本地文件或 Web 安装向导中录入。
+3. 不要让用户在对话中发送 MySQL 密码、`ENCRYPTION_KEY`、`JWT_SECRET`、通知渠道密钥、邮箱授权码、管理员密码或 PIN。密钥应在目标主机本地生成，密码由用户在本地文件或 Web 安装向导中录入。
 4. 不读取或回显 `.env` 的完整内容。检查 Compose 时使用 `docker compose config --quiet`，不向对话输出展开后的密钥。
 5. 不执行 `docker compose down -v`、不删除数据卷、不重置数据库。升级前必须先备份数据库和 `.env`。
 6. 如果用户仅需要指导，给出可直接执行的步骤；如果 AI 可操作目标主机，每一次改变状态前都要确认目标路径和部署模式。
@@ -25,10 +25,10 @@
    - 推荐默认：内置 MySQL，使用 `docker-compose.yml`，适合首次部署和独立备份。
    - 可选：外置 MySQL，使用 `docker-compose.external.yml`，适合已有受管数据库。需要用户确认主机、端口、空数据库名、用户名和建表权限；密码只在目标主机的 `.env` 中录入。
 4. **镜像来源**：
-   - 推荐默认：直接拉取 `ghcr.io/kukushouhou/card-bill-assistant:0.1.0`，部署快且构建结果与发布版本一致。
+   - 推荐默认：直接拉取 `ghcr.io/kukushouhou/card-bill-assistant:0.2.0`，部署快且构建结果与发布版本一致。
    - 可选：从当前源码本地构建，叠加 `docker-compose.build.yml`；仅在用户需要审阅后自建镜像或修改源码时使用。
 5. **访问方式**：是否已有域名和 HTTPS 反向代理，还是仅局域网 HTTP 访问？不得建议直接将应用或 MySQL 暴露到公网。
-6. **应用偏好**：应用显示名、宿主机绑定地址、端口、每日提醒小时，以及是否在安装向导中配置 Bark。
+6. **应用偏好**：应用显示名、宿主机绑定地址、端口、每日提醒小时，以及是否在安装向导中配置一个或多个通知渠道。
 7. **备份**：数据库备份和 `.env` 加密备份应保存到哪个持久化目录或 NAS 备份任务中。
 
 ## 配置默认值
@@ -36,8 +36,8 @@
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
 | 数据库模式 | 内置 MySQL | 首次部署推荐；MySQL 不对外暴露端口 |
-| 镜像来源 | GHCR `0.1.0` | 固定版本便于回滚；不以 `latest` 作为生产默认值 |
-| `APP_VERSION` | `0.1.0` | Compose 拉取的 GHCR 镜像标签 |
+| 镜像来源 | GHCR `0.2.0` | 固定版本便于回滚；不以 `latest` 作为生产默认值 |
+| `APP_VERSION` | `0.2.0` | Compose 拉取的 GHCR 镜像标签 |
 | `APP_NAME` | 留空 | 留空时显示「守候信用卡小管家」 |
 | `APP_BIND_IP` | `0.0.0.0` | 局域网可访问；同机反向代理且环境允许时可改为 `127.0.0.1` |
 | `APP_PORT` | `3000` | 端口冲突时再修改 |

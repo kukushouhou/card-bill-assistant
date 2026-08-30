@@ -8,6 +8,7 @@ import { config } from '../config';
 import { derivePinKey, makePinVerifier, randomBytes } from '../lib/crypto';
 import { getNotificationProvider, listNotificationProviderDefinitions } from '../notify/registry';
 import { NOTIFICATION_CHANNELS_INITIALIZED_KEY } from '../notify/notification.service';
+import { sealNotificationConfig } from '../notify/notification-config';
 
 /**
  * 安装向导路由（免认证）：
@@ -48,24 +49,35 @@ const installSchema = z.object({
   password: z.string().min(8, '密码长度至少 8 位').max(72, '密码过长'),
   // PIN 可跳过；填写则必须为 6 位数字
   pin: z.union([z.literal(''), z.string().regex(/^\d{6}$/, 'PIN 必须为 6 位数字')]).optional(),
-  // 兼容旧客户端可不传；新版向导明确选择暂不配置或一个已注册渠道。
+  // 兼容旧客户端的单个 notification；新版向导可一次绑定多个不同渠道。
   notification: z.object({
     type: z.string().trim().min(1).max(50),
     config: z.unknown().optional(),
   }).optional(),
+  notifications: z.array(z.object({
+    type: z.string().trim().min(1).max(50),
+    config: z.unknown().optional(),
+  })).max(20).optional(),
 });
 
 router.post(
   '/install',
   asyncHandler(async (req, res) => {
-    const { password, pin: rawPin, notification } = installSchema.parse(req.body ?? {});
+    const { password, pin: rawPin, notification, notifications } = installSchema.parse(req.body ?? {});
     const pin = rawPin || null;
-    let notificationProvider = null;
-    let notificationConfig = null;
-    if (notification && notification.type !== 'none') {
-      notificationProvider = getNotificationProvider(notification.type);
-      if (!notificationProvider) throw new ApiError(400, '不支持所选通知渠道');
-      notificationConfig = notificationProvider.parseConfig(notification.config);
+    const requestedNotifications = notifications ?? (notification ? [notification] : []);
+    const uniqueTypes = new Set<string>();
+    const parsedNotifications = requestedNotifications
+      .filter((item) => item.type !== 'none')
+      .map((item) => {
+        if (uniqueTypes.has(item.type)) throw new ApiError(400, '同一种通知渠道只能配置一次');
+        uniqueTypes.add(item.type);
+        const provider = getNotificationProvider(item.type);
+        if (!provider) throw new ApiError(400, '不支持所选通知渠道');
+        return { provider, config: provider.parseConfig(item.config) };
+      });
+    if (notifications && notification) {
+      throw new ApiError(400, '请勿同时提交新旧通知配置字段');
     }
     if (await getInstalledAt()) throw new ApiError(403, '系统已安装，如需重置请查阅部署文档');
 
@@ -91,7 +103,7 @@ router.post(
       await tx.appSetting.create({
         data: { key: INSTALLED_AT_KEY, value: new Date().toISOString() },
       });
-      if (notification) {
+      if (notification || notifications) {
         // 标记用户已经在向导中做过选择；“暂不配置”不会被 BARK_URL 意外覆盖。
         await tx.appSetting.upsert({
           where: { key: NOTIFICATION_CHANNELS_INITIALIZED_KEY },
@@ -99,18 +111,18 @@ router.post(
           update: { value: 'true' },
         });
       }
-      if (notification && notificationProvider && notificationConfig && notification.type !== 'none') {
+      for (const item of parsedNotifications) {
         await tx.notificationChannel.upsert({
-          where: { type: notification.type },
+          where: { type: item.provider.definition.type },
           create: {
-            type: notification.type,
-            name: notificationProvider.definition.name,
-            config: notificationConfig as Prisma.InputJsonObject,
+            type: item.provider.definition.type,
+            name: item.provider.definition.name,
+            config: sealNotificationConfig(item.config) as Prisma.InputJsonObject,
             enabled: true,
           },
           update: {
-            name: notificationProvider.definition.name,
-            config: notificationConfig as Prisma.InputJsonObject,
+            name: item.provider.definition.name,
+            config: sealNotificationConfig(item.config) as Prisma.InputJsonObject,
             enabled: true,
           },
         });

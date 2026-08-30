@@ -60,6 +60,10 @@
   max-width: 720px;
 }
 
+.settings-notification-channel-summary {
+  margin-bottom: 16px;
+}
+
 .settings-card-title {
   display: inline-flex;
   min-width: 0;

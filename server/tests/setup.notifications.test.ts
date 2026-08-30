@@ -15,6 +15,7 @@ vi.mock('../src/lib/prisma', () => ({ prisma }));
 
 import setupRouter from '../src/routes/setup.routes';
 import { ApiError } from '../src/lib/errors';
+import { unsealNotificationConfig } from '../src/notify/notification-config';
 
 async function withServer(run: (url: string) => Promise<void>): Promise<void> {
   const app = express();
@@ -66,25 +67,35 @@ describe('安装向导通知渠道', () => {
       expect(response.status).toBe(200);
     });
 
-    expect(prisma.notificationChannel.upsert).toHaveBeenCalledWith({
-      where: { type: 'bark' },
-      create: {
-        type: 'bark',
-        name: 'Bark',
-        config: { url: 'https://api.day.app/setup-key' },
-        enabled: true,
-      },
-      update: {
-        name: 'Bark',
-        config: { url: 'https://api.day.app/setup-key' },
-        enabled: true,
-      },
-    });
+    const upsert = prisma.notificationChannel.upsert.mock.calls[0][0];
+    expect(upsert.where).toEqual({ type: 'bark' });
+    expect(upsert.create).toEqual(expect.objectContaining({ type: 'bark', name: 'Bark', enabled: true }));
+    expect(unsealNotificationConfig(upsert.create.config)).toEqual({ url: 'https://api.day.app/setup-key' });
     expect(prisma.appSetting.upsert).toHaveBeenCalledWith({
       where: { key: 'notificationChannelsInitialized' },
       create: { key: 'notificationChannelsInitialized', value: 'true' },
       update: { value: 'true' },
     });
+  });
+
+  it('安装时可以一次绑定多个通知渠道', async () => {
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/setup/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: 'password123',
+          notifications: [
+            { type: 'bark', config: { url: 'https://api.day.app/setup-key' } },
+            { type: 'ntfy', config: { serverUrl: 'https://ntfy.sh', topic: 'private-topic' } },
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+    });
+
+    expect(prisma.notificationChannel.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.notificationChannel.upsert.mock.calls.map((call) => call[0].where.type)).toEqual(['bark', 'ntfy']);
   });
 
   it('选择暂不配置时只记录选择，不创建渠道', async () => {

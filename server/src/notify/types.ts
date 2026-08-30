@@ -21,6 +21,7 @@ export interface NotificationProviderDefinition {
   name: string;
   description: string;
   fields: NotificationProviderField[];
+  configMode?: 'fields' | 'custom-http';
 }
 
 export type NotificationChannelConfig = Record<string, unknown>;

@@ -3,6 +3,11 @@ import type { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../lib/errors';
 import { prisma } from '../lib/prisma';
 import { getNotificationProvider, listNotificationProviderDefinitions } from './registry';
+import {
+  isSealedNotificationConfig,
+  sealNotificationConfig,
+  unsealNotificationConfig,
+} from './notification-config';
 import type {
   NotificationChannelConfig,
   NotificationMessage,
@@ -23,11 +28,6 @@ export interface NotificationSettingsView {
   channels: NotificationChannelView[];
 }
 
-function configAsRecord(value: unknown): NotificationChannelConfig {
-  if (!value || Array.isArray(value) || typeof value !== 'object') return {};
-  return value as NotificationChannelConfig;
-}
-
 /**
  * 解析已启用渠道。旧实例没有初始化标记时，继续兼容 AppSetting.barkUrl 和 BARK_URL。
  * 新安装明确选择“暂不配置”后会写入初始化标记，因此不会被环境变量意外重新启用。
@@ -35,6 +35,13 @@ function configAsRecord(value: unknown): NotificationChannelConfig {
 export async function resolveNotificationChannels(options: { includeDisabled?: boolean } = {}): Promise<ResolvedNotificationChannel[]> {
   const stored = await prisma.notificationChannel.findMany({ orderBy: { id: 'asc' } });
   if (stored.length > 0) {
+    // 旧版记录为明文 JSON；首次读取时原地升级为环境密钥加密信封。
+    await Promise.all(stored
+      .filter((channel) => !isSealedNotificationConfig(channel.config))
+      .map((channel) => prisma.notificationChannel.update({
+        where: { id: channel.id },
+        data: { config: sealNotificationConfig(unsealNotificationConfig(channel.config)) as Prisma.InputJsonObject },
+      })));
     return stored
       .filter((channel) => options.includeDisabled || channel.enabled)
       .map((channel) => ({
@@ -42,7 +49,7 @@ export async function resolveNotificationChannels(options: { includeDisabled?: b
         name: channel.name,
         enabled: channel.enabled,
         source: 'database' as const,
-        config: configAsRecord(channel.config),
+        config: unsealNotificationConfig(channel.config),
       }));
   }
 
@@ -54,6 +61,29 @@ export async function resolveNotificationChannels(options: { includeDisabled?: b
   const legacy = await prisma.appSetting.findUnique({ where: { key: LEGACY_BARK_URL_KEY } });
   const legacyUrl = legacy?.value?.trim();
   if (legacyUrl) {
+    // AppSetting 时代的 Bark 地址同样迁入加密渠道表，避免旧凭据继续明文保管。
+    await prisma.$transaction(async (tx) => {
+      await tx.notificationChannel.upsert({
+        where: { type: 'bark' },
+        create: {
+          type: 'bark',
+          name: 'Bark',
+          enabled: true,
+          config: sealNotificationConfig({ url: legacyUrl }) as Prisma.InputJsonObject,
+        },
+        update: {
+          name: 'Bark',
+          enabled: true,
+          config: sealNotificationConfig({ url: legacyUrl }) as Prisma.InputJsonObject,
+        },
+      });
+      await tx.appSetting.upsert({
+        where: { key: NOTIFICATION_CHANNELS_INITIALIZED_KEY },
+        create: { key: NOTIFICATION_CHANNELS_INITIALIZED_KEY, value: 'true' },
+        update: { value: 'true' },
+      });
+      await tx.appSetting.deleteMany({ where: { key: LEGACY_BARK_URL_KEY } });
+    });
     return [{
       type: 'bark',
       name: 'Bark',
@@ -98,12 +128,12 @@ export async function saveNotificationChannel(
         type,
         name: provider.definition.name,
         enabled,
-        config: parsedConfig as Prisma.InputJsonObject,
+        config: sealNotificationConfig(parsedConfig) as Prisma.InputJsonObject,
       },
       update: {
         name: provider.definition.name,
         enabled,
-        config: parsedConfig as Prisma.InputJsonObject,
+        config: sealNotificationConfig(parsedConfig) as Prisma.InputJsonObject,
       },
     });
     await tx.appSetting.upsert({

@@ -1,4 +1,13 @@
 import { barkProvider } from './providers/bark.provider';
+import { customHttpProvider } from './providers/custom-http.provider';
+import { dingTalkProvider } from './providers/dingtalk.provider';
+import { feishuProvider } from './providers/feishu.provider';
+import { gotifyProvider } from './providers/gotify.provider';
+import { ntfyProvider } from './providers/ntfy.provider';
+import { pushPlusProvider } from './providers/pushplus.provider';
+import { serverChanProvider } from './providers/serverchan.provider';
+import { telegramProvider } from './providers/telegram.provider';
+import { weComProvider } from './providers/wecom.provider';
 import type { NotificationProvider, NotificationProviderDefinition } from './types';
 
 const providers = new Map<string, NotificationProvider>();
@@ -20,3 +29,12 @@ export function listNotificationProviderDefinitions(): NotificationProviderDefin
 }
 
 registerNotificationProvider(barkProvider);
+registerNotificationProvider(ntfyProvider);
+registerNotificationProvider(gotifyProvider);
+registerNotificationProvider(telegramProvider);
+registerNotificationProvider(serverChanProvider);
+registerNotificationProvider(pushPlusProvider);
+registerNotificationProvider(weComProvider);
+registerNotificationProvider(dingTalkProvider);
+registerNotificationProvider(feishuProvider);
+registerNotificationProvider(customHttpProvider);

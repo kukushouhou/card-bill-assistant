@@ -1,9 +1,9 @@
 # 守候信用卡小管家
 
-一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过 Bark 推送当日事项。
+一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过用户启用的通知渠道推送当日事项。
 
-- 当前稳定版本：`v0.1.0`
-- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.1.0`
+- 当前稳定版本：`v0.2.0`
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.2.0`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
@@ -64,9 +64,12 @@
 - 「未来 14 天」展示即将到来的出账日、还款日、年费和自定义事项；提醒中心还可查看更长周期的未来安排。
 - 卡片冻结或注销、账单已经还清、自定义提醒停用等状态会同步影响后续提醒，不继续生成无效事项。
 
-### Bark 推送与自动任务
+### 多渠道推送与自动任务
 
-- 当前内置 Bark 通知渠道，可在安装向导或系统设置中绑定、启用、停用和发送测试通知，面向 iPhone 与 iPad 接收系统推送。
+- 内置 Bark、ntfy、Gotify、Telegram Bot、Server酱、PushPlus、企业微信机器人、钉钉机器人和飞书机器人；还可配置自定义 HTTP 推送。
+- 可在安装向导一次选择多个渠道，也可在系统设置中分别绑定、启用、停用、移除和发送测试通知。所有启用渠道会同时收到当天提醒。
+- 自定义 HTTP 推送默认只需填写请求方法、URL 和基础参数；展开高级设置后可配置查询参数、请求头、JSON/表单/纯文本正文及模板。模板支持 `{{title}}`、`{{body}}`、`{{group}}`、`{{count}}`、`{{appName}}` 占位符，不执行用户脚本。
+- 通知渠道配置使用 `ENCRYPTION_KEY` 加密后保存；升级时首次读取会自动加密旧版明文渠道配置，并把旧 Bark 设置迁入新渠道表。
 - 每天在配置的提醒时间先同步启用的邮箱，再汇总当天的还款、出账、年费和自定义提醒后推送；默认时间为上海时区 8:00。
 - 同一渠道的多条当日提醒会合并为一条批量通知，减少连续打扰。
 - 每个提醒按类型、业务记录、日期和通知渠道防重复；任务重复触发不会重复发送，失败的发送仍可在后续任务中重试。
@@ -153,10 +156,10 @@
 
 ### 方案 A：内置 MySQL（推荐）
 
-先克隆 `v0.1.0` 的部署文件：
+先克隆 `v0.2.0` 的部署文件：
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -204,18 +207,18 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
-| `APP_VERSION` | 否 | `0.1.0` | GHCR 镜像版本；生产环境建议固定版本 |
+| `APP_VERSION` | 否 | `0.2.0` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
-| `ENCRYPTION_KEY` | 是 | 脚本随机生成 | 邮箱授权码和卡信息的环境主密钥，不可更换 |
+| `ENCRYPTION_KEY` | 是 | 脚本随机生成 | 邮箱授权码、通知渠道配置和卡信息的环境主密钥，不可更换 |
 | `JWT_SECRET` | 是 | 脚本随机生成 | 登录会话签名 |
 | `COOKIE_SECURE` | 否 | `true` | HTTPS 部署保持 `true`；仅局域网纯 HTTP 部署才设 `false` |
 | `APP_BIND_IP` | 否 | `0.0.0.0` | 宿主机绑定地址 |
 | `APP_PORT` | 否 | `3000` | 宿主机访问端口 |
 | `APP_NAME` | 否 | 守候信用卡小管家 | 登录页、导航栏、页面标题和通知名称 |
 | `REMINDER_HOUR` | 否 | `8` | 上海时区每日提醒小时（0–23） |
-| `BARK_URL` | 否 | 空 | Bark 推送地址，也可在 Web 安装向导中配置 |
+| `BARK_URL` | 否 | 空 | 旧版 Bark 环境变量兼容入口；推荐在 Web 安装向导或系统设置中配置渠道 |
 
 启动脚本默认不覆盖已有 `.env`。升级或迁移时必须保留原来的 `ENCRYPTION_KEY`。
 
@@ -241,7 +244,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web
@@ -282,7 +285,7 @@ COOKIE_SECURE=false
 
 1. 数据库环境检查。
 2. 设置内置 `admin` 管理员密码和可选的六位 PIN。
-3. 选择并配置通知渠道，也可暂时跳过。
+3. 选择并配置一个或多个通知渠道，也可暂时跳过。
 4. 完成安装并登录。
 
 安装完成后 `POST /api/setup/install` 会永久拒绝再次安装。

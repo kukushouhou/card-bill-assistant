@@ -5,6 +5,11 @@ import { Popup } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
 import type { MeInfo, NotificationChannelInfo, NotificationProviderDefinition, SettingsInfo } from '../api/types';
 import { Page } from '../components/Layout';
+import {
+  defaultNotificationConfig,
+  NotificationConfigFields,
+  type NotificationConfigValue,
+} from '../components/NotificationConfigFields';
 import { useResponsive, useResetOnModeChange } from '../responsive';
 import {
   InlineConfirm,
@@ -468,7 +473,7 @@ function MobilePinDestroyFlow({ controller }: { controller: PinSettingsControlle
 
 interface NotificationFormValues {
   enabled: boolean;
-  config: Record<string, string>;
+  config: NotificationConfigValue;
 }
 
 const legacyBarkProvider: NotificationProviderDefinition = {
@@ -528,11 +533,10 @@ function NotificationChannelsCard({
       const nextType = available.channels[0]?.type ?? available.providers[0]?.type ?? 'bark';
       const nextChannel = available.channels.find((channel) => channel.type === nextType);
       setSelectedType(nextType);
+      const provider = available.providers.find((item) => item.type === nextType) ?? available.providers[0];
       form.setFieldsValue({
         enabled: nextChannel?.enabled ?? true,
-        config: Object.fromEntries(
-          Object.entries(nextChannel?.config ?? {}).map(([key, value]) => [key, typeof value === 'string' ? value : '']),
-        ),
+        config: { ...(provider ? defaultNotificationConfig(provider) : {}), ...(nextChannel?.config ?? {}) },
       });
     }
   }, [form, settings]); // notificationSettings 由 settings 派生，不单独作为依赖避免重置正在编辑的表单。
@@ -543,9 +547,7 @@ function NotificationChannelsCard({
     setConfirmRemoving(false);
     form.setFieldsValue({
       enabled: channel?.enabled ?? true,
-      config: Object.fromEntries(
-        Object.entries(channel?.config ?? {}).map(([key, value]) => [key, typeof value === 'string' ? value : '']),
-      ),
+      config: { ...defaultNotificationConfig(providers.find((item) => item.type === type)!), ...(channel?.config ?? {}) },
     });
   };
 
@@ -627,6 +629,16 @@ function NotificationChannelsCard({
       <Typography.Paragraph className="settings-notification-description" type="secondary">
         还款、出账、年费和自定义提醒会通过已启用的渠道发送。同一渠道的当日提醒会合并，避免连续打扰。
       </Typography.Paragraph>
+      {notificationSettings.channels.length > 0 && (
+        <Space wrap className="settings-notification-channel-summary">
+          <Typography.Text type="secondary">已配置：</Typography.Text>
+          {notificationSettings.channels.map((channel) => (
+            <Tag key={channel.type} color={channel.enabled ? 'success' : 'default'}>
+              {channel.name}{channel.enabled ? '' : '（已停用）'}
+            </Tag>
+          ))}
+        </Space>
+      )}
       {readError && (
         <Alert
           type="error"
@@ -683,23 +695,7 @@ function NotificationChannelsCard({
               style={{ marginBottom: 16 }}
             />
           )}
-          {selectedProvider?.fields.map((field) => (
-            <Form.Item
-              key={`${selectedProvider.type}-${field.key}`}
-              name={['config', field.key]}
-              label={field.label}
-              rules={[
-                ...(field.required ? [{ required: true, message: `请输入${field.label}` }] : []),
-                ...(field.type === 'url' ? [{ type: 'url' as const, message: `${field.label}格式不正确` }] : []),
-              ]}
-            >
-              {field.type === 'password' ? (
-                <Input.Password placeholder={field.placeholder} />
-              ) : (
-                <Input type={field.type === 'url' ? 'url' : 'text'} placeholder={field.placeholder} />
-              )}
-            </Form.Item>
-          ))}
+          {selectedProvider && <NotificationConfigFields provider={selectedProvider} prefix={['config']} />}
           <Form.Item name="enabled" label="发送状态" valuePropName="checked">
             <Switch checkedChildren="已启用" unCheckedChildren="已停用" />
           </Form.Item>
