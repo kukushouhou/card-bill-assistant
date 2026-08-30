@@ -13,7 +13,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function isSealedNotificationConfig(value: unknown): value is SealedNotificationConfig {
+function isSealedNotificationConfig(value: unknown): value is SealedNotificationConfig {
   return isRecord(value)
     && value._sealed === SEALED_CONFIG_MARKER
     && typeof value.payload === 'string';
@@ -25,7 +25,7 @@ export function sealNotificationConfig(value: NotificationChannelConfig): Sealed
 }
 
 export function unsealNotificationConfig(value: unknown): NotificationChannelConfig {
-  if (!isSealedNotificationConfig(value)) return isRecord(value) ? value : {};
+  if (!isSealedNotificationConfig(value)) throw new Error('通知渠道配置格式无效');
   try {
     const json = decrypt(appConfig.encryptionKey, Buffer.from(value.payload, 'base64'));
     const parsed: unknown = JSON.parse(json);

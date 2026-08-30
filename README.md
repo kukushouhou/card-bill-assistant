@@ -9,8 +9,8 @@
 
 一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过用户启用的通知渠道推送当日事项。
 
-- 当前稳定版本：`v0.2.0`
-- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.2.0`
+- 当前稳定版本：`v0.2.1`（[查看本版本完整发布说明](./docs/releases/v0.2.1.md)）
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.2.1`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
@@ -92,7 +92,7 @@
 - 内置 Bark、ntfy、Gotify、Telegram Bot、Server酱、PushPlus、企业微信机器人、钉钉机器人和飞书机器人；还可配置自定义 HTTP 推送。
 - 可在安装向导一次选择多个渠道，也可在系统设置中分别绑定、启用、停用、移除和发送测试通知。所有启用渠道会同时收到当天提醒。
 - 自定义 HTTP 推送默认只需填写请求方法、URL 和基础参数；展开高级设置后可配置查询参数、请求头、JSON/表单/纯文本正文及模板。模板支持 `{{title}}`、`{{body}}`、`{{group}}`、`{{count}}`、`{{appName}}` 占位符，不执行用户脚本。
-- 通知渠道配置使用 `ENCRYPTION_KEY` 加密后保存；升级时首次读取会自动加密旧版明文渠道配置，并把旧 Bark 设置迁入新渠道表。
+- 通知渠道配置使用 `ENCRYPTION_KEY` 加密后保存。
 - 每天在配置的提醒时间先同步启用的邮箱，再汇总当天的还款、出账、年费和自定义提醒后推送；默认时间为上海时区 8:00。
 - 同一渠道的多条当日提醒会合并为一条批量通知，减少连续打扰。
 - 每个提醒按类型、业务记录、日期和通知渠道防重复；任务重复触发不会重复发送，失败的发送仍可在后续任务中重试。
@@ -180,7 +180,7 @@ https://raw.githubusercontent.com/kukushouhou/card-bill-assistant/main/AI_DEPLOY
 项目仓库：
 https://github.com/kukushouhou/card-bill-assistant
 
-阅读后请不要立即执行部署。先按照部署提示词询问我尚未提供的必要信息，为每项选择给出推荐默认值并说明影响；待方案确认后，再指导我完成环境变量配置、Docker Compose 启动、健康检查和备份。涉及密码、密钥或完整数据库连接串时，请提示安全风险并推荐优先在目标设备本地填写；是否在对话中提供由我自行决定。
+阅读后请不要立即执行部署。先按照部署提示词询问我尚未提供的必要信息，为每项选择给出推荐默认值并说明影响；待方案确认后，再指导我完成环境变量配置、Docker Compose 启动和健康检查。涉及密码、密钥或完整数据库连接串时，请提示安全风险并推荐优先在目标设备本地填写；是否在对话中提供由我自行决定。使用外置 MySQL 时，不要询问数据库备份目录或要求备份权限。
 ```
 
 ## 方式二：手动使用官方 Docker 镜像
@@ -205,10 +205,10 @@ https://github.com/kukushouhou/card-bill-assistant
 
 使用 [docker-compose.yml](./docker-compose.yml)，点击链接可直接查看或复制完整配置。
 
-先克隆 `v0.2.0` 的部署文件：
+先克隆 `v0.2.1` 的部署文件：
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -258,7 +258,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
-| `APP_VERSION` | 否 | `0.2.0` | GHCR 镜像版本；生产环境建议固定版本 |
+| `APP_VERSION` | 否 | `0.2.1` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
@@ -269,7 +269,6 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 | `APP_PORT` | 否 | `3000` | 宿主机访问端口 |
 | `APP_NAME` | 否 | 守候信用卡小管家 | 登录页、导航栏、页面标题和通知名称 |
 | `REMINDER_HOUR` | 否 | `8` | 上海时区每日提醒小时（0–23） |
-| `BARK_URL` | 否 | 空 | 旧版 Bark 环境变量兼容入口；推荐在 Web 安装向导或系统设置中配置渠道 |
 
 启动脚本默认不覆盖已有 `.env`。升级或迁移时必须保留原来的 `ENCRYPTION_KEY`。
 
@@ -295,7 +294,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web
@@ -345,7 +344,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 如果修改了 `APP_PORT`，请在健康检查中使用实际端口。Compose 已为应用和 MySQL 配置日志轮转。
 
-更完整的备份、升级和运维命令见 [DEPLOY.md](./DEPLOY.md)。
+更完整的内置 MySQL 备份、升级和运维命令见 [DEPLOY.md](./DEPLOY.md)。
 
 ## 本地开发
 

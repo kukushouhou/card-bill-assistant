@@ -3,74 +3,35 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = vi.hoisted(() => ({
   notificationChannel: {
     findMany: vi.fn(),
-    update: vi.fn(),
     upsert: vi.fn(),
     deleteMany: vi.fn(),
   },
-  appSetting: {
-    findUnique: vi.fn(),
-    upsert: vi.fn(),
-    deleteMany: vi.fn(),
-  },
-  $transaction: vi.fn(),
 }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma }));
 
 import {
   getNotificationSettings,
-  NOTIFICATION_CHANNELS_INITIALIZED_KEY,
   resolveNotificationChannels,
   saveNotificationChannel,
 } from '../src/notify/notification.service';
 import { barkProvider } from '../src/notify/providers/bark.provider';
-import { unsealNotificationConfig } from '../src/notify/notification-config';
+import { sealNotificationConfig, unsealNotificationConfig } from '../src/notify/notification-config';
 
 describe('notification.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prisma.notificationChannel.findMany.mockResolvedValue([]);
-    prisma.notificationChannel.update.mockResolvedValue({});
-    prisma.appSetting.findUnique.mockResolvedValue(null);
-    prisma.$transaction.mockImplementation(async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
   });
 
-  it('没有新渠道记录时兼容旧 AppSetting Bark 地址', async () => {
-    prisma.appSetting.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => {
-      if (where.key === 'barkUrl') return { key: 'barkUrl', value: 'https://api.day.app/legacy-key' };
-      return null;
-    });
-
-    await expect(resolveNotificationChannels()).resolves.toEqual([
-      expect.objectContaining({
-        type: 'bark',
-        source: 'legacy-setting',
-        config: { url: 'https://api.day.app/legacy-key' },
-      }),
-    ]);
-    const migrated = prisma.notificationChannel.upsert.mock.calls[0][0];
-    expect(unsealNotificationConfig(migrated.create.config)).toEqual({ url: 'https://api.day.app/legacy-key' });
-    expect(prisma.appSetting.deleteMany).toHaveBeenCalledWith({ where: { key: 'barkUrl' } });
-  });
-
-  it('用户已在安装向导选择暂不配置时不回退旧渠道', async () => {
-    prisma.appSetting.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) =>
-      where.key === NOTIFICATION_CHANNELS_INITIALIZED_KEY
-        ? { key: NOTIFICATION_CHANNELS_INITIALIZED_KEY, value: 'true' }
-        : null,
-    );
-
-    await expect(resolveNotificationChannels()).resolves.toEqual([]);
-  });
-
-  it('提供方列表与渠道配置通过通用结构返回', async () => {
+  it('提供方列表与加密渠道配置通过通用结构返回', async () => {
     prisma.notificationChannel.findMany.mockResolvedValue([
       {
         id: 1,
         type: 'bark',
         name: 'Bark',
         enabled: true,
-        config: { url: 'https://api.day.app/key' },
+        config: sealNotificationConfig({ url: 'https://api.day.app/key' }),
       },
     ]);
 
@@ -80,14 +41,16 @@ describe('notification.service', () => {
       expect.objectContaining({ type: 'custom-http', configMode: 'custom-http' }),
     ]));
     expect(settings.channels).toEqual([
-      expect.objectContaining({ type: 'bark', configured: true, source: 'database' }),
+      expect.objectContaining({
+        type: 'bark',
+        configured: true,
+        config: { url: 'https://api.day.app/key' },
+      }),
     ]);
   });
 
-  it('保存渠道时由提供方校验配置并写入初始化标记', async () => {
+  it('保存渠道时由提供方校验并加密配置', async () => {
     prisma.notificationChannel.upsert.mockResolvedValue({});
-    prisma.appSetting.upsert.mockResolvedValue({});
-    prisma.appSetting.deleteMany.mockResolvedValue({ count: 0 });
 
     await saveNotificationChannel('bark', {
       enabled: true,
@@ -101,12 +64,9 @@ describe('notification.service', () => {
     const call = prisma.notificationChannel.upsert.mock.calls[0][0];
     expect(unsealNotificationConfig(call.create.config)).toEqual({ url: 'https://api.day.app/new-key' });
     expect(JSON.stringify(call.create.config)).not.toContain('new-key');
-    expect(prisma.appSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { key: NOTIFICATION_CHANNELS_INITIALIZED_KEY },
-    }));
   });
 
-  it('读取旧版明文渠道配置时自动升级为加密信封', async () => {
+  it('拒绝读取未加密的渠道配置', async () => {
     prisma.notificationChannel.findMany.mockResolvedValue([{
       id: 7,
       type: 'bark',
@@ -115,13 +75,7 @@ describe('notification.service', () => {
       config: { url: 'https://api.day.app/plain-key' },
     }]);
 
-    await expect(resolveNotificationChannels()).resolves.toEqual([
-      expect.objectContaining({ type: 'bark', config: { url: 'https://api.day.app/plain-key' } }),
-    ]);
-    expect(prisma.notificationChannel.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 7 } }));
-    const encrypted = prisma.notificationChannel.update.mock.calls[0][0].data.config;
-    expect(unsealNotificationConfig(encrypted)).toEqual({ url: 'https://api.day.app/plain-key' });
-    expect(JSON.stringify(encrypted)).not.toContain('plain-key');
+    await expect(resolveNotificationChannels()).rejects.toThrow('通知渠道配置格式无效');
   });
 
   it('渠道连接错误使用通用通知文案', async () => {

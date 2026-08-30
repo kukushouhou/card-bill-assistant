@@ -43,6 +43,5 @@ export interface ResolvedNotificationChannel {
   type: string;
   name: string;
   enabled: boolean;
-  source: 'database' | 'legacy-setting' | 'environment';
   config: NotificationChannelConfig;
 }

@@ -45,9 +45,6 @@ export const config = {
     const h = Number(process.env.REMINDER_HOUR ?? 8);
     return h >= 0 && h <= 23 ? h : 8;
   },
-  get barkUrl(): string {
-    return process.env.BARK_URL || '';
-  },
   get webDistDir(): string {
     return process.env.WEB_DIST_DIR || path.resolve(here, '../../web/dist');
   },

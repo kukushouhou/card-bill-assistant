@@ -39,7 +39,6 @@ export interface NotificationChannelInfo {
   name: string;
   enabled: boolean;
   configured: true;
-  source: 'database' | 'legacy-setting' | 'environment';
   config: Record<string, unknown>;
 }
 
@@ -513,8 +512,6 @@ export interface SyncSummary {
 }
 
 export interface SettingsInfo {
-  /** @deprecated 兼容旧服务端字段，界面使用 notifications。 */
-  barkUrl: string;
   reminderHour: number;
-  notifications?: NotificationSettingsInfo;
+  notifications: NotificationSettingsInfo;
 }

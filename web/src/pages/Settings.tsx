@@ -3,7 +3,7 @@ import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Radio,
 import { BellOutlined, DeleteOutlined, InfoCircleOutlined, SafetyOutlined, SendOutlined } from '@ant-design/icons';
 import { Popup } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
-import type { MeInfo, NotificationChannelInfo, NotificationProviderDefinition, SettingsInfo } from '../api/types';
+import type { MeInfo, SettingsInfo } from '../api/types';
 import { Page } from '../components/Layout';
 import {
   defaultNotificationConfig,
@@ -476,13 +476,6 @@ interface NotificationFormValues {
   config: NotificationConfigValue;
 }
 
-const legacyBarkProvider: NotificationProviderDefinition = {
-  type: 'bark',
-  name: 'Bark',
-  description: '向 iPhone 或 iPad 上的 Bark 应用发送系统通知。',
-  fields: [{ key: 'url', label: '推送地址', type: 'url', placeholder: 'https://api.day.app/YourKey', required: true }],
-};
-
 function NotificationChannelsCard({
   settings,
   reading,
@@ -510,26 +503,14 @@ function NotificationChannelsCard({
   const loadingRef = useRef(false);
   const testingRef = useRef(false);
 
-  const notificationSettings = settings?.notifications ?? {
-    providers: [legacyBarkProvider],
-    channels: settings?.barkUrl
-      ? [{
-          type: 'bark',
-          name: 'Bark',
-          enabled: true,
-          configured: true as const,
-          source: 'legacy-setting' as const,
-          config: { url: settings.barkUrl },
-        }]
-      : [],
-  };
+  const notificationSettings = settings?.notifications ?? { providers: [], channels: [] };
   const providers = notificationSettings.providers;
   const selectedProvider = providers.find((provider) => provider.type === selectedType) ?? providers[0];
   const selectedChannel = notificationSettings.channels.find((channel) => channel.type === selectedProvider?.type);
 
   useEffect(() => {
     if (settings && !form.isFieldsTouched()) {
-      const available = settings.notifications ?? notificationSettings;
+      const available = settings.notifications;
       const nextType = available.channels[0]?.type ?? available.providers[0]?.type ?? 'bark';
       const nextChannel = available.channels.find((channel) => channel.type === nextType);
       setSelectedType(nextType);
@@ -612,19 +593,13 @@ function NotificationChannelsCard({
     setLoading(false);
   };
 
-  const sourceLabel: Record<NotificationChannelInfo['source'], string> = {
-    database: '已绑定',
-    'legacy-setting': '已从旧设置接入',
-    environment: '由环境变量提供',
-  };
-
   return (
     <Card
       className="settings-card"
       title={<span><BellOutlined /> 通知渠道</span>}
       size="small"
       variant="outlined"
-      extra={selectedChannel ? <Tag color={selectedChannel.enabled ? 'success' : 'default'}>{sourceLabel[selectedChannel.source]}</Tag> : <Tag>未配置</Tag>}
+      extra={selectedChannel ? <Tag color={selectedChannel.enabled ? 'success' : 'default'}>{selectedChannel.enabled ? '已启用' : '已停用'}</Tag> : <Tag>未配置</Tag>}
     >
       <Typography.Paragraph className="settings-notification-description" type="secondary">
         还款、出账、年费和自定义提醒会通过已启用的渠道发送。同一渠道的当日提醒会合并，避免连续打扰。

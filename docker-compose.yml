@@ -24,7 +24,7 @@ services:
         max-file: "3"
 
   app:
-    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.2.0}
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.2.1}
     container_name: due-reminder-app
     restart: unless-stopped
     depends_on:
@@ -40,7 +40,6 @@ services:
       TZ: Asia/Shanghai
       APP_NAME: ${APP_NAME:-}
       REMINDER_HOUR: ${REMINDER_HOUR:-8}
-      BARK_URL: ${BARK_URL:-}
     ports:
       - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-3000}:3000"
     healthcheck:

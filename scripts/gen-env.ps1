@@ -30,7 +30,7 @@ $jwtSecret = New-Hex 32
 if ($External) {
     $content = @"
 # ===== 外置 MySQL 模式（docker-compose.external.yml）=====
-APP_VERSION=0.2.0
+APP_VERSION=0.2.1
 
 # 【必填】目标数据库连接串（应用将自动建表；库需已创建且账号有建表权限）
 # 密码含特殊字符需 URL 编码：! → %21  @ → %40  & → %26  # → %23
@@ -45,8 +45,6 @@ COOKIE_SECURE=true
 
 # 每日提醒推送时刻（小时，0-23，上海时区）
 REMINDER_HOUR=8
-# 旧版 Bark 环境变量兼容（可选；推荐登录后在「系统设置」页配置任意通知渠道）
-BARK_URL=
 # 应用显示名（可选，留空使用默认「守候信用卡小管家」）
 APP_NAME=
 # 宿主机绑定地址与对外端口
@@ -57,7 +55,7 @@ APP_PORT=3000
 } else {
     $content = @"
 # ===== 内置 MySQL 模式（docker-compose.yml，密钥已随机生成）=====
-APP_VERSION=0.2.0
+APP_VERSION=0.2.1
 
 # MySQL root 密码（随机生成，务必备份）
 MYSQL_ROOT_PASSWORD=$rootPassword
@@ -73,8 +71,6 @@ COOKIE_SECURE=true
 
 # 每日提醒推送时刻（小时，0-23，上海时区）
 REMINDER_HOUR=8
-# 旧版 Bark 环境变量兼容（可选；推荐登录后在「系统设置」页配置任意通知渠道）
-BARK_URL=
 # 应用显示名（可选，留空使用默认「守候信用卡小管家」）
 APP_NAME=
 # 宿主机绑定地址与对外端口

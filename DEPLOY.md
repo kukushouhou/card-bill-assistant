@@ -2,14 +2,14 @@
 
 如果希望由 AI 根据 NAS/服务器环境生成具体方案，请使用 [AI_DEPLOYMENT_PROMPT.md](./AI_DEPLOYMENT_PROMPT.md)。
 
-当前发布版本为 `v0.2.0`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.2.0`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
+当前发布版本为 `v0.2.1`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.2.1`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
 
 ## 1. 官方镜像部署
 
 先获取与镜像版本一致的部署文件：
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -28,7 +28,7 @@ docker compose up -d
 
 ### 外置 MySQL
 
-适合已有独立备份和监控的 MySQL，使用 `docker-compose.external.yml`。目标数据库需要事先创建，账号需要建表和执行迁移的权限。
+适合已有 MySQL 的环境，使用 `docker-compose.external.yml`。目标数据库需要事先创建，应用账号只需要建表和执行迁移的权限；备份与恢复由外部数据库管理方负责。
 
 ```bash
 sh ./scripts/gen-env.sh --external
@@ -61,7 +61,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 环境要求：Node.js 24、MySQL 8，以及可长期守护 Node.js 进程的系统服务。
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web
@@ -100,7 +100,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-`.env` 保存在 `server/` 中且权限应限制为仅服务用户可读。每次升级先备份数据库和 `.env`，再更新代码、重新构建前端、执行 `npm ci --omit=dev` 与 `npx prisma migrate deploy`，最后重启服务。
+`.env` 保存在 `server/` 中且权限应限制为仅服务用户可读。升级时必须保留原 `.env`；数据库恢复点按实际数据库管理方式处理，再更新代码、重新构建前端、执行 `npm ci --omit=dev` 与 `npx prisma migrate deploy`，最后重启服务。
 
 ## 4. HTTPS 与网络
 
@@ -128,7 +128,9 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 应用容器每次启动前会自动执行 `prisma migrate deploy`。首次访问时，Web 安装向导会完成数据库检查、管理员密码/可选 PIN、通知渠道和安装标记。
 
-## 6. 备份
+## 6. 内置 MySQL 备份与恢复
+
+本节仅适用于 `docker-compose.yml` 启动的内置 MySQL。外置 MySQL 的备份权限、保留策略和恢复流程由外部数据库管理方负责，应用部署账号不需要具备备份权限。
 
 ### 内置 MySQL 逻辑备份
 
@@ -155,7 +157,7 @@ docker compose start app
 
 ## 7. 升级
 
-升级前必须完成数据库和 `.env` 备份，且不得重新运行密钥生成脚本。
+升级时必须保留原 `.env`，且不得重新运行密钥生成脚本。内置 MySQL 按上一节建立恢复点；外置 MySQL 沿用外部数据库现有的备份与恢复流程，不要求应用部署账号执行数据库备份。
 
 ```bash
 git fetch --tags
@@ -166,7 +168,7 @@ docker compose ps
 docker compose logs --tail=200 app
 ```
 
-外置 MySQL 模式将上述 Compose 命令改为 `docker compose -f docker-compose.external.yml ...`。源码构建模式则使用对应双 `-f` 命令并增加 `--build`。数据库迁移失败时不要跳过迁移强制启动，应保留日志和备份后诊断。
+外置 MySQL 模式将上述 Compose 命令改为 `docker compose -f docker-compose.external.yml ...`。源码构建模式则使用对应双 `-f` 命令并增加 `--build`。数据库迁移失败时不要跳过迁移强制启动，应保留日志和当前镜像后诊断。
 
 ## 8. 常用运维命令
 

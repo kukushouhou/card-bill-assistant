@@ -4,7 +4,7 @@ import express from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prisma = vi.hoisted(() => ({
-  appSetting: { findUnique: vi.fn(), create: vi.fn(), upsert: vi.fn() },
+  appSetting: { findUnique: vi.fn(), create: vi.fn() },
   admin: { count: vi.fn(), create: vi.fn() },
   notificationChannel: { upsert: vi.fn() },
   $queryRaw: vi.fn(),
@@ -50,7 +50,6 @@ describe('安装向导通知渠道', () => {
     prisma.admin.create.mockResolvedValue({});
     prisma.appSetting.create.mockResolvedValue({});
     prisma.notificationChannel.upsert.mockResolvedValue({});
-    prisma.appSetting.upsert.mockResolvedValue({});
     prisma.$transaction.mockImplementation(async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
   });
 
@@ -61,7 +60,7 @@ describe('安装向导通知渠道', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           password: 'password123',
-          notification: { type: 'bark', config: { url: 'https://api.day.app/setup-key' } },
+          notifications: [{ type: 'bark', config: { url: 'https://api.day.app/setup-key' } }],
         }),
       });
       expect(response.status).toBe(200);
@@ -71,11 +70,6 @@ describe('安装向导通知渠道', () => {
     expect(upsert.where).toEqual({ type: 'bark' });
     expect(upsert.create).toEqual(expect.objectContaining({ type: 'bark', name: 'Bark', enabled: true }));
     expect(unsealNotificationConfig(upsert.create.config)).toEqual({ url: 'https://api.day.app/setup-key' });
-    expect(prisma.appSetting.upsert).toHaveBeenCalledWith({
-      where: { key: 'notificationChannelsInitialized' },
-      create: { key: 'notificationChannelsInitialized', value: 'true' },
-      update: { value: 'true' },
-    });
   });
 
   it('安装时可以一次绑定多个通知渠道', async () => {
@@ -98,21 +92,16 @@ describe('安装向导通知渠道', () => {
     expect(prisma.notificationChannel.upsert.mock.calls.map((call) => call[0].where.type)).toEqual(['bark', 'ntfy']);
   });
 
-  it('选择暂不配置时只记录选择，不创建渠道', async () => {
+  it('选择暂不配置时不创建渠道', async () => {
     await withServer(async (url) => {
       const response = await fetch(`${url}/api/setup/install`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: 'password123', notification: { type: 'none' } }),
+        body: JSON.stringify({ password: 'password123', notifications: [] }),
       });
       expect(response.status).toBe(200);
     });
 
     expect(prisma.notificationChannel.upsert).not.toHaveBeenCalled();
-    expect(prisma.appSetting.upsert).toHaveBeenCalledWith({
-      where: { key: 'notificationChannelsInitialized' },
-      create: { key: 'notificationChannelsInitialized', value: 'true' },
-      update: { value: 'true' },
-    });
   });
 });
