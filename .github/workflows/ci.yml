@@ -63,3 +63,5 @@ jobs:
           docker compose -f docker-compose.external.yml -f docker-compose.build.yml config --quiet
       - name: Build production image
         run: docker build --tag card-bill-assistant:ci .
+      - name: Verify bundled web application path
+        run: docker run --rm --entrypoint sh card-bill-assistant:ci -c 'test -n "$WEB_DIST_DIR" && test -f "$WEB_DIST_DIR/index.html"'

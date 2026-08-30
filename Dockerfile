@@ -9,7 +9,7 @@ RUN npm run build
 # ===== 阶段 2：服务端 + 前端产物 =====
 FROM node:24-alpine
 WORKDIR /app
-ENV NODE_ENV=production TZ=Asia/Shanghai
+ENV NODE_ENV=production TZ=Asia/Shanghai WEB_DIST_DIR=/app/web/dist
 
 # 先装依赖（利用层缓存）
 COPY server/package.json server/package-lock.json ./

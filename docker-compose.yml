@@ -24,7 +24,7 @@ services:
         max-file: "3"
 
   app:
-    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.2.1}
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.2.2}
     container_name: due-reminder-app
     restart: unless-stopped
     depends_on:
@@ -37,13 +37,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       PORT: 3000
+      # v0.2.1 镜像已包含前端产物，但需要显式指定镜像内路径
+      WEB_DIST_DIR: /app/web/dist
       TZ: Asia/Shanghai
       APP_NAME: ${APP_NAME:-}
       REMINDER_HOUR: ${REMINDER_HOUR:-8}
     ports:
       - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "Promise.all([fetch('http://127.0.0.1:3000/api/health'),fetch('http://127.0.0.1:3000/'),fetch('http://127.0.0.1:3000/login')]).then(([api,...pages])=>{if(!api.ok||pages.some(r=>!r.ok||!(r.headers.get('content-type')||'').includes('text/html')))process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 5

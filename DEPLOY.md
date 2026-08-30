@@ -2,14 +2,14 @@
 
 如果希望由 AI 根据 NAS/服务器环境生成具体方案，请使用 [AI_DEPLOYMENT_PROMPT.md](./AI_DEPLOYMENT_PROMPT.md)。
 
-当前发布版本为 `v0.2.1`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.2.1`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
+当前发布版本为 `v0.2.2`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.2.2`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
 
 ## 1. 官方镜像部署
 
 先获取与镜像版本一致的部署文件：
 
 ```bash
-git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -61,7 +61,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 环境要求：Node.js 24、MySQL 8，以及可长期守护 Node.js 进程的系统服务。
 
 ```bash
-git clone --branch v0.2.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.2.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web
@@ -122,9 +122,13 @@ http://NAS_IP:3000
 docker compose ps
 docker compose logs --tail=200 app
 curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS -o /dev/null http://127.0.0.1:3000/
+curl -fsS -o /dev/null http://127.0.0.1:3000/login
 ```
 
 外置 MySQL 模式的命令需要加上 `-f docker-compose.external.yml`。
+
+三项检查分别验证 API、Web 首页和前端路由刷新回退。默认 Docker 部署不依赖 Nginx 伪静态，非 `/api` 路径由 Node 服务回退到 `index.html`。
 
 应用容器每次启动前会自动执行 `prisma migrate deploy`。首次访问时，Web 安装向导会完成数据库检查、管理员密码/可选 PIN、通知渠道和安装标记。
 

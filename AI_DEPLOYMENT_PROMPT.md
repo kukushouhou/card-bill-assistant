@@ -26,7 +26,7 @@
    - 推荐默认：内置 MySQL，使用 `docker-compose.yml`，适合首次部署，数据由 Compose 命名卷持久化。
    - 可选：外置 MySQL，使用 `docker-compose.external.yml`，适合已有受管数据库。全新安装时确认主机、端口、空数据库名、用户名以及建表和迁移权限；推荐将密码直接录入目标主机的 `.env`，用户也可在了解风险后选择其他提供方式。外置数据库同样可以在连接可达且账号具有导出所需权限时备份，不得仅因其是外置数据库就排除备份能力，但备份不是第一轮必问题。
 4. **镜像来源**：
-   - 推荐默认：直接拉取 `ghcr.io/kukushouhou/card-bill-assistant:0.2.1`，部署快且构建结果与发布版本一致。
+   - 推荐默认：直接拉取 `ghcr.io/kukushouhou/card-bill-assistant:0.2.2`，部署快且构建结果与发布版本一致。
    - 可选：从当前源码本地构建，叠加 `docker-compose.build.yml`；仅在用户需要审阅后自建镜像或修改源码时使用。
 5. **访问方式**：是否已有域名和 HTTPS 反向代理，还是仅局域网 HTTP 访问？不得建议直接将应用或 MySQL 暴露到公网。
 6. **应用偏好**：应用显示名、宿主机绑定地址、端口和每日提醒小时。
@@ -36,8 +36,8 @@
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
 | 数据库模式 | 内置 MySQL | 首次部署推荐；MySQL 不对外暴露端口 |
-| 镜像来源 | GHCR `0.2.1` | 固定版本便于回滚；不以 `latest` 作为生产默认值 |
-| `APP_VERSION` | `0.2.1` | Compose 拉取的 GHCR 镜像标签 |
+| 镜像来源 | GHCR `0.2.2` | 固定版本便于回滚；不以 `latest` 作为生产默认值 |
+| `APP_VERSION` | `0.2.2` | Compose 拉取的 GHCR 镜像标签 |
 | `APP_NAME` | 留空 | 留空时显示「守候信用卡小管家」 |
 | `APP_BIND_IP` | `0.0.0.0` | 局域网可访问；同机反向代理且环境允许时可改为 `127.0.0.1` |
 | `APP_PORT` | `3000` | 端口冲突时再修改 |
@@ -67,7 +67,7 @@
    - 内置 MySQL：`docker compose pull`，然后 `docker compose up -d`
    - 外置 MySQL：`docker compose -f docker-compose.external.yml pull`，然后 `docker compose -f docker-compose.external.yml up -d`
    - 如用户明确选择从源码构建，内置模式使用 `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`；外置模式使用 `docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d --build`。
-8. 使用 `docker compose ps`、有限行数的应用日志和 `GET /api/health` 验证健康状态。日志中如出现密钥或连接串，默认先打码；如用户明确需要完整内容，先提示风险并尊重用户选择。
+8. 使用 `docker compose ps`、有限行数的应用日志、`GET /api/health`、Web 根地址和 `/login` 深层链接共同验证部署；根地址与 `/login` 必须返回 HTML，确认浏览器刷新前端路由不会出现 404。默认 Docker 部署不依赖 Nginx 伪静态。日志中如出现密钥或连接串，默认先打码；如用户明确需要完整内容，先提示风险并尊重用户选择。
 9. 如果 `COOKIE_SECURE=true`，必须通过 HTTPS 地址完成安装和登录。如果用户明确选择局域网 HTTP，将其设为 `false` 并说明传输层不加密的风险。
 10. 引导用户在 Web 安装向导中完成环境检查、管理员密码和可选 PIN。通知渠道由用户在向导对应步骤自行添加或跳过，部署助手不需要提前替用户决定。不创建 `ADMIN_INITIAL_PASSWORD` 之类的环境变量。
 11. 交付时说明实际使用的 Compose 文件、访问地址、数据持久化边界、健康状态和尚未完成的环节；如果本次升级触发过备份选择，还要说明用户的选择以及实际备份结果。
