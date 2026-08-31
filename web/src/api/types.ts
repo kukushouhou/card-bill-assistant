@@ -10,18 +10,47 @@ export interface AppInfo {
   name: string;
 }
 
+export type UpgradeMigrationMode = 'silent' | 'optional' | 'required';
+
+export interface UpgradeMigrationSummary {
+  key: string;
+  targetVersion: string;
+  order: number;
+  mode: UpgradeMigrationMode;
+  title: string;
+  description: string;
+  total: number;
+  summary: string | null;
+}
+
 export interface UpgradeTask {
   key: string;
-  fromVersion: string | null;
-  toVersion: string;
-  banks: string[];
-  status: 'pending' | 'running' | 'failed';
+  mode: Exclude<UpgradeMigrationMode, 'silent'>;
+  targetVersion: string;
+  order: number;
+  title: string;
+  description: string;
+  executeLabel: string;
+  ignoreLabel: string | null;
+  status: 'awaiting_decision' | 'approved' | 'ignored' | 'running' | 'completed' | 'failed';
   total: number;
   processed: number;
-  updated: number;
-  missing: number;
+  succeeded: number;
+  unchanged: number;
   failed: number;
   error: string | null;
+}
+
+export interface UpgradePlan {
+  id: number;
+  fromVersion: string | null;
+  toVersion: string;
+  status: 'awaiting_decision' | 'executing' | 'failed';
+  hasRequired: boolean;
+  runtimeMode: 'required_wait' | 'optional_wait' | 'executing' | 'failed';
+  error: string | null;
+  migrations: UpgradeMigrationSummary[];
+  tasks: UpgradeTask[];
 }
 
 export interface SetupStatus {

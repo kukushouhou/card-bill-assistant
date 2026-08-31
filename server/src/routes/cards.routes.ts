@@ -9,6 +9,7 @@ import { computeCycle } from '../modules/reminders/reminder.engine';
 import { lastPassedCycle, openMissingCycle } from '../modules/bills/ledger';
 import { fromYmd, monthParts, today } from '../lib/dates';
 import { allCardGroups, recomputePrimary } from '../lib/card-groups';
+import { reconcileUnfinishedPlaceholderCards } from '../lib/card-placeholders';
 
 const router = Router();
 router.use(requireAuth);
@@ -195,8 +196,8 @@ router.post(
       where: { bankName_cardLast4: { bankName: input.bankName, cardLast4: input.cardLast4 } },
     });
     if (exists) throw new ApiError(409, `已存在 ${input.bankName}（${input.cardLast4}）的卡档案`);
-    const card = await prisma.card.create({
-      data: {
+    const card = await prisma.$transaction(async (tx) => {
+      const created = await tx.card.create({ data: {
         bankName: input.bankName,
         cardLast4: input.cardLast4,
         displayLast4: input.cardLast4,
@@ -211,8 +212,11 @@ router.post(
         annualFeeDate: input.annualFeeDate ? fromYmd(input.annualFeeDate) : null,
         annualFeeDateManual: input.annualFeeDate ? true : false,
         source: 'manual',
-      },
+      } });
+      await reconcileUnfinishedPlaceholderCards(tx, { bankNames: [input.bankName] });
+      return created;
     });
+    await recomputePrimary();
     res.status(201).json({ id: card.id });
   }),
 );
@@ -336,6 +340,7 @@ router.put(
             }
           : {}),
       };
+    let hiddenPlaceholder = false;
     await prisma.$transaction(async (tx) => {
       await tx.card.update({ where: { id }, data: updateData });
       if (card.businessRole === 'primary') {
@@ -359,6 +364,18 @@ router.put(
           await tx.card.updateMany({ where: { businessPrimaryId: id }, data: sharedRulePatch });
         }
       }
+      if (
+        input.bankName !== undefined ||
+        input.statementDay !== undefined ||
+        input.dueRule !== undefined ||
+        input.dueDay !== undefined ||
+        input.dueOffsetDays !== undefined
+      ) {
+        const reconciled = await reconcileUnfinishedPlaceholderCards(tx, {
+          bankNames: [input.bankName ?? card.bankName],
+        });
+        hiddenPlaceholder = reconciled.hiddenCardIds.length > 0;
+      }
     });
     // 出账日/还款规则变更后按当前规则重算归组；冻结/注销让位复用同一套自动主卡
     if (
@@ -366,7 +383,8 @@ router.put(
       input.dueRule !== undefined ||
       input.dueDay !== undefined ||
       input.dueOffsetDays !== undefined ||
-      input.status !== undefined
+      input.status !== undefined ||
+      hiddenPlaceholder
     ) {
       await recomputePrimary();
     }

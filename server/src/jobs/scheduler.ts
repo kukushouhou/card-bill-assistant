@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import type { ScheduledTask } from 'node-cron';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { today } from '../lib/dates';
@@ -8,6 +9,15 @@ import { resolveNotificationChannels, sendNotificationChannelBatch } from '../no
 
 /** pending 发送预占的租约；进程中断后超过该时长可由下一次任务原子接管。 */
 const NOTIFY_PENDING_LEASE_MS = 15 * 60 * 1000;
+const scheduledTasks: ScheduledTask[] = [];
+const activeScheduledRuns = new Set<Promise<unknown>>();
+let schedulerStarted = false;
+
+function trackScheduledRun(run: () => Promise<unknown>): void {
+  const promise = run();
+  activeScheduledRuns.add(promise);
+  void promise.finally(() => activeScheduledRuns.delete(promise));
+}
 
 function isUniqueConstraintError(error: unknown): error is { code: 'P2002' } {
   return typeof error === 'object' && error != null && 'code' in error && error.code === 'P2002';
@@ -128,21 +138,36 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
 
 /** 注册定时任务 */
 export function startScheduler(): void {
+  if (schedulerStarted) return;
+  schedulerStarted = true;
   const hour = config.reminderHour;
 
   // 每日提醒：每天 REMINDER_HOUR 点整
-  cron.schedule(`0 ${hour} * * *`, () => {
+  scheduledTasks.push(cron.schedule(`0 ${hour} * * *`, () => {
     console.log(`[cron] 触发每日提醒任务 (${hour}:00)`);
-    runDailyReminderJob().catch((err) => console.error('[cron] 每日提醒任务异常:', err));
-  });
+    trackScheduledRun(() => runDailyReminderJob().catch((err) => console.error('[cron] 每日提醒任务异常:', err)));
+  }));
 
   // 邮箱增量同步：每 2 小时（除每日提醒任务的整点外也照常跑，增量拉取开销小）
-  cron.schedule('30 */2 * * *', () => {
+  scheduledTasks.push(cron.schedule('30 */2 * * *', () => {
     console.log('[cron] 触发邮箱定时同步');
-    syncAllEnabledAccounts().catch((err) => console.error('[cron] 邮箱同步异常:', err));
-  });
+    trackScheduledRun(() => syncAllEnabledAccounts().catch((err) => console.error('[cron] 邮箱同步异常:', err)));
+  }));
 
   console.log(`[cron] 调度器已启动：每日 ${hour}:00 提醒推送，每 2 小时邮箱同步`);
+}
+
+/** 迁移执行前停止新调度，并等待已进入的同步/推送收尾。 */
+export async function pauseScheduler(): Promise<void> {
+  if (schedulerStarted) {
+    for (const task of scheduledTasks.splice(0)) task.stop();
+    schedulerStarted = false;
+  }
+  if (activeScheduledRuns.size > 0) await Promise.allSettled([...activeScheduledRuns]);
+}
+
+export function isSchedulerStarted(): boolean {
+  return schedulerStarted;
 }
 
 /** 手动触发一次今日提醒（管理接口用，幂等） */

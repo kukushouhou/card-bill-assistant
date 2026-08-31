@@ -2,25 +2,24 @@ import { Router } from 'express';
 import { asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
 import {
-  getPendingUpgradeTask,
-  skipUpgradeTask,
-  startUpgradeTask,
+  approveUpgradeTask,
+  getUpgradePlan,
+  ignoreUpgradeTask,
 } from '../modules/upgrades/upgrade.service';
 
 const router = Router();
 router.use(requireAuth);
 
 router.get('/', asyncHandler(async (_req, res) => {
-  res.json(await getPendingUpgradeTask());
+  res.json(await getUpgradePlan());
 }));
 
-router.post('/:key/run', asyncHandler(async (req, res) => {
-  res.status(202).json(await startUpgradeTask(String(req.params.key)));
+router.post('/:key/approve', asyncHandler(async (req, res) => {
+  res.status(202).json(await approveUpgradeTask(String(req.params.key)));
 }));
 
-router.post('/:key/skip', asyncHandler(async (req, res) => {
-  await skipUpgradeTask(String(req.params.key));
-  res.json({ ok: true });
+router.post('/:key/ignore', asyncHandler(async (req, res) => {
+  res.json(await ignoreUpgradeTask(String(req.params.key)));
 }));
 
 export default router;

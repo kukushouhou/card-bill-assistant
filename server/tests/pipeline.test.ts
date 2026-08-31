@@ -945,7 +945,7 @@ describe('applyParsedBill 按卡尾写入持卡人 + 占位切归属', () => {
     );
   });
 
-  it('未完善占位卡同账期出现真尾号卡时隐藏，不删卡不改挂', async () => {
+  it('旧月份占位卡在后续月份出现同周期真实卡时隐藏，不删卡不改挂', async () => {
     tx.card.findUnique.mockResolvedValue({
       id: 31,
       holderName: null,
@@ -959,13 +959,12 @@ describe('applyParsedBill 按卡尾写入持卡人 + 占位切归属', () => {
       priority: 0,
       displayLast4: '3096',
     });
-    tx.card.findMany.mockImplementation(async ({ where }: { where: { displayLast4?: string; cardLast4?: unknown } }) => {
-      if (where.displayLast4 === '----' || (where.cardLast4 && typeof where.cardLast4 === 'object')) {
-        return [{ id: 9, cardLast4: '----', displayLast4: '----', hidden: false }];
-      }
-      return [];
-    });
-    tx.bill.findFirst.mockResolvedValue({ id: 89 });
+    tx.card.findMany.mockResolvedValue([
+      { id: 9, bankName: '招商银行', cardLast4: '----', displayLast4: '----', hidden: false,
+        statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+      { id: 31, bankName: '招商银行', cardLast4: '3096', displayLast4: '3096', hidden: false,
+        statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    ]);
     tx.bill.findUnique.mockResolvedValue(null);
     await applyParsedBill(93, 'cmb2026', {
       bankName: '招商银行',
@@ -976,8 +975,8 @@ describe('applyParsedBill 按卡尾写入持卡人 + 占位切归属', () => {
       dueDate: fromYmd('2026-08-23'),
       period: '2026-08',
     });
-    expect(tx.card.update).toHaveBeenCalledWith({
-      where: { id: 9 },
+    expect(tx.card.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [9] }, hidden: false },
       data: { hidden: true, isPrimary: false, primaryManual: false },
     });
     expect(tx.card.delete).not.toHaveBeenCalled();

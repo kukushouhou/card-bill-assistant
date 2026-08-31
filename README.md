@@ -9,8 +9,8 @@
 
 一个面向个人自托管的信用卡账单与到期提醒工具。它会通过 IMAP 读取银行账单邮件，解析账单和交易明细，管理还款、年费及自定义提醒，并通过用户启用的通知渠道推送当日事项。
 
-- 当前稳定版本：`v0.3.1`（[查看本版本完整发布说明](./docs/releases/v0.3.1.md)）
-- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.3.1`
+- 当前稳定版本：`v0.3.2`（[查看本版本完整发布说明](./docs/releases/v0.3.2.md)）
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.3.2`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
@@ -205,10 +205,10 @@ https://github.com/kukushouhou/card-bill-assistant
 
 使用 [docker-compose.yml](./docker-compose.yml)，点击链接可直接查看或复制完整配置。
 
-先克隆 `v0.3.1` 的部署文件：
+先克隆 `v0.3.2` 的部署文件：
 
 ```bash
-git clone --branch v0.3.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.3.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -258,7 +258,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
-| `APP_VERSION` | 否 | `0.3.1` | GHCR 镜像版本；生产环境建议固定版本 |
+| `APP_VERSION` | 否 | `0.3.2` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
@@ -294,7 +294,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
 ```bash
-git clone --branch v0.3.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.3.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web

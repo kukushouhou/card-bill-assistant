@@ -10,6 +10,7 @@ import {
 } from './_util';
 import { daysBetween, dayOf, lastDayOfMonth, monthParts, sameDay, shanghaiMidnight, ymd } from '../lib/dates';
 import { pickPrimaryId } from '../lib/card-groups';
+import { reconcileUnfinishedPlaceholderCards } from '../lib/card-placeholders';
 import { computeRuleDueDate } from '../modules/bills/ledger';
 
 /** 无卡号占位（现行 ---- 与历史 0000） */
@@ -549,27 +550,13 @@ async function applyParsedBillInTransaction(
       data: { hasDetails: transactions.length > 0 },
     });
 
-    // 阶段 5：未完善占位卡隐藏——同账期出现其他带真实尾号的卡时隐藏，不删卡不改挂
+    // 阶段 5：同银行、同出账日和还款规则出现真实卡后，隐藏未完善占位卡。
+    // 占位卡保留历史账单归属；判定与账单月份无关。
     const hasRealTail = tails.some((t) => !isPlaceholderTail(t));
     if (hasRealTail) {
-      const unfinished = await tx.card.findMany({
-        where: {
-          bankName: bill.bankName,
-          cardLast4: { in: [UNKNOWN_CARD_TAIL, '0000'] },
-          displayLast4: UNKNOWN_CARD_TAIL,
-          hidden: false,
-        },
-      });
-      const resolvedIds = new Set(resolved.map((r) => r.id));
-      for (const ph of unfinished) {
-        if (resolvedIds.has(ph.id)) continue;
-        const samePeriod = await tx.bill.findFirst({
-          where: { cardId: ph.id, period },
-          select: { id: true },
-        });
-        if (!samePeriod) continue;
-        await tx.card.update({ where: { id: ph.id }, data: { hidden: true, isPrimary: false, primaryManual: false } });
-        console.log(`[pipeline] 未完善占位卡隐藏: ${bill.bankName}(${ph.cardLast4}) id=${ph.id}`);
+      const reconciled = await reconcileUnfinishedPlaceholderCards(tx, { bankNames: [bill.bankName] });
+      for (const id of reconciled.hiddenCardIds) {
+        console.log(`[pipeline] 未完善占位卡隐藏: ${bill.bankName}(----) id=${id}`);
       }
     }
 

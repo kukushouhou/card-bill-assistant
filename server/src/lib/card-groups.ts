@@ -1,4 +1,7 @@
 import { prisma } from './prisma';
+import type { Prisma, PrismaClient } from '../generated/prisma/client';
+
+type CardGroupDb = PrismaClient | Prisma.TransactionClient;
 
 /**
  * 历史同封参考（并查集）：凡曾出现在同一封合并账单（BillCard 关联同一 Bill）的卡互联。
@@ -110,8 +113,8 @@ export function groupCardsByCycle(cards: CycleGroupCard[]): Map<number, number[]
 }
 
 /** 全部套卡组（只看规则，含单卡组） */
-export async function allCardGroups(): Promise<Map<number, number[]>> {
-  const cards = await prisma.card.findMany({
+export async function allCardGroups(db: CardGroupDb = prisma): Promise<Map<number, number[]>> {
+  const cards = await db.card.findMany({
     select: {
       id: true,
       bankName: true,
@@ -156,9 +159,9 @@ export function pickPrimaryId(
  * 归组后标记每组优先显示卡：手动钉住压过自动；否则 priority 降序；并列 ID 升序最小。
  * 只有 status=active 能当主卡；hidden 卡不参与候选；冻结/注销让位复用本函数。单卡组 isPrimary 恒 false。
  */
-export async function recomputePrimary(): Promise<void> {
+export async function recomputePrimary(db: CardGroupDb = prisma): Promise<void> {
   const [cards, groups] = await Promise.all([
-    prisma.card.findMany({
+    db.card.findMany({
       select: {
         id: true,
         isPrimary: true,
@@ -170,7 +173,7 @@ export async function recomputePrimary(): Promise<void> {
         businessPrimaryId: true,
       },
     }),
-    allCardGroups(),
+    allCardGroups(db),
   ]);
   const cardOf = new Map(cards.map((c) => [c.id, c]));
   const manualIds = cards
@@ -189,7 +192,7 @@ export async function recomputePrimary(): Promise<void> {
         if (!card) continue;
         const want = id === businessPrimary;
         if (card.isPrimary !== want || card.primaryManual) {
-          await prisma.card.update({
+          await db.card.update({
             where: { id },
             data: { isPrimary: want, primaryManual: false },
           });
@@ -213,7 +216,7 @@ export async function recomputePrimary(): Promise<void> {
       if (!card) continue;
       const want = primaryId != null && id === primaryId;
       if (card.isPrimary !== want) {
-        await prisma.card.update({ where: { id }, data: { isPrimary: want } });
+        await db.card.update({ where: { id }, data: { isPrimary: want } });
       }
     }
   }

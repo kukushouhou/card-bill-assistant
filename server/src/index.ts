@@ -21,7 +21,8 @@ import jobsRoutes from './routes/jobs.routes';
 import settingsRoutes from './routes/settings.routes';
 import transactionsRoutes from './routes/transactions.routes';
 import upgradesRoutes from './routes/upgrades.routes';
-import { initializeUpgradeState } from './modules/upgrades/upgrade.service';
+import { initializeUpgradeState, resumeUpgradeExecution } from './modules/upgrades/upgrade.service';
+import { getUpgradeRuntimeState, upgradeBusinessGate } from './modules/upgrades/upgrade.runtime';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,7 +34,13 @@ async function main(): Promise<void> {
 
   // 健康检查
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, time: new Date().toISOString() });
+    const upgrade = getUpgradeRuntimeState();
+    res.json({
+      ok: true,
+      ready: ['ready', 'optional_wait'].includes(upgrade.mode),
+      upgradeMode: upgrade.mode,
+      time: new Date().toISOString(),
+    });
   });
 
   // 应用信息（免认证：登录页/安装向导需在登录前显示应用名）
@@ -41,9 +48,11 @@ async function main(): Promise<void> {
     res.json({ name: config.appName });
   });
 
-  // API 路由（setup 免认证，须在最前）
+  // API 路由（安装、认证和升级在业务门禁前，便于必选迁移期间完成登录与确认）
   app.use('/api/setup', setupRoutes);
   app.use('/api/auth', authRoutes);
+  app.use('/api/upgrades', upgradesRoutes);
+  app.use('/api', upgradeBusinessGate);
   app.use('/api/cards', cardsRoutes);
   app.use('/api/bills', billsRoutes);
   app.use('/api/reminders', remindersRoutes);
@@ -52,7 +61,6 @@ async function main(): Promise<void> {
   app.use('/api/jobs', jobsRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/transactions', transactionsRoutes);
-  app.use('/api/upgrades', upgradesRoutes);
 
   // 前端静态资源（生产模式）
   const dist = config.webDistDir;
@@ -91,21 +99,26 @@ async function main(): Promise<void> {
     .findUnique({ where: { key: 'installedAt' } })
     .then((r) => r?.value ?? null)
     .catch(() => null);
-  if (installedAt) {
+  let upgrade = await initializeUpgradeState(!!installedAt);
+  if (installedAt && ['ready', 'optional_wait'].includes(upgrade.runtimeMode)) {
     console.log(`[setup] 系统已安装（${installedAt}）`);
     // 启动时按套卡归组标记优先显示卡（手动指定优先，自动推导不覆盖）
     await recomputePrimary().catch((err) => console.error('[cards] 优先显示重算失败:', err));
     // 补齐停机期间已经到最早提醒日的自定义提醒期次。
     await materializeCustomReminderOccurrences().catch((err) => console.error('[reminders] 自定义提醒期次补齐失败:', err));
   } else {
-    console.log('[setup] 系统未安装：请访问 Web 页面，按安装向导设置管理员密码');
+    console.log(installedAt
+      ? '[upgrade] 必选迁移或迁移执行期间，业务更新与推送已暂停'
+      : '[setup] 系统未安装：请访问 Web 页面，按安装向导设置管理员密码');
   }
-  await initializeUpgradeState(!!installedAt).catch((err) => console.error('[upgrade] 版本状态初始化失败:', err));
-  startScheduler();
+  if (upgrade.shouldStartScheduler) startScheduler();
 
   app.listen(config.port, () => {
     console.log(`[server] 守候信用卡小管家已启动: http://localhost:${config.port}`);
     console.log(`[server] 前端目录: ${fs.existsSync(dist) ? dist : '(未构建，仅 API 模式)'}`);
+    if (upgrade.shouldResumeExecution || getUpgradeRuntimeState().mode === 'executing') {
+      void resumeUpgradeExecution();
+    }
   });
 }
 

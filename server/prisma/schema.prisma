@@ -84,7 +84,7 @@ model Card {
   primaryManual      Boolean  @default(false)
   /** 内部优先级：消费金额累加值，仅用于封面选定，不向用户展示 */
   priority           Float     @default(0)
-  /** 隐藏标记：未完善占位卡在同账期出现真尾号卡后隐藏，不物理删除 */
+  /** 隐藏标记：未完善占位卡在同周期出现真实卡后隐藏，不物理删除也不改挂账单 */
   hidden             Boolean   @default(false)
   /** 银行业务身份：standalone 普通卡 / primary 主卡 / secondary 副卡 / supplementary 附属卡 */
   businessRole       String    @default("standalone")
@@ -198,41 +198,70 @@ model BillTransaction {
   @@index([cardId, transactionDate])
 }
 
-/** 需要用户确认并可跨重启恢复的版本升级任务。 */
-model UpgradeTask {
+/** 一次应用版本升级的完整迁移计划。 */
+model UpgradePlan {
   id             Int       @id @default(autoincrement())
-  key            String    @unique @db.VarChar(100)
   fromVersion    String?   @db.VarChar(32)
   toVersion      String    @db.VarChar(32)
-  banks          Json
-  status         String    @default("pending") @db.VarChar(20)
-  total          Int       @default(0)
-  processed      Int       @default(0)
-  updated        Int       @default(0)
-  missing        Int       @default(0)
-  failed         Int       @default(0)
+  status         String    @default("inspecting") @db.VarChar(24)
+  hasRequired    Boolean   @default(false)
+  manifest       Json
   error          String?   @db.VarChar(512)
   startedAt      DateTime?
   finishedAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  items          UpgradeTaskItem[]
+  tasks          UpgradeTask[]
+
+  @@index([status, createdAt])
 }
 
-/** 升级任务中的单封已知账单邮件，逐封提交以便中断后恢复。 */
+/** 需要用户决定或可跨重启恢复的通用版本迁移任务。 */
+model UpgradeTask {
+  id             Int       @id @default(autoincrement())
+  key            String    @unique @db.VarChar(100)
+  planId         Int?
+  fromVersion    String?   @db.VarChar(32)
+  toVersion      String    @db.VarChar(32)
+  mode           String    @default("optional") @db.VarChar(16)
+  migrationOrder Int       @default(0)
+  title          String    @db.VarChar(100)
+  description    String    @db.Text
+  executeLabel   String    @default("现在执行") @db.VarChar(32)
+  ignoreLabel    String?   @db.VarChar(32)
+  payload        Json
+  status         String    @default("awaiting_decision") @db.VarChar(24)
+  total          Int       @default(0)
+  processed      Int       @default(0)
+  succeeded      Int       @default(0)
+  unchanged      Int       @default(0)
+  failed         Int       @default(0)
+  error          String?   @db.VarChar(512)
+  approvedAt     DateTime?
+  ignoredAt      DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  plan           UpgradePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  items          UpgradeTaskItem[]
+
+  @@index([planId, migrationOrder])
+  @@index([status, createdAt])
+}
+
+/** 升级任务的通用明细；业务参数由各迁移通过 payload 解释。 */
 model UpgradeTaskItem {
   id          Int       @id @default(autoincrement())
   taskId      Int
-  accountId   Int
-  uid         Int
-  bankName    String    @db.VarChar(64)
-  parserId    String    @db.VarChar(64)
+  itemKey     String    @db.VarChar(191)
+  payload     Json
   status      String    @default("pending") @db.VarChar(20)
   error       String?   @db.VarChar(512)
   processedAt DateTime?
   task        UpgradeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  @@unique([taskId, accountId, uid])
+  @@unique([taskId, itemKey])
   @@index([taskId, status])
 }
 
