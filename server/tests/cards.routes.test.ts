@@ -240,17 +240,17 @@ describe('POST /api/cards/:id/primary', () => {
     allCardGroups.mockResolvedValue(new Map([[1, [1, 2]]]));
   });
 
-  it('冻结卡不能手动设为主卡', async () => {
+  it('冻结卡不能手动设为优先展示', async () => {
     prisma.card.findUnique.mockResolvedValue(existingCard({ id: 2, status: 'frozen' }));
     await withServer(async (url) => {
       const res = await fetch(`${url}/api/cards/2/primary`, { method: 'POST' });
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: '已冻结或已注销的卡不能设为主卡' });
+      expect(await res.json()).toEqual({ error: '已冻结或已注销的卡不能设为优先展示' });
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('身份 ---- 卡可以手动设为主卡', async () => {
+  it('身份 ---- 卡可以手动设为优先展示', async () => {
     prisma.card.findUnique.mockResolvedValue(existingCard({ id: 2, cardLast4: '----', status: 'active' }));
     await withServer(async (url) => {
       const res = await fetch(`${url}/api/cards/2/primary`, { method: 'POST' });
@@ -260,7 +260,7 @@ describe('POST /api/cards/:id/primary', () => {
     expect(recomputePrimary).toHaveBeenCalledTimes(1);
   });
 
-  it('隐藏卡不能设为主卡', async () => {
+  it('隐藏卡不能设为优先展示', async () => {
     prisma.card.findUnique.mockResolvedValue(existingCard({ id: 2, hidden: true, status: 'active' }));
     await withServer(async (url) => {
       const res = await fetch(`${url}/api/cards/2/primary`, { method: 'POST' });

@@ -322,9 +322,17 @@ select {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.bank-card-role-ribbon {
+.bank-card-role-ribbon-clip {
   position: absolute;
   z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.bank-card-role-ribbon {
+  position: absolute;
   top: 15px;
   left: -34px;
   width: 118px;
@@ -337,7 +345,6 @@ select {
   line-height: 18px;
   letter-spacing: 1px;
   text-align: center;
-  pointer-events: none;
 }
 
 .bank-card-role-primary { background: rgba(173, 112, 0, 0.82); }

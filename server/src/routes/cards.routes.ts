@@ -374,21 +374,21 @@ router.put(
   }),
 );
 
-// 设为主卡（仅控制套卡列表哪张卡居首；单卡组无意义；仅正常使用卡可指定）
+// 设为优先展示（仅控制普通套卡列表哪张卡居首；单卡组无意义；仅正常使用卡可指定）
 router.post(
   '/:id/primary',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
-    if (card.status !== 'active') throw new ApiError(400, '已冻结或已注销的卡不能设为主卡');
+    if (card.status !== 'active') throw new ApiError(400, '已冻结或已注销的卡不能设为优先展示');
     if ((card.businessRole ?? 'standalone') !== 'standalone') {
       throw new ApiError(400, '主卡、副卡和附属卡的业务关系由账单确定，不能设置优先展示卡');
     }
     const groups = await allCardGroups();
     const members = [...groups.values()].find((m) => m.includes(id));
     if (!members || members.length <= 1) {
-      throw new ApiError(400, '单卡无需设为主卡');
+      throw new ApiError(400, '单卡无需设为优先展示');
     }
     await prisma.$transaction(
       members.map((mid) =>

@@ -1,0 +1,7 @@
+interface:
+  display_name: "信用卡小管家发布"
+  short_description: "完整发布信用卡小管家版本并生成详细中文更新日志"
+  default_prompt: "Use $card-bill-assistant-public-release to publish the requested version with complete Chinese release notes and verification."
+
+policy:
+  allow_implicit_invocation: true

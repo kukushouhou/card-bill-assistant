@@ -91,7 +91,7 @@ describe('套卡归组（groupCardsByCycle）', () => {
     expect([...groups.values()].sort((a, b) => a.length - b.length)).toEqual([[3], [1, 2]]);
   });
 
-  it('明确业务主副卡优先归组，不与同周期其他主卡账户合并', () => {
+  it('明确业务主副卡优先归组，单独主卡仍参与普通账期归组', () => {
     const groups = groupCardsByCycle([
       card(1, { businessRole: 'primary' }),
       card(2, { businessRole: 'secondary', businessPrimaryId: 1 }),
@@ -99,8 +99,40 @@ describe('套卡归组（groupCardsByCycle）', () => {
       card(4),
     ]);
     expect(groups.get(1)).toEqual([1, 2]);
-    expect(groups.get(3)).toEqual([3]);
-    expect(groups.get(4)).toEqual([4]);
+    expect(groups.get(3)).toEqual([3, 4]);
+    expect(groups.has(4)).toBe(false);
+  });
+
+  it('平安真实结构按业务关系优先后再归并孤立主卡', () => {
+    const pab = (id: number, tail: string, offset: number, overrides: Partial<CycleGroupCard> = {}) => ({
+      ...card(id, {
+        bankName: '平安银行',
+        statementDay: 18,
+        dueOffsetDays: offset,
+        ...overrides,
+      }),
+      tail,
+    });
+    const cards = [
+      pab(519, '----', 19),
+      pab(530, '1765', 19, { businessRole: 'primary' }),
+      pab(497, '4856', 18, { businessRole: 'primary' }),
+      pab(529, '6066', 18, { businessRole: 'primary' }),
+      pab(532, '7596', 19, { businessRole: 'supplementary', businessPrimaryId: 531 }),
+      pab(528, '7959', 19, { businessRole: 'supplementary', businessPrimaryId: 497 }),
+      pab(527, '8837', 18, { businessRole: 'primary' }),
+      pab(531, '9545', 19, { businessRole: 'primary' }),
+    ];
+    const tails = new Map(cards.map((item) => [item.id, item.tail]));
+    const groups = [...groupCardsByCycle(cards).values()]
+      .map((members) => members.map((id) => tails.get(id)))
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    expect(groups).toEqual([
+      ['----', '1765'],
+      ['4856', '7959'],
+      ['8837', '6066'],
+      ['9545', '7596'],
+    ]);
   });
 
   it('还款规则不同拆开', () => {
@@ -158,6 +190,8 @@ function cardRow(id: number, overrides: Record<string, unknown> = {}) {
     dueRule: 'offset',
     dueDay: null,
     dueOffsetDays: 18,
+    businessRole: 'standalone',
+    businessPrimaryId: null,
     ...overrides,
   };
 }
@@ -217,6 +251,26 @@ describe('recomputePrimary', () => {
     await recomputePrimary();
     expect(prisma.card.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { isPrimary: false } });
     expect(prisma.card.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: 2 } }));
+  });
+
+  it('真实业务组固定业务主卡为封面', async () => {
+    prisma.card.findMany.mockResolvedValue([
+      cardRow(1, { businessRole: 'primary', priority: 1 }),
+      cardRow(2, { businessRole: 'secondary', businessPrimaryId: 1, isPrimary: true, priority: 999 }),
+    ]);
+    await recomputePrimary();
+    expect(prisma.card.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { isPrimary: true, primaryManual: false } });
+    expect(prisma.card.update).toHaveBeenCalledWith({ where: { id: 2 }, data: { isPrimary: false, primaryManual: false } });
+  });
+
+  it('没有子卡的主卡按普通套卡优先级选择封面', async () => {
+    prisma.card.findMany.mockResolvedValue([
+      cardRow(1, { businessRole: 'primary', isPrimary: true, priority: 1 }),
+      cardRow(2, { businessRole: 'primary', priority: 99 }),
+    ]);
+    await recomputePrimary();
+    expect(prisma.card.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { isPrimary: false } });
+    expect(prisma.card.update).toHaveBeenCalledWith({ where: { id: 2 }, data: { isPrimary: true } });
   });
 
   it('hidden 卡不参与主卡候选，即使 status=active 且 priority 更高', async () => {

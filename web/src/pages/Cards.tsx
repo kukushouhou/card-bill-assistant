@@ -43,7 +43,14 @@ import { Popup, SearchBar } from 'antd-mobile';
 import dayjs from 'dayjs';
 import { useLocation, useNavigate } from 'react-router';
 import { formatMoney } from '../lib/money';
-import { businessCoverOf, businessPrimaryFirst, businessPrimaryOf } from '../lib/business-cards';
+import {
+  businessCoverOf,
+  businessPrimaryFirst,
+  businessRelationshipLabel,
+  businessRelationshipPrimaryOf,
+  cardGroupTitle,
+  shouldShowBusinessRole,
+} from '../lib/business-cards';
 import { Virtuoso } from 'react-virtuoso';
 import { api, ApiError } from '../api/client';
 import type { BillRow, CardInput, CardRow } from '../api/types';
@@ -799,6 +806,7 @@ function BankCardItem({
   secretPending,
   plain,
   showBilling = true,
+  showBusinessRole = false,
 }: {
   card: CardRow;
   /** PIN 验证后的明文（null=掩码态） */
@@ -813,7 +821,7 @@ function BankCardItem({
   onMobileActions: () => void;
   /** 点击卡片本体；手机端单卡/套卡均进入详情，桌面端仅套卡展开。 */
   onCardClick?: () => void;
-  /** 设为主卡入口是否可见，由组的当前一致性统一判定 */
+  /** 设为优先展示入口是否可见，由组的当前一致性统一判定 */
   allowSetPrimary: boolean;
   /** 只请求确认：桌面打开确认层，手机进入页内确认态 */
   onRequestConfirm: (action: 'primary' | 'remove') => void;
@@ -824,9 +832,13 @@ function BankCardItem({
   plain?: boolean;
   /** 业务副卡、附属卡不重复展示整组账单。 */
   showBilling?: boolean;
+  /** 只在展开明确业务组后显示身份袖标；卡片中心永远为 false。 */
+  showBusinessRole?: boolean;
 }) {
   const groupSize = groupCards.length;
   const groupTails = groupCards.map((c) => c.displayLast4);
+  const relationshipLabel = businessRelationshipLabel(groupCards);
+  const groupLabel = relationshipLabel ?? `同一账期 ${groupSize} 张卡`;
   const stacked = groupSize > 1 && !plain;
   const feeAgg = nextFeeOfGroup(stacked ? groupCards : [card]);
   const expanded = revealed != null;
@@ -835,7 +847,7 @@ function BankCardItem({
   const { isMobile } = useResponsive();
   const showCurrentCycle = card.status === 'active' || card.currentCycle.hasBill;
 
-  /** 银行名前设置下拉：编辑 → 卡信息/录入卡信息 → 设为主卡（仅弹窗内非优先且正常使用） → 标记异常 → 删除 */
+  /** 银行名前设置下拉：编辑 → 卡信息/录入卡信息 → 设为优先展示（仅普通套卡弹窗内非优先且正常使用） → 标记异常 → 删除 */
   const menuItems: MenuProps['items'] = [
     { key: 'edit', icon: <EditOutlined />, label: '编辑' },
     {
@@ -845,7 +857,7 @@ function BankCardItem({
       disabled: secretPending,
     },
     ...(allowSetPrimary
-      ? [{ key: 'primary', icon: <StarOutlined />, label: '设为主卡', disabled: primaryPending }]
+      ? [{ key: 'primary', icon: <StarOutlined />, label: '设为优先展示', disabled: primaryPending }]
       : []),
     { key: 'abnormal', icon: <WarningOutlined />, label: '标记异常' },
     { key: 'remove', icon: <DeleteOutlined />, label: '删除', danger: true },
@@ -888,7 +900,7 @@ function BankCardItem({
     <button
       type="button"
       className="bank-card-group-trigger"
-      aria-label={`查看 ${card.bankName} 同一账期 ${groupSize} 张卡`}
+      aria-label={`查看 ${card.bankName} ${groupLabel}`}
       onClick={(event) => {
         event.stopPropagation();
         onCardClick?.();
@@ -938,7 +950,7 @@ function BankCardItem({
   return (
     <div className={stacked ? 'bank-card-stack-wrap' : undefined}>
       <div
-        className={`bank-card bank-card-p${card.id % 5}${stacked ? ' bank-card-stack' : ''}${isMobile ? ' cards-mobile-bank-card' : ''}${card.businessRole !== 'standalone' ? ' bank-card-with-role' : ''}`}
+        className={`bank-card bank-card-p${card.id % 5}${stacked ? ' bank-card-stack' : ''}${isMobile ? ' cards-mobile-bank-card' : ''}${showBusinessRole ? ' bank-card-with-role' : ''}`}
         onClick={onCardClick}
         onKeyDown={(event) => {
           if (!onCardClick || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -950,7 +962,7 @@ function BankCardItem({
         aria-label={onCardClick ? `查看 ${card.bankName}（${card.displayLast4}）卡片详情` : undefined}
         style={onCardClick ? { cursor: 'pointer' } : undefined}
       >
-        <BusinessRoleRibbon role={card.businessRole} />
+        {showBusinessRole && <BusinessRoleRibbon role={card.businessRole} />}
         <div className="bank-card-head">
           <div>
             <span className="bank-card-title">
@@ -973,7 +985,7 @@ function BankCardItem({
                 (isMobile ? (
                   groupTrigger
                 ) : (
-                  <Tooltip title={`同一账期 ${groupSize} 张卡：${groupTails.join('、')}`}>
+                  <Tooltip title={`${groupLabel}：${groupTails.join('、')}`}>
                     {groupTrigger}
                   </Tooltip>
                 ))}
@@ -1111,7 +1123,7 @@ function currentConsistentPrimary(group: CardGroup): CardRow | null {
 }
 
 function canSetPrimary(group: CardGroup, card: CardRow): boolean {
-  if (businessPrimaryOf(group.cards)) return false;
+  if (businessRelationshipPrimaryOf(group.cards)) return false;
   if (group.cards.length <= 1 || card.status !== 'active') return false;
   const current = currentConsistentPrimary(group);
   return current == null || current.id !== card.id;
@@ -1125,7 +1137,7 @@ interface MobileCardConfirm {
 interface MobileCardActionTarget {
   cardId: number;
   groupKey: string;
-  /** 与原入口一致：仅套卡展开页里的非主正常卡允许设为主卡。 */
+  /** 仅普通套卡展开页里的非优先正常卡允许设为优先展示。 */
   allowSetPrimary: boolean;
 }
 
@@ -1254,7 +1266,7 @@ function MobileCardActionSheet({
                 disabled={primaryPending}
                 onClick={onPrimary}
               >
-                设为主卡
+                设为优先展示
               </Button>
             )}
             <Button type="text" block icon={<WarningOutlined />} onClick={onStatus}>
@@ -1306,10 +1318,10 @@ function MobileCardConfirmSheet({
             title={
               isRemove
                 ? `删除 ${target.card.bankName}（${target.card.displayLast4}）？`
-                : `将（${target.card.displayLast4}）设为主卡？`
+                : `将（${target.card.displayLast4}）设为优先展示？`
             }
             description={isRemove ? deleteCardDescription(target.card) : '设置后，此卡将在卡片列表中优先展示。'}
-            confirmText={isRemove ? '删除卡片' : '设为主卡'}
+            confirmText={isRemove ? '删除卡片' : '设为优先展示'}
             danger={isRemove}
             loading={loading}
             onCancel={onClose}
@@ -1351,7 +1363,7 @@ export default function Cards() {
   const [groupDetailCardId, setGroupDetailCardId] = useState<number | null>(null);
   const [markTarget, setMarkTarget] = useState<MarkPaidTarget | null>(null);
   const [cardDetailReloadKey, setCardDetailReloadKey] = useState(0);
-  /** 设为主卡请求中的卡 ID */
+  /** 设为优先展示请求中的卡 ID */
   const [primaryPendingId, setPrimaryPendingId] = useState<number | null>(null);
   const [removePendingId, setRemovePendingId] = useState<number | null>(null);
   const [mobileConfirm, setMobileConfirm] = useState<MobileCardConfirm | null>(null);
@@ -1465,7 +1477,7 @@ export default function Cards() {
     return items;
   }, [sortedGroups, hitGroupMap, q]);
 
-  /** 弹窗数据随 rows 刷新（设为主卡/编辑后保持打开且状态最新） */
+  /** 弹窗数据随 rows 刷新（设为优先展示/编辑后保持打开且状态最新） */
   const groupModal = useMemo(
     () => (groupModalKey ? (groups.find((g) => g.key === groupModalKey) ?? null) : null),
     [groupModalKey, groups],
@@ -1744,7 +1756,7 @@ export default function Cards() {
     }
   };
 
-  /** 设为主卡：仅控制套卡列表哪张卡居首 */
+  /** 设为优先展示：仅控制普通套卡列表哪张卡居首 */
   const setPrimary = async (card: CardRow) => {
     if (primaryPendingRef.current != null) return;
     primaryPendingRef.current = card.id;
@@ -1755,7 +1767,7 @@ export default function Cards() {
       const mutationEpoch = commitWrite();
       setRevealed(null);
       await refreshAfterMutation(mutationEpoch);
-      message.success(`已将（${card.displayLast4}）设为主卡，将在卡片列表中优先展示`);
+      message.success(`已将（${card.displayLast4}）设为优先展示`);
       setMobileConfirm((current) =>
         current?.action === 'primary' && current.card.id === card.id ? null : current,
       );
@@ -1807,10 +1819,10 @@ export default function Cards() {
       title:
         action === 'remove'
           ? `删除 ${card.bankName}（${card.displayLast4}）？`
-          : `将（${card.displayLast4}）设为主卡？`,
+          : `将（${card.displayLast4}）设为优先展示？`,
       content:
         action === 'remove' ? deleteCardDescription(card) : '设置后，此卡将在卡片列表中优先展示。',
-      okText: action === 'remove' ? '删除卡片' : '设为主卡',
+      okText: action === 'remove' ? '删除卡片' : '设为优先展示',
       okButtonProps: action === 'remove' ? { danger: true } : undefined,
       onOk: () => (action === 'remove' ? remove(card) : setPrimary(card)),
       afterClose: () => {
@@ -1858,6 +1870,7 @@ export default function Cards() {
       secretPending={secretPendingCardIds.has(card.id)}
       plain={plain}
       showBilling={card.businessRole !== 'secondary' && card.businessRole !== 'supplementary'}
+      showBusinessRole={shouldShowBusinessRole(group.cards, plain)}
     />
   );
 
@@ -2259,10 +2272,10 @@ export default function Cards() {
           onSave={saveSecret}
         />
       )}
-      {/* 套卡展开弹窗：组内全部卡（可分别编辑/设为主卡/查看卡信息/眼睛展开） */}
+      {/* 套卡展开弹窗：组内全部卡（普通套卡可设为优先展示；明确业务组不可更换业务主卡） */}
       {groupModal && (
         <Modal
-          title={`${groupModal.main.bankName} · 同一账期 ${groupModal.cards.length} 张卡`}
+          title={cardGroupTitle(groupModal.main.bankName, groupModal.cards)}
           open
           footer={null}
           onCancel={() => {

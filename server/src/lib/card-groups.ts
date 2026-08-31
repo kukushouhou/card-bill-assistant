@@ -73,7 +73,16 @@ export function cycleRuleKey(card: CycleGroupCard): string {
 export function groupCardsByCycle(cards: CycleGroupCard[]): Map<number, number[]> {
   const assigned = new Set<number>();
   const groups = new Map<number, number[]>();
-  const primaries = cards.filter((card) => card.businessRole === 'primary');
+  // 只有确实拥有副卡/附属卡的主卡才优先锁定业务组。
+  // 单独出现的主卡仍参与后续账期归组，不能仅凭 primary 身份拆成单卡组。
+  const primaryIdsWithDependents = new Set(
+    cards
+      .map((card) => card.businessPrimaryId)
+      .filter((id): id is number => id != null),
+  );
+  const primaries = cards.filter(
+    (card) => card.businessRole === 'primary' && primaryIdsWithDependents.has(card.id),
+  );
   for (const primary of primaries) {
     const members = cards
       .filter((card) => card.id === primary.id || card.businessPrimaryId === primary.id)
@@ -158,6 +167,7 @@ export async function recomputePrimary(): Promise<void> {
         priority: true,
         hidden: true,
         businessRole: true,
+        businessPrimaryId: true,
       },
     }),
     allCardGroups(),
@@ -169,7 +179,10 @@ export async function recomputePrimary(): Promise<void> {
   const priorities = new Map<number, number>(cards.map((c) => [c.id, c.priority]));
 
   for (const members of groups.values()) {
-    const businessPrimary = members.find((id) => cardOf.get(id)?.businessRole === 'primary') ?? null;
+    const businessPrimary = members.find((id) => {
+      if (cardOf.get(id)?.businessRole !== 'primary') return false;
+      return members.some((memberId) => cardOf.get(memberId)?.businessPrimaryId === id);
+    }) ?? null;
     if (businessPrimary != null) {
       for (const id of members) {
         const card = cardOf.get(id);

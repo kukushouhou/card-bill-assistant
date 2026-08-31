@@ -12,6 +12,7 @@ import type { BillDetails, BillRow, CardRow, PagedBills } from '../../api/types'
 import { MobileFlow } from '../../components/MobilePrimitives';
 import { paymentStatusOf, remainingAmountOf } from '../../lib/billPayment';
 import { formatMoney } from '../../lib/money';
+import { cardGroupTitle } from '../../lib/business-cards';
 import { overdueText } from '../../lib/overdue';
 
 const INITIAL_BILL_COUNT = 3;
@@ -179,7 +180,7 @@ export default function MobileCardDetail({
 
   return (
     <MobileFlow
-      title={cards.length > 1 ? `${main.bankName} · ${cards.length} 张卡` : `${main.bankName}卡片详情`}
+      title={cards.length > 1 ? cardGroupTitle(main.bankName, cards) : `${main.bankName}卡片详情`}
       onBack={onBack}
       className="cards-mobile-detail-flow"
       footer={footer}

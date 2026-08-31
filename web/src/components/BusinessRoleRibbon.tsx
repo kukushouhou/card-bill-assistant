@@ -10,5 +10,9 @@ export function businessRoleLabel(role: CardRow['businessRole']): string | null 
 export default function BusinessRoleRibbon({ role }: { role: CardRow['businessRole'] }) {
   const label = businessRoleLabel(role);
   if (!label) return null;
-  return <span className={`bank-card-role-ribbon bank-card-role-${role}`}>{label}</span>;
+  return (
+    <span className="bank-card-role-ribbon-clip" aria-hidden="true">
+      <span className={`bank-card-role-ribbon bank-card-role-${role}`}>{label}</span>
+    </span>
+  );
 }

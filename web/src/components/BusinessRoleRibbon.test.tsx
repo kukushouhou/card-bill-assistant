@@ -10,6 +10,7 @@ describe('卡片业务身份袖标', () => {
   ] as const)('显示 %s 身份', (role, label) => {
     render(<BusinessRoleRibbon role={role} />);
     const ribbon = screen.getByText(label);
+    expect(ribbon.parentElement?.classList.contains('bank-card-role-ribbon-clip')).toBe(true);
     expect(ribbon.classList.contains('bank-card-role-ribbon')).toBe(true);
     expect(ribbon.classList.contains(`bank-card-role-${role}`)).toBe(true);
   });

@@ -2,14 +2,14 @@
 
 如果希望由 AI 根据 NAS/服务器环境生成具体方案，请使用 [AI_DEPLOYMENT_PROMPT.md](./AI_DEPLOYMENT_PROMPT.md)。
 
-当前发布版本为 `v0.3.0`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.3.0`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
+当前发布版本为 `v0.3.1`，官方多架构镜像为 `ghcr.io/kukushouhou/card-bill-assistant:0.3.1`，支持 `linux/amd64` 与 `linux/arm64`。生产环境建议固定 `APP_VERSION`，不要长期跟随 `latest`。
 
 ## 1. 官方镜像部署
 
 先获取与镜像版本一致的部署文件：
 
 ```bash
-git clone --branch v0.3.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.3.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -61,7 +61,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 环境要求：Node.js 24、MySQL 8，以及可长期守护 Node.js 进程的系统服务。
 
 ```bash
-git clone --branch v0.3.0 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.3.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web
