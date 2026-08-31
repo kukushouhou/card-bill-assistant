@@ -20,6 +20,8 @@ import emailRoutes from './routes/email.routes';
 import jobsRoutes from './routes/jobs.routes';
 import settingsRoutes from './routes/settings.routes';
 import transactionsRoutes from './routes/transactions.routes';
+import upgradesRoutes from './routes/upgrades.routes';
+import { initializeUpgradeState } from './modules/upgrades/upgrade.service';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +52,7 @@ async function main(): Promise<void> {
   app.use('/api/jobs', jobsRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/transactions', transactionsRoutes);
+  app.use('/api/upgrades', upgradesRoutes);
 
   // 前端静态资源（生产模式）
   const dist = config.webDistDir;
@@ -97,6 +100,7 @@ async function main(): Promise<void> {
   } else {
     console.log('[setup] 系统未安装：请访问 Web 页面，按安装向导设置管理员密码');
   }
+  await initializeUpgradeState(!!installedAt).catch((err) => console.error('[upgrade] 版本状态初始化失败:', err));
   startScheduler();
 
   app.listen(config.port, () => {

@@ -5,9 +5,12 @@ import express from 'express';
 import { fromYmd } from '../src/lib/dates';
 
 const prisma = vi.hoisted(() => ({
-  card: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+  card: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   bill: { findMany: vi.fn() },
-  $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+  $transaction: vi.fn(async (input: unknown) =>
+    typeof input === 'function'
+      ? (input as (tx: typeof prisma) => Promise<unknown>)(prisma)
+      : Promise.all(input as Promise<unknown>[])),
 }));
 const recomputePrimary = vi.hoisted(() => vi.fn(async () => {}));
 const allCardGroups = vi.hoisted(() => vi.fn(async () => new Map<number, number[]>()));
@@ -41,6 +44,8 @@ function existingCard(overrides: Record<string, unknown> = {}) {
     dueOffsetDays: 18,
     remindDaysBefore: [3, 1, 0],
     status: 'active',
+    businessRole: 'standalone',
+    businessPrimaryId: null,
     ...overrides,
   };
 }
@@ -182,13 +187,56 @@ describe('PUT /api/cards/:id 保存后归组检查', () => {
     });
     expect(recomputePrimary).toHaveBeenCalledTimes(1);
   });
+
+  it('副卡拒绝修改账单设置和继承的持卡人', async () => {
+    prisma.card.findUnique.mockResolvedValue(existingCard({
+      businessRole: 'secondary',
+      businessPrimaryId: 1,
+    }));
+    await withServer(async (url) => {
+      const billing = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ statementDay: 10 }),
+      });
+      expect(billing.status).toBe(400);
+
+      const holder = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ holderName: '李四' }),
+      });
+      expect(holder.status).toBe(400);
+      expect(await holder.json()).toEqual({ error: '副卡持卡人由主卡统一管理' });
+    });
+  });
+
+  it('主卡持卡人与状态会同步到整组副卡', async () => {
+    prisma.card.findUnique.mockResolvedValue(existingCard({ businessRole: 'primary' }));
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ holderName: '李泽南', status: 'frozen' }),
+      });
+      expect(response.status).toBe(200);
+    });
+    expect(prisma.card.updateMany).toHaveBeenCalledWith({
+      where: { businessPrimaryId: 2, businessRole: 'secondary' },
+      data: { holderName: '李泽南' },
+    });
+    expect(prisma.card.updateMany).toHaveBeenCalledWith({
+      where: { businessPrimaryId: 2 },
+      data: { status: 'frozen' },
+    });
+  });
 });
 
 describe('POST /api/cards/:id/primary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prisma.card.update.mockResolvedValue({});
-    prisma.$transaction.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops));
+    prisma.$transaction.mockImplementation(async (input: unknown) => Promise.all(input as Promise<unknown>[]));
     allCardGroups.mockResolvedValue(new Map([[1, [1, 2]]]));
   });
 

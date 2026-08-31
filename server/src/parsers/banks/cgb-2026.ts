@@ -19,6 +19,7 @@ export const cgb2026Parser: BankParser = {
   bankName: '广发银行',
   senderPatterns: ['@cgbchina.com.cn'],
   subjectPatterns: [/广发.*电子账单/, /广发信用卡.*账单/],
+  businessRelationships: true,
 
   parse(mail: MailContext): ParsedBill[] {
     // 补寄对账单正文无金额，账单在 PDF 附件：正文与 pdfText 拼接后统一解析（正文周期行优先命中）
@@ -54,6 +55,10 @@ export const cgb2026Parser: BankParser = {
       if (bill) {
         bills.push(bill);
         memberTails.set(bill, [m[1]!, ...(m[2] ? [m[2]] : [])]);
+        bill.businessCards = {
+          primaryCardLast4: m[1]!,
+          supplementaryCards: m[2] ? [{ cardLast4: m[2], holderName: null }] : [],
+        };
       }
     }
     // 明细区按 "卡号：6225********2620"（可带"（附属卡）"尾巴）切块归属，交易行流式匹配：

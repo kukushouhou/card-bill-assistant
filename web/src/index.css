@@ -322,6 +322,33 @@ select {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.bank-card-role-ribbon {
+  position: absolute;
+  z-index: 4;
+  top: 15px;
+  left: -34px;
+  width: 118px;
+  padding: 3px 0;
+  transform: rotate(-45deg);
+  background: rgba(20, 27, 45, 0.72);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 1px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.bank-card-role-primary { background: rgba(173, 112, 0, 0.82); }
+.bank-card-role-secondary { background: rgba(24, 97, 173, 0.82); }
+.bank-card-role-supplementary { background: rgba(104, 52, 158, 0.82); }
+
+/* 左上角袖标与设置入口错开，袖标不遮住齿轮和银行名。 */
+.bank-card-with-role .bank-card-head {
+  padding-left: 38px;
+}
+
 /* 银行渐变配色（按卡 id 轮转） */
 .bank-card-p0 {
   --card-bg: linear-gradient(135deg, #1c3faa 0%, #2d6cdf 55%, #6ea8ff 100%);
@@ -390,6 +417,8 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   line-height: 1;
   vertical-align: middle;
 }
@@ -416,6 +445,10 @@ select {
 
 /* 银行名行框压到与 18px 图标同高，汉字中线对齐齿轮中线 */
 .bank-card-bank {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 15px;
   font-weight: 600;
   line-height: 18px;

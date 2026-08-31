@@ -55,6 +55,8 @@ export interface CycleGroupCard {
   dueRule: string;
   dueDay: number | null;
   dueOffsetDays: number | null;
+  businessRole?: string;
+  businessPrimaryId?: number | null;
 }
 
 /** 规则键：同银行 + 出账日 + 还款规则相同 → 同组 */
@@ -69,15 +71,28 @@ export function cycleRuleKey(card: CycleGroupCard): string {
  * 输出 Map 的 key 为组代表卡 ID，value 为组内卡 ID（升序，稳定）
  */
 export function groupCardsByCycle(cards: CycleGroupCard[]): Map<number, number[]> {
+  const assigned = new Set<number>();
+  const groups = new Map<number, number[]>();
+  const primaries = cards.filter((card) => card.businessRole === 'primary');
+  for (const primary of primaries) {
+    const members = cards
+      .filter((card) => card.id === primary.id || card.businessPrimaryId === primary.id)
+      .map((card) => card.id)
+      .sort((a, b) => a - b);
+    if (members.length === 0) continue;
+    groups.set(primary.id, members);
+    for (const id of members) assigned.add(id);
+  }
+
   const buckets = new Map<string, number[]>();
   for (const card of cards) {
+    if (assigned.has(card.id)) continue;
     const key = cycleRuleKey(card);
     const list = buckets.get(key) ?? [];
     list.push(card.id);
     buckets.set(key, list);
   }
 
-  const groups = new Map<number, number[]>();
   for (const members of buckets.values()) {
     const sorted = [...members].sort((a, b) => a - b);
     groups.set(sorted[0]!, sorted);
@@ -88,7 +103,16 @@ export function groupCardsByCycle(cards: CycleGroupCard[]): Map<number, number[]
 /** 全部套卡组（只看规则，含单卡组） */
 export async function allCardGroups(): Promise<Map<number, number[]>> {
   const cards = await prisma.card.findMany({
-    select: { id: true, bankName: true, statementDay: true, dueRule: true, dueDay: true, dueOffsetDays: true },
+    select: {
+      id: true,
+      bankName: true,
+      statementDay: true,
+      dueRule: true,
+      dueDay: true,
+      dueOffsetDays: true,
+      businessRole: true,
+      businessPrimaryId: true,
+    },
   });
   return groupCardsByCycle(cards);
 }
@@ -126,7 +150,15 @@ export function pickPrimaryId(
 export async function recomputePrimary(): Promise<void> {
   const [cards, groups] = await Promise.all([
     prisma.card.findMany({
-      select: { id: true, isPrimary: true, primaryManual: true, status: true, priority: true, hidden: true },
+      select: {
+        id: true,
+        isPrimary: true,
+        primaryManual: true,
+        status: true,
+        priority: true,
+        hidden: true,
+        businessRole: true,
+      },
     }),
     allCardGroups(),
   ]);
@@ -137,6 +169,21 @@ export async function recomputePrimary(): Promise<void> {
   const priorities = new Map<number, number>(cards.map((c) => [c.id, c.priority]));
 
   for (const members of groups.values()) {
+    const businessPrimary = members.find((id) => cardOf.get(id)?.businessRole === 'primary') ?? null;
+    if (businessPrimary != null) {
+      for (const id of members) {
+        const card = cardOf.get(id);
+        if (!card) continue;
+        const want = id === businessPrimary;
+        if (card.isPrimary !== want || card.primaryManual) {
+          await prisma.card.update({
+            where: { id },
+            data: { isPrimary: want, primaryManual: false },
+          });
+        }
+      }
+      continue;
+    }
     const activeMembers = members.filter((id) => {
       const c = cardOf.get(id);
       return c?.status === 'active' && !c.hidden;

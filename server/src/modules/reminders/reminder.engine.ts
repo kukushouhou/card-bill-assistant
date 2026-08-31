@@ -27,6 +27,7 @@ export interface CardLike {
   dueOffsetDays: number | null;
   remindDaysBefore: number[];
   status: string;
+  businessPrimaryId?: number | null;
   /** 年费收取日（每年该月日收取，null=未设置） */
   annualFeeDate?: Date | null;
 }
@@ -149,7 +150,7 @@ export function collectCardEvents(
     bill.cardId !== card.id && (activeCardIds == null || activeCardIds.has(bill.cardId));
   const openMissing = openMissingCycle(card, today);
 
-  for (const offset of [-1, 0, 1]) {
+  if (card.businessPrimaryId == null) for (const offset of [-1, 0, 1]) {
     const { year, month } = monthParts(today, offset);
     const period = `${year}-${String(month).padStart(2, '0')}`;
     const periodBills = bills.filter((bill) => bill.period === period);
@@ -363,7 +364,7 @@ export function collectUpcoming(
   for (const card of cards) {
     if (card.status !== 'active') continue;
     const bills = billsByCard.get(card.id) ?? [];
-    for (let offset = -1; offset <= 2; offset++) {
+    if (card.businessPrimaryId == null) for (let offset = -1; offset <= 2; offset++) {
       const { year, month } = monthParts(today, offset);
       const period = `${year}-${String(month).padStart(2, '0')}`;
       const periodBills = bills.filter((bill) => bill.period === period);

@@ -99,6 +99,13 @@ export function listParsers(): RegisteredParser[] {
   return [...registry].sort((a, b) => priorityOf(b) - priorityOf(a));
 }
 
+/** 可明确提供银行业务主副卡关系的账单解析器。 */
+export function listBusinessRelationshipParsers(): BankParser[] {
+  return registry.filter(
+    (parser): parser is BankParser => parser.kind !== 'current-cycle-transactions' && parser.businessRelationships === true,
+  );
+}
+
 /** 解析器优先级：主解析器默认 100（不填即 100），旧版递减 */
 function priorityOf(p: RegisteredParser): number {
   return p.priority ?? 100;

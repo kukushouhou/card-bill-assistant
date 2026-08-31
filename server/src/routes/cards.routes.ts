@@ -33,13 +33,20 @@ const cardCreateSchema = z.object({
   annualFeeDate: annualFeeDateSchema,
 });
 
-// 编辑接口不再接受卡号后四位：后四位只读，直调接口传入即 400 拒绝
-// 使用 cardCreateSchema.partial() 让所有字段可选，移除 cardLast4，新增 status，然后 strict 拒收未知键
-const cardUpdateSchema = cardCreateSchema
-  .partial()
-  .omit({ cardLast4: true })
-  .extend({ status: z.enum(['active', 'frozen', 'closed']).optional() })
-  .strict();
+// 编辑接口不接受卡号后四位，也不复用新增表单的默认值，避免局部修改时意外覆盖原设置。
+const cardUpdateSchema = z.object({
+  bankName: z.string().trim().min(1, '银行名不能为空').optional(),
+  holderName: z.string().trim().max(64).optional().nullable(),
+  nickname: z.string().trim().max(32).optional().nullable(),
+  currency: z.string().trim().length(3).optional(),
+  statementDay: z.number().int().min(1).max(31).optional(),
+  dueRule: z.enum(['fixed', 'offset']).optional(),
+  dueDay: z.number().int().min(1).max(31).nullable().optional(),
+  dueOffsetDays: z.number().int().min(0).max(40).nullable().optional(),
+  remindDaysBefore: z.array(z.number().int().min(0).max(60)).optional(),
+  annualFeeDate: annualFeeDateSchema,
+  status: z.enum(['active', 'frozen', 'closed']).optional(),
+}).strict();
 
 function validateDueRule(
   dueRule: 'fixed' | 'offset',
@@ -62,6 +69,7 @@ router.get(
     });
     const now = today();
     const { year, month } = monthParts(now);
+    const cardById = new Map(cards.map((card) => [card.id, card] as const));
 
     const visibleIds = new Set(cards.map((c) => c.id));
     const groups = await allCardGroups();
@@ -70,25 +78,42 @@ router.get(
       const visibleMembers = members.filter((id) => visibleIds.has(id));
       for (const id of visibleMembers) groupOfCard.set(id, visibleMembers);
     }
+    const businessMembers = (card: (typeof cards)[number]) => {
+      const primaryId = card.businessRole === 'primary' ? card.id : card.businessPrimaryId;
+      if (primaryId == null) return [];
+      return cards
+        .filter((candidate) => candidate.id === primaryId || candidate.businessPrimaryId === primaryId)
+        .map((candidate) => ({
+          id: candidate.id,
+          cardLast4: candidate.displayLast4,
+          role: candidate.businessRole,
+        }));
+    };
 
     const result = await Promise.all(
       cards.map(async (card) => {
+        const billingCard = card.businessPrimaryId ? (cardById.get(card.businessPrimaryId) ?? card) : card;
         const calendarPeriod = `${year}-${String(month).padStart(2, '0')}`;
-        const last = lastPassedCycle(card, now);
+        const last = lastPassedCycle(billingCard, now);
         const lastYear = Number(last.period.slice(0, 4));
         const lastMonth = Number(last.period.slice(5, 7));
         // 本期应还看上一期已过出账日；合并账单按关联查
         const periodBills = await prisma.bill.findMany({
-          where: { period: last.period, OR: [{ cardId: card.id }, { cards: { some: { cardId: card.id } } }] },
+          where: {
+            period: last.period,
+            OR: [{ cardId: billingCard.id }, { cards: { some: { cardId: billingCard.id } } }],
+          },
           include: { cards: { select: { cardId: true } } },
           orderBy: [{ paidStatus: 'asc' }, { currency: 'asc' }, { id: 'asc' }],
         });
         const unpaidBills = periodBills.filter((bill) => bill.paidStatus !== 'paid');
         const representativeBill = unpaidBills[0] ?? periodBills[0] ?? null;
-        const missing = periodBills.length === 0 && openMissingCycle(card, now)?.period === last.period;
+        const missing = card.businessPrimaryId == null
+          && periodBills.length === 0
+          && openMissingCycle(billingCard, now)?.period === last.period;
         // 未还清或未取得走上一期；已还清且已跨月则切到日历月，避免下一还款停在过去
         const useLast = missing || (periodBills.length > 0 && (unpaidBills.length > 0 || last.period === calendarPeriod));
-        const cardLike = { ...card, remindDaysBefore: card.remindDaysBefore as number[] };
+        const cardLike = { ...billingCard, remindDaysBefore: billingCard.remindDaysBefore as number[] };
         const cycle = useLast
           ? computeCycle(cardLike, lastYear, lastMonth, representativeBill)
           : computeCycle(cardLike, year, month, null);
@@ -117,6 +142,13 @@ router.get(
           remindDaysBefore: card.remindDaysBefore,
           annualFeeDate: card.annualFeeDate?.toISOString() ?? null,
           annualFeeDateManual: card.annualFeeDateManual,
+          businessRole: card.businessRole,
+          businessPrimaryCardId: card.businessPrimaryId,
+          businessPrimaryCardLast4: card.businessPrimaryId
+            ? (cardById.get(card.businessPrimaryId)?.displayLast4 ?? null)
+            : null,
+          billingEditable: card.businessRole !== 'secondary' && card.businessRole !== 'supplementary',
+          businessGroupMembers: businessMembers(card),
           source: card.source,
           status: card.status,
           hasSecret: !!(card.cardNoFullEnc || card.expDateEnc || card.cvvEnc),
@@ -197,6 +229,14 @@ router.get(
       orderBy: { period: 'desc' },
       take: 24,
     });
+    const primaryId = card.businessRole === 'primary' ? card.id : card.businessPrimaryId;
+    const relatedCards = primaryId == null
+      ? []
+      : await prisma.card.findMany({
+          where: { hidden: false, OR: [{ id: primaryId }, { businessPrimaryId: primaryId }] },
+          select: { id: true, displayLast4: true, businessRole: true },
+        });
+    const primary = relatedCards.find((candidate) => candidate.id === primaryId) ?? null;
     res.json({
       id: card.id,
       bankName: card.bankName,
@@ -213,6 +253,15 @@ router.get(
       remindDaysBefore: card.remindDaysBefore,
       annualFeeDate: card.annualFeeDate?.toISOString() ?? null,
       annualFeeDateManual: card.annualFeeDateManual,
+      businessRole: card.businessRole,
+      businessPrimaryCardId: card.businessPrimaryId,
+      businessPrimaryCardLast4: card.businessPrimaryId ? primary?.displayLast4 ?? null : null,
+      billingEditable: card.businessRole !== 'secondary' && card.businessRole !== 'supplementary',
+      businessGroupMembers: relatedCards.map((candidate) => ({
+        id: candidate.id,
+        cardLast4: candidate.displayLast4,
+        role: candidate.businessRole,
+      })),
       source: card.source,
       status: card.status,
       hasSecret: !!(card.cardNoFullEnc || card.expDateEnc || card.cvvEnc),
@@ -245,6 +294,22 @@ router.put(
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
     const input = cardUpdateSchema.parse(req.body);
 
+    if (card.businessRole === 'secondary' || card.businessRole === 'supplementary') {
+      const locked = [
+        input.bankName,
+        input.currency,
+        input.statementDay,
+        input.dueRule,
+        input.dueDay,
+        input.dueOffsetDays,
+        input.remindDaysBefore,
+      ].some((value) => value !== undefined);
+      if (locked) throw new ApiError(400, '副卡和附属卡不能修改账单设置');
+      if (card.businessRole === 'secondary' && input.holderName !== undefined) {
+        throw new ApiError(400, '副卡持卡人由主卡统一管理');
+      }
+    }
+
     const dueRule = input.dueRule ?? (card.dueRule as 'fixed' | 'offset');
     const dueDay = input.dueDay !== undefined ? input.dueDay : card.dueDay;
     const dueOffsetDays = input.dueOffsetDays !== undefined ? input.dueOffsetDays : card.dueOffsetDays;
@@ -252,9 +317,7 @@ router.put(
       validateDueRule(dueRule, dueDay, dueOffsetDays);
     }
 
-    await prisma.card.update({
-      where: { id },
-      data: {
+    const updateData = {
         ...(input.bankName !== undefined ? { bankName: input.bankName } : {}),
         ...(input.holderName !== undefined ? { holderName: input.holderName || null } : {}),
         ...(input.nickname !== undefined ? { nickname: input.nickname || null } : {}),
@@ -272,7 +335,30 @@ router.put(
               annualFeeDateManual: input.annualFeeDate ? true : false,
             }
           : {}),
-      },
+      };
+    await prisma.$transaction(async (tx) => {
+      await tx.card.update({ where: { id }, data: updateData });
+      if (card.businessRole === 'primary') {
+        if (input.holderName !== undefined) {
+          await tx.card.updateMany({
+            where: { businessPrimaryId: id, businessRole: 'secondary' },
+            data: { holderName: input.holderName || null },
+          });
+        }
+        if (input.status !== undefined) {
+          await tx.card.updateMany({ where: { businessPrimaryId: id }, data: { status: input.status } });
+        }
+        const sharedRulePatch = {
+          ...(input.statementDay !== undefined ? { statementDay: input.statementDay } : {}),
+          ...(input.dueRule !== undefined ? { dueRule: input.dueRule } : {}),
+          ...(input.dueDay !== undefined ? { dueDay } : {}),
+          ...(input.dueOffsetDays !== undefined ? { dueOffsetDays } : {}),
+          ...(input.remindDaysBefore !== undefined ? { remindDaysBefore: input.remindDaysBefore } : {}),
+        };
+        if (Object.keys(sharedRulePatch).length > 0) {
+          await tx.card.updateMany({ where: { businessPrimaryId: id }, data: sharedRulePatch });
+        }
+      }
     });
     // 出账日/还款规则变更后按当前规则重算归组；冻结/注销让位复用同一套自动主卡
     if (
@@ -296,6 +382,9 @@ router.post(
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
     if (card.status !== 'active') throw new ApiError(400, '已冻结或已注销的卡不能设为主卡');
+    if ((card.businessRole ?? 'standalone') !== 'standalone') {
+      throw new ApiError(400, '主卡、副卡和附属卡的业务关系由账单确定，不能设置优先展示卡');
+    }
     const groups = await allCardGroups();
     const members = [...groups.values()].find((m) => m.includes(id));
     if (!members || members.length <= 1) {

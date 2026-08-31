@@ -251,6 +251,13 @@ describe('collectCardEvents', () => {
     expect(events.filter((e) => e.period === '2026-08')).toHaveLength(0);
   });
 
+  it('业务副卡和附属卡不生成独立出账或还款提醒', () => {
+    const child = makeCard({ id: 2, cardLast4: '6666', businessPrimaryId: 1 });
+    expect(collectCardEvents(child, [], fromYmd('2026-08-05'))).toEqual([]);
+    expect(collectCardEvents(child, [], fromYmd('2026-08-23'))).toEqual([]);
+    expect(collectUpcoming([child], new Map(), [], fromYmd('2026-08-01'), 30)).toEqual([]);
+  });
+
   it('合并账单主卡事件 linkedCount 为共享卡数', () => {
     const card = makeCard({ statementDay: 5, dueOffsetDays: 18 });
     const mergedBill = {

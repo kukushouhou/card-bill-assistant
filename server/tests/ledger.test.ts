@@ -200,6 +200,31 @@ describe('buildLedger 完整台账', () => {
     expect(julRows[0]!.missing).toBe(true);
   });
 
+  it('业务副卡和附属卡即使暂无近期账单也不生成独立占位', () => {
+    const main = makeCard({ id: 1, cardLast4: '5888', businessRole: 'primary' });
+    const secondary = makeCard({
+      id: 2,
+      cardLast4: '6666',
+      businessRole: 'secondary',
+      businessPrimaryId: 1,
+    });
+    const supplementary = makeCard({
+      id: 3,
+      cardLast4: '7777',
+      businessRole: 'supplementary',
+      businessPrimaryId: 1,
+    });
+
+    const rows = buildLedger(
+      [main, secondary, supplementary],
+      [main, secondary, supplementary],
+      [],
+      fromYmd('2026-08-10'),
+    );
+
+    expect(rows.filter((row) => row.missing).map((row) => row.cardId)).toEqual([1]);
+  });
+
   it('未还清在前按还款日升序，历史已还在后按还款日倒序；占位行归未还清桶', () => {
     const card = makeCard();
     const unpaid = makeBill({

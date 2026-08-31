@@ -29,6 +29,8 @@ export interface ParsedTransaction {
   originalCurrency?: string | null;
   /** 交易所属卡尾号（合并账单多卡时用于区分归属；费用行/分期等解析阶段留空） */
   cardLast4?: string | null;
+  /** 银行原始卡尾；当 cardLast4 因手机信用卡或账户级费用归并时仍保留来源。 */
+  sourceCardLast4?: string | null;
 }
 
 /** 尚未形成正式账单的日度交易；时间来自银行邮件，不依赖账单日推断。 */
@@ -39,6 +41,24 @@ export interface ParsedCurrentCycleTransaction extends ParsedTransaction {
 export interface ParsedCurrentCycleTransactions {
   bankName: string;
   transactions: ParsedCurrentCycleTransaction[];
+}
+
+/** 只有账单模板明确给出时才填写的银行业务主副卡结构。 */
+export interface ParsedBusinessCards {
+  primaryCardLast4: string;
+  /** 同一封客户级账单中明确标注的其他主卡。 */
+  additionalPrimaryCardLast4s?: string[];
+  /** 同一持卡人名下、从属于主卡的实体副卡。 */
+  secondaryCardLast4s?: string[];
+  /** 亲友持有、由主卡管理的附属卡；姓名缺失时必须留空。 */
+  supplementaryCards?: Array<{
+    cardLast4: string;
+    holderName?: string | null;
+    /** 该附属卡在账单中明确对应的主卡。 */
+    primaryCardLast4?: string | null;
+  }>;
+  /** 不建档、交易统一归主卡的手机信用卡尾号。 */
+  mobileCardLast4s?: string[];
 }
 
 export interface ParsedBill {
@@ -66,6 +86,8 @@ export interface ParsedBill {
    * 未提供时按单卡 [cardLast4] 处理；各卡共享本账单金额与还款义务。
    */
   cardLast4s?: string[];
+  /** 银行明确给出的业务主卡、副卡、附属卡与手机信用卡结构。 */
+  businessCards?: ParsedBusinessCards;
   /** 本期交易明细；合账后持久化并用于账单/全局明细查询。 */
   transactions?: ParsedTransaction[];
 }
@@ -85,6 +107,8 @@ interface ParserBase {
   subjectPatterns?: RegExp[];
   /** true 时禁止仅凭标题兜底，必须同时命中发件域名。 */
   requireSender?: boolean;
+  /** 该模板可明确产出业务主卡、副卡或附属卡关系，可纳入历史升级自愈。 */
+  businessRelationships?: true;
 }
 
 export interface BankParser extends ParserBase {

@@ -20,6 +20,7 @@ export const pab2026Parser: BankParser = {
   bankName: '平安银行',
   senderPatterns: ['creditcard@service.pingan.com'],
   subjectPatterns: [/平安.*电子账单/],
+  businessRelationships: true,
 
   parse(mail: MailContext): ParsedBill[] {
     const text = mailText(mail);
@@ -64,22 +65,44 @@ export const pab2026Parser: BankParser = {
     const sectionStart = text.indexOf('人民币账户交易明细');
     const txns: ParsedTransaction[] = [];
     const holderMap: Record<string, string> = {};
+    const primaryTails: string[] = [];
+    const primaryByProduct = new Map<string, string>();
+    const supplementary = new Map<string, { holderName: string | null; primaryCardLast4: string | null }>();
     if (sectionStart >= 0) {
       const lines = text.slice(sectionStart).split('\n').map((l) => l.trim()).filter(Boolean);
       let currentTail: string | null = null;
+      let currentProduct = '';
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? '';
         // 卡区块头："平安银行……信用卡……（1765）"，嵌套括号（金卡）（8837）取末尾括号
-        const headM = line.match(/^平安银行.*[（(](\d{4})[）)]$/);
+        const headM = line.match(/^(平安银行.*)[（(](\d{4})[）)]$/);
         if (headM) {
-          currentTail = headM[1] ?? null;
+          currentTail = headM[2] ?? null;
+          currentProduct = (headM[1] ?? '').replace(/\s+/g, '');
           continue;
         }
-        if (/^主卡/.test(line)) continue;
+        if (/^主卡/.test(line)) {
+          if (currentTail) {
+            if (!primaryTails.includes(currentTail)) primaryTails.push(currentTail);
+            if (currentProduct) primaryByProduct.set(currentProduct, currentTail);
+          }
+          continue;
+        }
         // 附卡区块：「附卡 Sup Card 附卡人：XXX」——仅区块写明时入映射，不得用抬头覆盖
         const suppM = line.match(/^附卡.*附卡人[：:]\s*([\u4e00-\u9fa5·]{2,10})/);
         if (suppM && currentTail) {
           holderMap[currentTail] = suppM[1]!;
+          supplementary.set(currentTail, {
+            holderName: suppM[1]!,
+            primaryCardLast4: primaryByProduct.get(currentProduct) ?? null,
+          });
+          continue;
+        }
+        if (/^附卡/.test(line) && currentTail) {
+          supplementary.set(currentTail, {
+            holderName: null,
+            primaryCardLast4: primaryByProduct.get(currentProduct) ?? null,
+          });
           continue;
         }
         // 账户级区块（分期/其他）：解析阶段卡号留空
@@ -100,9 +123,33 @@ export const pab2026Parser: BankParser = {
       }
     }
     applyTransactionTails(bill, txns);
+    if (primaryTails.length > 0) {
+      const primaryTail = primaryTails.includes(bill.cardLast4) ? bill.cardLast4 : primaryTails[0]!;
+      const actualTails = Array.from(new Set([
+        ...primaryTails,
+        ...(bill.cardLast4s ?? []),
+        ...supplementary.keys(),
+      ]));
+      bill.cardLast4 = primaryTail;
+      bill.cardLast4s = actualTails.length > 1 ? actualTails : undefined;
+      bill.businessCards = {
+        primaryCardLast4: primaryTail,
+        ...(primaryTails.length > 1
+          ? { additionalPrimaryCardLast4s: primaryTails.filter((tail) => tail !== primaryTail) }
+          : {}),
+        supplementaryCards: [...supplementary].map(([cardLast4, relation]) => ({
+          cardLast4,
+          holderName: relation.holderName,
+          ...(relation.primaryCardLast4 ? { primaryCardLast4: relation.primaryCardLast4 } : {}),
+        })),
+      };
+    }
     if (Object.keys(holderMap).length > 0) bill.holderMap = holderMap;
     const bills = usdBill ? [bill, usdBill] : [bill];
     propagateAccountBillTails(bills);
+    if (bill.businessCards) {
+      for (const accountBill of bills) accountBill.businessCards = bill.businessCards;
+    }
     return bills;
   },
 };

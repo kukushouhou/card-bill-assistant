@@ -38,6 +38,8 @@ async function loadScopeCards(cardId?: number, bank?: string, cardIds?: number[]
     dueOffsetDays: c.dueOffsetDays,
     status: c.status,
     createdAt: c.createdAt,
+    businessRole: c.businessRole,
+    businessPrimaryId: c.businessPrimaryId,
   }));
 }
 
@@ -115,6 +117,8 @@ router.get(
       dueOffsetDays: c.dueOffsetDays,
       status: c.status,
       createdAt: c.createdAt,
+      businessRole: c.businessRole,
+      businessPrimaryId: c.businessPrimaryId,
     }));
 
     const cardRows = buildLedger(scopeCards, allLedgerCards, bills).map((row) => ({
@@ -215,6 +219,9 @@ router.post(
 
     const card = await prisma.card.findUnique({ where: { id: input.cardId } });
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
+    if (card.businessPrimaryId != null) {
+      throw new ApiError(400, '副卡和附属卡的账单由主卡统一管理');
+    }
     if (card.status !== 'active') {
       const statusName = card.status === 'frozen' ? '冻结' : '注销';
       throw new ApiError(400, `卡片已${statusName}，不能补录新账单`);

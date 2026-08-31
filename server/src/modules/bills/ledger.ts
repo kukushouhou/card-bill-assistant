@@ -17,6 +17,8 @@ export interface LedgerCard {
   dueOffsetDays: number | null;
   status: string; // 'active' | 'frozen' | 'closed'
   createdAt: Date;
+  businessRole?: string;
+  businessPrimaryId?: number | null;
 }
 
 export interface LedgerBillInput {
@@ -151,10 +153,11 @@ export function lastPassedCycle(
  * 冻结/注销卡 / 出账日未到 / 过还款日 30 天 → 无。
  */
 export function openMissingCycle(
-  card: Pick<LedgerCard, 'statementDay' | 'dueRule' | 'dueDay' | 'dueOffsetDays' | 'status'>,
+  card: Pick<LedgerCard, 'statementDay' | 'dueRule' | 'dueDay' | 'dueOffsetDays' | 'status' | 'businessPrimaryId'>,
   now: Date,
 ): { period: string; statementDate: Date; dueDate: Date } | null {
   if (card.status !== 'active') return null;
+  if (card.businessPrimaryId != null) return null;
   const cycle = lastPassedCycle(card, now);
   if (!(cycle.statementDate < now)) return null;
   if (now > addDays(cycle.dueDate, 30)) return null;

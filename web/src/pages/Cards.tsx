@@ -43,10 +43,12 @@ import { Popup, SearchBar } from 'antd-mobile';
 import dayjs from 'dayjs';
 import { useLocation, useNavigate } from 'react-router';
 import { formatMoney } from '../lib/money';
+import { businessCoverOf, businessPrimaryFirst, businessPrimaryOf } from '../lib/business-cards';
 import { Virtuoso } from 'react-virtuoso';
 import { api, ApiError } from '../api/client';
 import type { BillRow, CardInput, CardRow } from '../api/types';
 import { Page } from '../components/Layout';
+import BusinessRoleRibbon from '../components/BusinessRoleRibbon';
 import MarkAbnormalModal, { type MarkAbnormalTarget } from '../components/MarkAbnormalModal';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
 import {
@@ -94,6 +96,16 @@ const WIDE_MODAL_WIDTH = 'min(760px, 94vw)';
 
 const DELETE_CARD_DESCRIPTION =
   '删除后，此卡档案将永久移除。以此卡作为归属卡保存的账单会一并删除；若其中有合并账单，其他关联卡也会失去这些账单。仅与此卡关联、但归属其他卡的合并账单会保留，只移除这张卡的关联。此操作不可恢复。';
+
+function deleteCardDescription(card: CardRow): string {
+  if (card.businessRole === 'primary') {
+    return '删除主卡后，该组主卡、副卡、附属卡的卡片档案和账单将一并删除。此操作不可恢复。';
+  }
+  if (card.businessRole === 'secondary' || card.businessRole === 'supplementary') {
+    return '删除后，系统只移除这张卡的档案和关联，主卡账单会继续保留。此操作不可恢复。';
+  }
+  return DELETE_CARD_DESCRIPTION;
+}
 
 interface CardFormValues {
   bankName: string;
@@ -165,7 +177,7 @@ function CardForm({
   initial?: CardRow | null;
   restoreDraft: CardFormDraft | null;
   onDraftChange: (draft: CardFormDraft) => void;
-  onOk: (values: CardInput) => void;
+  onOk: (values: Partial<CardInput>) => void;
   onCancel: () => void;
   confirmLoading: boolean;
 }) {
@@ -177,6 +189,7 @@ function CardForm({
     ...definedCardDraft(restoreDraft?.values),
   }).current;
   const dueRule = Form.useWatch('dueRule', form) ?? formInitialValues.dueRule;
+  const billingEditable = initial?.billingEditable ?? true;
   const [leaveConfirm, setLeaveConfirm] = useState(false);
 
   useResetOnModeChange(() => setLeaveConfirm(false));
@@ -199,21 +212,30 @@ function CardForm({
       onValuesChange={(_, values) =>
         onDraftChange({ values, dirty: cardFormChanged(values, baseline) })
       }
-      onFinish={(v) =>
+      onFinish={(v) => {
+        const annualFeeDate = v.annualFeeDate ? v.annualFeeDate.format('YYYY-MM-DD') : null;
+        if (initial && !billingEditable) {
+          onOk({
+            ...(initial.businessRole === 'supplementary' ? { holderName: v.holderName } : {}),
+            nickname: v.nickname,
+            annualFeeDate,
+          });
+          return;
+        }
         onOk({
           ...v,
           ...(initial ? { cardLast4: undefined } : {}),
           dueDay: v.dueRule === 'fixed' ? v.dueDay ?? null : null,
           dueOffsetDays: v.dueRule === 'offset' ? v.dueOffsetDays ?? null : null,
-          annualFeeDate: v.annualFeeDate ? v.annualFeeDate.format('YYYY-MM-DD') : null,
-        })
-      }
+          annualFeeDate,
+        });
+      }}
     >
       <Row gutter={24}>
         {/* 左栏：基础信息 */}
         <Col xs={24} lg={12}>
           <Form.Item name="bankName" label="银行名称" rules={[{ required: true, message: '请输入银行名称' }]}>
-            <Input placeholder="如：招商银行" />
+            <Input placeholder="如：招商银行" disabled={!!initial && !billingEditable} />
           </Form.Item>
           <Form.Item
             name="cardLast4"
@@ -230,14 +252,35 @@ function CardForm({
             <Input placeholder="1234" maxLength={4} disabled={!!initial} inputMode="numeric" />
           </Form.Item>
           <Form.Item name="holderName" label="持卡人（可选）">
-            <Input placeholder="姓名" />
+            <Input placeholder="姓名" disabled={initial?.businessRole === 'secondary'} />
           </Form.Item>
           <Form.Item name="nickname" label="别名（可选）" tooltip="卡片右上角显示的辨识名，如：银联钻石卡">
             <Input placeholder="如：银联钻石卡" maxLength={32} />
           </Form.Item>
         </Col>
-        {/* 右栏：账单规则 */}
+        {/* 右栏：账单规则；副卡、附属卡仅保留身份与年费日 */}
         <Col xs={24} lg={12}>
+          {!billingEditable && initial ? (
+            <>
+              <Form.Item label="卡片身份">
+                <Input
+                  readOnly
+                  value={initial.businessRole === 'secondary' ? '副卡' : '附属卡'}
+                />
+              </Form.Item>
+              <Form.Item label="归属主卡">
+                <Input readOnly value={`尾号 ${initial.businessPrimaryCardLast4 ?? '----'}`} />
+              </Form.Item>
+              <Form.Item
+                name="annualFeeDate"
+                label="年费收取日（可选）"
+                tooltip="每年该日期收取年费，也可由历史账单自动识别"
+              >
+                <DatePicker style={{ width: '100%' }} placeholder="如 03-15" />
+              </Form.Item>
+            </>
+          ) : (
+          <>
           <Form.Item
             name="statementDay"
             label="每月出账日（几号）"
@@ -284,6 +327,8 @@ function CardForm({
           >
             <DatePicker style={{ width: '100%' }} placeholder="如 03-15" />
           </Form.Item>
+          </>
+          )}
         </Col>
       </Row>
     </Form>
@@ -753,6 +798,7 @@ function BankCardItem({
   primaryPending,
   secretPending,
   plain,
+  showBilling = true,
 }: {
   card: CardRow;
   /** PIN 验证后的明文（null=掩码态） */
@@ -776,6 +822,8 @@ function BankCardItem({
   secretPending?: boolean;
   /** 组弹窗内渲染：无堆叠/角标/点击展开 */
   plain?: boolean;
+  /** 业务副卡、附属卡不重复展示整组账单。 */
+  showBilling?: boolean;
 }) {
   const groupSize = groupCards.length;
   const groupTails = groupCards.map((c) => c.displayLast4);
@@ -890,7 +938,7 @@ function BankCardItem({
   return (
     <div className={stacked ? 'bank-card-stack-wrap' : undefined}>
       <div
-        className={`bank-card bank-card-p${card.id % 5}${stacked ? ' bank-card-stack' : ''}${isMobile ? ' cards-mobile-bank-card' : ''}`}
+        className={`bank-card bank-card-p${card.id % 5}${stacked ? ' bank-card-stack' : ''}${isMobile ? ' cards-mobile-bank-card' : ''}${card.businessRole !== 'standalone' ? ' bank-card-with-role' : ''}`}
         onClick={onCardClick}
         onKeyDown={(event) => {
           if (!onCardClick || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -902,6 +950,7 @@ function BankCardItem({
         aria-label={onCardClick ? `查看 ${card.bankName}（${card.displayLast4}）卡片详情` : undefined}
         style={onCardClick ? { cursor: 'pointer' } : undefined}
       >
+        <BusinessRoleRibbon role={card.businessRole} />
         <div className="bank-card-head">
           <div>
             <span className="bank-card-title">
@@ -980,7 +1029,7 @@ function BankCardItem({
             {card.holderName && <div className="bank-card-holder">{card.holderName}</div>}
           </div>
 
-        <div className="bank-card-foot">
+        {showBilling && <div className="bank-card-foot">
           <div>
             <div className="bank-card-label">出账日 每月{card.statementDay}日</div>
             <div className="bank-card-value">
@@ -1018,7 +1067,7 @@ function BankCardItem({
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -1062,6 +1111,7 @@ function currentConsistentPrimary(group: CardGroup): CardRow | null {
 }
 
 function canSetPrimary(group: CardGroup, card: CardRow): boolean {
+  if (businessPrimaryOf(group.cards)) return false;
   if (group.cards.length <= 1 || card.status !== 'active') return false;
   const current = currentConsistentPrimary(group);
   return current == null || current.id !== card.id;
@@ -1258,7 +1308,7 @@ function MobileCardConfirmSheet({
                 ? `删除 ${target.card.bankName}（${target.card.displayLast4}）？`
                 : `将（${target.card.displayLast4}）设为主卡？`
             }
-            description={isRemove ? DELETE_CARD_DESCRIPTION : '设置后，此卡将在卡片列表中优先展示。'}
+            description={isRemove ? deleteCardDescription(target.card) : '设置后，此卡将在卡片列表中优先展示。'}
             confirmText={isRemove ? '删除卡片' : '设为主卡'}
             danger={isRemove}
             loading={loading}
@@ -1357,11 +1407,14 @@ export default function Cards() {
       if (arr) arr.push(r);
       else map.set(k, [r]);
     }
-    return [...map.entries()].map(([key, cards]) => ({
-      key,
-      cards,
-      main: pickCoverCard(cards),
-    }));
+    return [...map.entries()].map(([key, cards]) => {
+      const orderedCards = businessPrimaryFirst(cards);
+      return {
+        key,
+        cards: orderedCards,
+        main: businessCoverOf(orderedCards, () => pickCoverCard(orderedCards)),
+      };
+    });
   }, [rows]);
 
   const sortedGroups = useMemo(() => {
@@ -1407,7 +1460,7 @@ export default function Cards() {
     for (const g of sortedGroups) {
       const hits = hitGroupMap.get(g.key) ?? [];
       if (hits.length === 0) continue;
-      items.push({ group: g, displayCard: pickCoverCard(hits) });
+      items.push({ group: g, displayCard: businessCoverOf(g.cards, () => pickCoverCard(hits)) });
     }
     return items;
   }, [sortedGroups, hitGroupMap, q]);
@@ -1642,7 +1695,7 @@ export default function Cards() {
     setSecretCard((current) => (current?.flowId === target.flowId ? null : current));
   };
 
-  const submit = async (values: CardInput) => {
+  const submit = async (values: Partial<CardInput>) => {
     if (savingRef.current || editing === undefined) return;
     savingRef.current = true;
     const target = editing;
@@ -1756,7 +1809,7 @@ export default function Cards() {
           ? `删除 ${card.bankName}（${card.displayLast4}）？`
           : `将（${card.displayLast4}）设为主卡？`,
       content:
-        action === 'remove' ? DELETE_CARD_DESCRIPTION : '设置后，此卡将在卡片列表中优先展示。',
+        action === 'remove' ? deleteCardDescription(card) : '设置后，此卡将在卡片列表中优先展示。',
       okText: action === 'remove' ? '删除卡片' : '设为主卡',
       okButtonProps: action === 'remove' ? { danger: true } : undefined,
       onOk: () => (action === 'remove' ? remove(card) : setPrimary(card)),
@@ -1804,6 +1857,7 @@ export default function Cards() {
       primaryPending={primaryPendingId != null}
       secretPending={secretPendingCardIds.has(card.id)}
       plain={plain}
+      showBilling={card.businessRole !== 'secondary' && card.businessRole !== 'supplementary'}
     />
   );
 

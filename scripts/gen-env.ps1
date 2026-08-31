@@ -30,7 +30,7 @@ $jwtSecret = New-Hex 32
 if ($External) {
     $content = @"
 # ===== 外置 MySQL 模式（docker-compose.external.yml）=====
-APP_VERSION=0.2.3
+APP_VERSION=0.3.0
 
 # 【必填】目标数据库连接串（应用将自动建表；库需已创建且账号有建表权限）
 # 密码含特殊字符需 URL 编码：! → %21  @ → %40  & → %26  # → %23
@@ -55,7 +55,7 @@ APP_PORT=3000
 } else {
     $content = @"
 # ===== 内置 MySQL 模式（docker-compose.yml，密钥已随机生成）=====
-APP_VERSION=0.2.3
+APP_VERSION=0.3.0
 
 # MySQL root 密码（随机生成，务必备份）
 MYSQL_ROOT_PASSWORD=$rootPassword

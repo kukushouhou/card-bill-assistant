@@ -91,6 +91,18 @@ describe('套卡归组（groupCardsByCycle）', () => {
     expect([...groups.values()].sort((a, b) => a.length - b.length)).toEqual([[3], [1, 2]]);
   });
 
+  it('明确业务主副卡优先归组，不与同周期其他主卡账户合并', () => {
+    const groups = groupCardsByCycle([
+      card(1, { businessRole: 'primary' }),
+      card(2, { businessRole: 'secondary', businessPrimaryId: 1 }),
+      card(3, { businessRole: 'primary' }),
+      card(4),
+    ]);
+    expect(groups.get(1)).toEqual([1, 2]);
+    expect(groups.get(3)).toEqual([3]);
+    expect(groups.get(4)).toEqual([4]);
+  });
+
   it('还款规则不同拆开', () => {
     const groups = groupCardsByCycle([card(1), card(2, { dueOffsetDays: 20 })]);
     expect(groups.size).toBe(2);

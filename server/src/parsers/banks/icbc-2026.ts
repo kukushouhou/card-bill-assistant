@@ -14,6 +14,7 @@ export const icbc2026Parser: BankParser = {
   bankName: '工商银行',
   senderPatterns: ['webmaster@icbc.com.cn'],
   subjectPatterns: [/工商银行.*对账单/, /ICBC.*Statement/i],
+  businessRelationships: true,
 
   parse(mail: MailContext): ParsedBill[] {
     const text = [mailText(mail), mail.attachText ? flattenHtml(mail.attachText) : ''].filter(Boolean).join('\n');
@@ -66,8 +67,27 @@ export const icbc2026Parser: BankParser = {
         if (bill) bills.push(bill);
       }
     }
-    attachIcbcTransactions(text, bills, holderName, statementDate, dueDate);
-    return mergeAccountBillsByCurrency(bills);
+    const mobileTails = new Set(
+      [...text.matchAll(/尾号为\s*(\d{4})\s*的信用卡为[^\n]{0,30}?手机信用卡/g)].map((match) => match[1]!),
+    );
+    attachIcbcTransactions(text, bills, holderName, statementDate, dueDate, mobileTails);
+    const merged = mergeAccountBillsByCurrency(bills);
+    const allActualTails = Array.from(new Set([
+      ...merged.map((bill) => bill.cardLast4),
+      ...merged.flatMap((bill) => (bill.transactions ?? [])
+        .map((transaction) => transaction.cardLast4)
+        .filter((tail): tail is string => !!tail && !mobileTails.has(tail))),
+    ]));
+    for (const bill of merged) {
+      const actualTails = [bill.cardLast4, ...allActualTails.filter((tail) => tail !== bill.cardLast4)];
+      bill.cardLast4s = actualTails.length > 1 ? actualTails : undefined;
+      bill.businessCards = {
+        primaryCardLast4: bill.cardLast4,
+        secondaryCardLast4s: actualTails.filter((tail) => tail !== bill.cardLast4),
+        mobileCardLast4s: [...mobileTails],
+      };
+    }
+    return merged;
   },
 };
 
@@ -81,6 +101,7 @@ function attachIcbcTransactions(
   holderName: string | null,
   statementDate: Date,
   dueDate: Date,
+  mobileTails: Set<string>,
 ): void {
   const lines = text.split('\n').map((l) => l.trim());
   const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
@@ -121,14 +142,18 @@ function attachIcbcTransactions(
         i += 1;
       }
       if (value != null && desc.length > 0) {
+        const rawTail = tail ?? undefined;
+        const description = desc.join(' ');
+        const accountLevel = /(?:年费|分期)/.test(description) && !mobileTails.has(rawTail ?? '');
         txns.push({
           date: dates[0] ?? null,
-          description: desc.join(' '),
+          description,
           amount: flag === '存入' ? -value : value,
           currency,
           originalAmount,
           originalCurrency,
-          cardLast4: tail ?? undefined,
+          cardLast4: accountLevel ? undefined : rawTail,
+          sourceCardLast4: rawTail,
         });
       }
       reset();

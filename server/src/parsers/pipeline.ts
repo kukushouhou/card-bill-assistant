@@ -37,12 +37,48 @@ export async function applyParsedBill(mailLogId: number, parserId: string, bill:
 export async function applyParsedBills(mailLogId: number, parserId: string, bills: ParsedBill[]): Promise<number[]> {
   return withTransactionRetry(() =>
     prisma.$transaction(async (tx) => {
+      // 历史重读时同一封邮件可能从错误的卡片归属移到业务主卡。
+      // 先读取旧行用于承接手动还款状态，新结果全部成功后再在同一事务内清理未被复用的旧行。
+      const previousRows = await tx.bill.findMany({
+        where: { mailLogId },
+        select: {
+          id: true,
+          cardId: true,
+          period: true,
+          currency: true,
+          paidStatus: true,
+          paidAt: true,
+          paidAmount: true,
+        },
+      });
+      const previousContext: PreviousBillContext = { rows: previousRows, usedIds: new Set() };
       const applied: AppliedBill[] = [];
-      for (const bill of bills) applied.push(await applyParsedBillInTransaction(tx, mailLogId, parserId, bill));
+      for (const bill of bills) {
+        applied.push(await applyParsedBillInTransaction(tx, mailLogId, parserId, bill, previousContext));
+      }
       await reconcileCurrentCycleTransactions(tx, bills, applied);
+      const appliedIds = applied.map((row) => row.id);
+      if (previousRows.some((row) => !appliedIds.includes(row.id))) {
+        await tx.bill.deleteMany({
+          where: { mailLogId, ...(appliedIds.length > 0 ? { id: { notIn: appliedIds } } : {}) },
+        });
+      }
       return applied.map((row) => row.id);
     }),
   );
+}
+
+interface PreviousBillContext {
+  rows: Array<{
+    id: number;
+    cardId: number;
+    period: string;
+    currency: string;
+    paidStatus: string;
+    paidAt: Date | null;
+    paidAmount: Prisma.Decimal | null;
+  }>;
+  usedIds: Set<number>;
 }
 
 interface AppliedBill {
@@ -61,6 +97,8 @@ interface ResolvedCard {
   annualFeeDate: Date | null;
   annualFeeDateManual: boolean;
   priority: number;
+  businessRole: string;
+  businessPrimaryId: number | null;
 }
 
 interface ResolvedBillTransaction {
@@ -75,17 +113,63 @@ async function applyParsedBillInTransaction(
   mailLogId: number,
   parserId: string,
   bill: ParsedBill,
+  previousContext: PreviousBillContext,
 ): Promise<AppliedBill> {
   const statementDate = shanghaiMidnight(bill.statementDate);
   const dueDate = shanghaiMidnight(bill.dueDate);
   const period = bill.period;
   void parserId;
     // 阶段 1：卡档案确定（空卡号按出账日匹配已有档案 / 真实卡号切归属）
-    const tails = Array.from(new Set([bill.cardLast4, ...(bill.cardLast4s ?? [])]));
+    const business = bill.businessCards;
+    const secondaryTails = new Set(business?.secondaryCardLast4s ?? []);
+    const supplementaryByTail = new Map(
+      (business?.supplementaryCards ?? []).map((card) => [card.cardLast4, card] as const),
+    );
+    const mobileTails = new Set(business?.mobileCardLast4s ?? []);
+    if (business) {
+      const observedTails = Array.from(new Set([
+        bill.cardLast4,
+        ...(bill.cardLast4s ?? []),
+        ...(bill.transactions ?? []).flatMap((transaction) => [
+          transaction.cardLast4,
+          transaction.sourceCardLast4,
+        ]),
+      ].filter((tail): tail is string => !!tail)));
+      if (observedTails.length > 0) {
+        const knownMobileAliases = await tx.cardAlias.findMany({
+          where: {
+            bankName: bill.bankName,
+            type: 'mobile',
+            cardLast4: { in: observedTails },
+            relationDate: { lte: statementDate },
+          },
+          select: { cardLast4: true },
+        });
+        for (const alias of knownMobileAliases ?? []) mobileTails.add(alias.cardLast4);
+      }
+    }
+    const businessPrimaryTail = business?.primaryCardLast4 ?? bill.cardLast4;
+    const businessPrimaryTails = Array.from(new Set([
+      businessPrimaryTail,
+      ...(business?.additionalPrimaryCardLast4s ?? []),
+    ]));
+    const tails = Array.from(new Set([
+      ...businessPrimaryTails,
+      ...(business
+        ? [
+            ...secondaryTails,
+            ...supplementaryByTail.keys(),
+            bill.cardLast4,
+            ...(bill.cardLast4s ?? []),
+          ]
+        : [bill.cardLast4, ...(bill.cardLast4s ?? [])]),
+    ])).filter((tail) => !mobileTails.has(tail));
     const rule = inferCardRule(statementDate, dueDate);
 
     const resolved: ResolvedCard[] = [];
     let ownerCard: (typeof resolved)[number] | null = null;
+    let businessPrimaryId: number | null = null;
+    const businessPrimaryIds = new Map<string, number>();
 
     for (const tail of tails) {
       let card = await tx.card.findUnique({
@@ -115,9 +199,28 @@ async function applyParsedBillInTransaction(
         const bankCards = await tx.card.findMany({ where: { bankName: bill.bankName, hidden: false } });
         card = bankCards.find((c) => diffCardRule(c, bill.statementDate, bill.dueDate) === null) ?? null;
       }
-      const isOwner = tail === bill.cardLast4;
-      const mapped = bill.holderMap?.[tail];
+      const isOwner = tail === businessPrimaryTail;
+      const explicitBusinessRole = business
+        ? businessPrimaryTails.includes(tail)
+          ? 'primary'
+          : supplementaryByTail.has(tail)
+            ? 'supplementary'
+            : secondaryTails.has(tail)
+              ? 'secondary'
+              : null
+        : null;
+      const mapped = bill.holderMap?.[tail] ?? supplementaryByTail.get(tail)?.holderName;
       const mappedName = typeof mapped === 'string' && mapped ? mapped : null;
+      const parentPrimaryTail = explicitBusinessRole === 'secondary'
+        ? businessPrimaryTail
+        : explicitBusinessRole === 'supplementary'
+          ? supplementaryByTail.get(tail)?.primaryCardLast4 ?? null
+          : null;
+      const parentPrimaryId = parentPrimaryTail
+        ? businessPrimaryIds.get(parentPrimaryTail) ?? null
+        : explicitBusinessRole === 'supplementary' && card?.businessRole === 'supplementary'
+          ? card.businessPrimaryId ?? null
+          : null;
       // 账单级提取姓名只落到本封账单承接卡，不在解析器里猜附卡
       const extracted = isOwner && bill.holderName ? bill.holderName : null;
 
@@ -136,6 +239,13 @@ async function applyParsedBillInTransaction(
             remindDaysBefore: [3, 1, 0],
             source: 'email',
             status: 'active',
+            ...(explicitBusinessRole
+              ? {
+                  businessRole: explicitBusinessRole,
+                  businessPrimaryId: explicitBusinessRole === 'primary' ? null : parentPrimaryId,
+                  businessRelationDate: statementDate,
+                }
+              : {}),
           },
         });
         console.log(
@@ -149,9 +259,20 @@ async function applyParsedBillInTransaction(
           dueDay?: number | null;
           dueOffsetDays?: number | null;
           holderName?: string;
+          businessRole?: string;
+          businessPrimaryId?: number | null;
+          businessRelationDate?: Date;
         } = {};
         if (isOwner) Object.assign(patch, diffCardRule(card, statementDate, dueDate) ?? {});
         if (!card.holderName && (mappedName || extracted)) patch.holderName = mappedName || extracted!;
+        if (
+          explicitBusinessRole
+          && (!card.businessRelationDate || statementDate.getTime() >= card.businessRelationDate.getTime())
+        ) {
+          patch.businessRole = explicitBusinessRole;
+          patch.businessPrimaryId = explicitBusinessRole === 'primary' ? null : parentPrimaryId;
+          patch.businessRelationDate = statementDate;
+        }
         if (Object.keys(patch).length) {
           await tx.card.update({ where: { id: card.id }, data: patch });
           if (patch.holderName) card.holderName = patch.holderName;
@@ -159,7 +280,7 @@ async function applyParsedBillInTransaction(
         }
       }
 
-      const row = {
+      const row: ResolvedCard = {
         id: card.id,
         tail,
         holderName: card.holderName ?? mappedName ?? extracted,
@@ -168,28 +289,96 @@ async function applyParsedBillInTransaction(
         annualFeeDate: card.annualFeeDate ?? null,
         annualFeeDateManual: card.annualFeeDateManual === true,
         priority: card.priority ?? 0,
+        businessRole: explicitBusinessRole ?? card.businessRole ?? 'standalone',
+        businessPrimaryId: explicitBusinessRole === 'primary' ? null : parentPrimaryId ?? card.businessPrimaryId ?? null,
       };
       resolved.push(row);
-      if (isOwner) ownerCard = row;
+      if (explicitBusinessRole === 'primary') businessPrimaryIds.set(tail, row.id);
+      if (isOwner) {
+        ownerCard = row;
+        if (business) businessPrimaryId = row.id;
+      }
     }
 
-    // 阶段 2：holderName 三档（映射 → 历史已有 → 同封承接卡已有值）；已有不覆盖
+    if (business && ownerCard) {
+      for (const mobileTail of mobileTails) {
+        const existingAlias = await tx.cardAlias.findUnique({
+          where: { bankName_cardLast4: { bankName: bill.bankName, cardLast4: mobileTail } },
+        });
+        if (!existingAlias || statementDate.getTime() >= existingAlias.relationDate.getTime()) {
+          await tx.cardAlias.upsert({
+            where: { bankName_cardLast4: { bankName: bill.bankName, cardLast4: mobileTail } },
+            create: {
+              bankName: bill.bankName,
+              cardLast4: mobileTail,
+              type: 'mobile',
+              primaryCardId: ownerCard.id,
+              relationDate: statementDate,
+            },
+            update: { primaryCardId: ownerCard.id, relationDate: statementDate, type: 'mobile' },
+          });
+        }
+        const staleCard = await tx.card.findUnique({
+          where: { bankName_cardLast4: { bankName: bill.bankName, cardLast4: mobileTail } },
+        });
+        if (staleCard && staleCard.id !== ownerCard.id && !staleCard.hidden) {
+          await tx.card.update({
+            where: { id: staleCard.id },
+            data: { hidden: true, isPrimary: false, primaryManual: false },
+          });
+        }
+      }
+    }
+
+    // 阶段 2：副卡姓名恒继承主卡；附属卡只使用自身区块中的持卡人。
     const ownerHolder = ownerCard?.holderName ?? null;
     for (const row of resolved) {
-      if (row.holderName) continue;
-      if (!ownerHolder) continue;
-      await tx.card.update({ where: { id: row.id }, data: { holderName: ownerHolder } });
-      row.holderName = ownerHolder;
+      if (row.businessRole === 'supplementary') continue;
+      const inheritedHolder = row.businessRole === 'secondary'
+        ? resolved.find((candidate) => candidate.id === row.businessPrimaryId)?.holderName ?? ownerHolder
+        : ownerHolder;
+      if (!inheritedHolder) continue;
+      if (row.businessRole !== 'secondary' && row.holderName) continue;
+      await tx.card.update({ where: { id: row.id }, data: { holderName: inheritedHolder } });
+      row.holderName = inheritedHolder;
+    }
+    const parsedBusinessPrimaryIds = [...businessPrimaryIds.values()];
+    if (parsedBusinessPrimaryIds.length > 0) {
+      await tx.card.updateMany({
+        where: { businessPrimaryId: { in: parsedBusinessPrimaryIds } },
+        data: {
+          statementDay: rule.statementDay,
+          dueRule: rule.dueRule,
+          dueDay: rule.dueDay,
+          dueOffsetDays: rule.dueOffsetDays,
+        },
+      });
     }
 
     // 阶段 3：本封账单套卡配置——多卡时优先显示卡 = 手动钉住压过自动 → priority 降序 → id 升序
-    const memberIds = resolved.map((r) => r.id);
+    const persistedBusinessMembers = parsedBusinessPrimaryIds.length > 0
+      ? await tx.card.findMany({
+          where: {
+            hidden: false,
+            OR: [
+              { id: { in: parsedBusinessPrimaryIds } },
+              { businessPrimaryId: { in: parsedBusinessPrimaryIds } },
+            ],
+          },
+          select: { id: true },
+        })
+      : [];
+    const memberIds = Array.from(new Set([
+      ...resolved.map((r) => r.id),
+      ...persistedBusinessMembers.map((card) => card.id),
+    ]));
     const priorities = new Map<number, number>(resolved.map((r) => [r.id, r.priority]));
-    const preferredId =
-      pickPrimaryId(memberIds, {
-        primaryManualIds: resolved.filter((r) => r.primaryManual).map((r) => r.id),
-        priorities,
-      }) ?? ownerCard?.id ?? memberIds[0]!;
+    const preferredId = business && ownerCard
+      ? ownerCard.id
+      : pickPrimaryId(memberIds, {
+          primaryManualIds: resolved.filter((r) => r.primaryManual).map((r) => r.id),
+          priorities,
+        }) ?? ownerCard?.id ?? memberIds[0]!;
     const primaryCard = resolved.find((r) => r.id === preferredId) ?? ownerCard ?? resolved[0]!;
 
     // 账单级年费金额与卡片级年费日分开处理；这里只计算实际年费金额。
@@ -200,6 +389,17 @@ async function applyParsedBillInTransaction(
 
     const billOwnerId = ownerCard?.id ?? primaryCard.id;
     const currency = normalizeCurrency(bill.currency);
+    const previousBill = previousContext.rows.find((row) => (
+      !previousContext.usedIds.has(row.id)
+      && row.period === period
+      && normalizeCurrency(row.currency) === currency
+      && row.cardId === billOwnerId
+    )) ?? previousContext.rows.find((row) => (
+      !previousContext.usedIds.has(row.id)
+      && row.period === period
+      && normalizeCurrency(row.currency) === currency
+    ));
+    if (previousBill) previousContext.usedIds.add(previousBill.id);
     const existingBill = await tx.bill.findUnique({
       where: { cardId_period_currency: { cardId: billOwnerId, period, currency } },
       select: { id: true },
@@ -219,9 +419,9 @@ async function applyParsedBillInTransaction(
         hasDetails: (bill.transactions?.length ?? 0) > 0,
         annualFeeAmount,
         source: 'email',
-        paidStatus: autoPaid ? 'paid' : 'unpaid',
-        paidAt: autoPaid ? dueDate : null,
-        paidAmount: autoPaid ? (bill.amount ?? null) : null,
+        paidStatus: autoPaid ? 'paid' : previousBill?.paidStatus ?? 'unpaid',
+        paidAt: autoPaid ? dueDate : previousBill?.paidAt ?? null,
+        paidAmount: autoPaid ? (bill.amount ?? null) : previousBill?.paidAmount ?? null,
       },
       update: {
         cycleStartDate: bill.cycleStartDate ? shanghaiMidnight(bill.cycleStartDate) : null,
@@ -240,13 +440,13 @@ async function applyParsedBillInTransaction(
     });
 
     // 阶段 3.5：priority 累加写入（按金额、不按笔数；同期幂等；手动钉住照样更新）
-    if (!existingBill) {
+    if (!existingBill && !previousBill) {
       const txns = bill.transactions ?? [];
       const deltas = new Map<number, number>();
       if (txns.length > 0) {
         const byTail = new Map<string, number>();
         for (const t of txns) {
-          const tTail = t.cardLast4;
+          const tTail = t.cardLast4 && mobileTails.has(t.cardLast4) ? businessPrimaryTail : t.cardLast4;
           if (!tTail) continue;
           // 只加正数消费和费用：还款 / 返还 / 冲抵等负数与 0 一律不计入，不反向抹低优先级
           if (!(t.amount > 0)) continue;
@@ -290,15 +490,26 @@ async function applyParsedBillInTransaction(
     }
     const resolvedTransactions: ResolvedBillTransaction[] = transactions.map((transaction, sequence) => {
       const rawTail = transaction.cardLast4 ?? null;
-      const explicitTail = rawTail && !isPlaceholderTail(rawTail) ? rawTail : null;
-      const transactionCardId = explicitTail ? cardByTail.get(explicitTail) : preferredId;
+      const sourceTail = transaction.sourceCardLast4 ?? rawTail;
+      const mobile = rawTail != null && mobileTails.has(rawTail);
+      const explicitTail = rawTail && !mobile && !isPlaceholderTail(rawTail) ? rawTail : null;
+      const transactionCardId = mobile && ownerCard
+        ? ownerCard.id
+        : explicitTail
+          ? cardByTail.get(explicitTail)
+          : preferredId;
       if (explicitTail && transactionCardId == null) {
         throw new Error(
           `${bill.bankName}(${bill.cardLast4}) ${period} 明细卡尾 ${explicitTail} 未进入账单套卡`,
         );
       }
       const cardId = transactionCardId ?? preferredId;
-      const snapshotTail = explicitTail ?? resolved.find((row) => row.id === cardId)?.tail ?? primaryCard.tail;
+      const snapshotTail = mobile && ownerCard
+        ? ownerCard.tail
+        : explicitTail ?? resolved.find((row) => row.id === cardId)?.tail ?? primaryCard.tail;
+      const description = mobile && rawTail && !transaction.description.includes(rawTail)
+        ? `${transaction.description}（手机信用卡尾号 ${rawTail}）`
+        : transaction.description;
       const transactionDate = normalizeTransactionDate(transaction.date, statementDate);
       const originalAmount = transaction.originalAmount ?? null;
       const originalCurrency = transaction.originalCurrency
@@ -316,9 +527,10 @@ async function applyParsedBillInTransaction(
           bankName: bill.bankName,
           cardId,
           cardLast4: snapshotTail,
+          sourceCardLast4: sourceTail,
           transactionDate,
           dateText: transaction.date?.slice(0, 32) ?? null,
-          description: transaction.description.slice(0, 512),
+          description: description.slice(0, 512),
           amount: transaction.amount,
           currency,
           originalAmount: hasUsefulOriginalAmount ? originalAmount : null,

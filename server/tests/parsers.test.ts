@@ -444,6 +444,55 @@ describe('icbc2026Parser.parse（账户级多卡、多币种与 HTML 附件）',
     });
     expect(usd.transactions).toHaveLength(1);
   });
+
+  it('手机信用卡不进入实体卡列表，账户级年费行不创建卡片', () => {
+    const text = [
+      '贷记卡到期还款日 2026年8月25日',
+      '对账单生成日 2026年07月31日',
+      '7640(牡丹贷记卡) 人民币(本位币) 100.00/RMB 10.00/RMB',
+      '1225',
+      '2026-07-01',
+      '2026-07-01',
+      '实体副卡消费',
+      '10.00/RMB',
+      '10.00/RMB(支出)',
+      '2029',
+      '2026-07-02',
+      '2026-07-02',
+      '手机消费',
+      '20.00/RMB',
+      '20.00/RMB(支出)',
+      '6795',
+      '2026-07-03',
+      '2026-07-03',
+      '年费减免',
+      '减免年费2000.00元',
+      '0.00/RMB',
+      '0.00/RMB(存入)',
+      '尾号为2029的信用卡为小米手机信用卡',
+    ].join('\n');
+    const [bill] = icbc2026Parser.parse({
+      from: 'webmaster@icbc.com.cn',
+      subject: '中国工商银行客户对账单(ICBC Peony Card Bank Statement)',
+      date: new Date(),
+      text,
+    });
+
+    expect(bill!.cardLast4s).toEqual(['7640', '1225']);
+    expect(bill!.businessCards).toEqual({
+      primaryCardLast4: '7640',
+      secondaryCardLast4s: ['1225'],
+      mobileCardLast4s: ['2029'],
+    });
+    expect(bill!.transactions!.find((transaction) => transaction.description === '手机消费')).toMatchObject({
+      cardLast4: '2029',
+      sourceCardLast4: '2029',
+    });
+    expect(bill!.transactions!.find((transaction) => transaction.description.includes('年费减免'))).toMatchObject({
+      cardLast4: undefined,
+      sourceCardLast4: '6795',
+    });
+  });
 });
 
 describe('cmbc2026Parser.parse（明细行末卡尾 → 合并账单批量副卡）', () => {
@@ -1148,6 +1197,42 @@ describe('pab2026Parser.parse（平安账户级账单：卡区块归属）', () 
     });
   });
 
+  it('同封账单多张主卡按卡种区块分别对应附属卡', () => {
+    const text = [
+      '尊敬的张三 先生 ：',
+      '本期应还金额 ￥ 300.00 $ 0.00',
+      '本期最低应还金额 ￥ 30.00 $ 0.00',
+      '本期账单日 2026-08-17',
+      '本期还款日 2026-09-05',
+      '人民币账户交易明细',
+      '平安银行腾讯视频VIP信用卡金卡（4856）',
+      '主卡 Main Card',
+      '2026-08-01', '2026-08-01', '主卡消费', '￥100.00',
+      '平安银行好车主联名卡（金卡）（8837）',
+      '主卡 Main Card',
+      '2026-08-02', '2026-08-02', '另一主卡消费', '￥100.00',
+      '平安银行腾讯视频VIP信用卡金卡（7959）',
+      '附卡 Sup Card 附卡人：王小花',
+      '2026-08-03', '2026-08-03', '附属卡消费', '￥100.00',
+    ].join('\n');
+
+    const bills = pab2026Parser.parse({
+      from: 'creditcard@service.pingan.com',
+      subject: '平安信用卡电子账单',
+      date: new Date(),
+      text,
+    });
+    expect(bills[0]?.businessCards).toEqual({
+      primaryCardLast4: '4856',
+      additionalPrimaryCardLast4s: ['8837'],
+      supplementaryCards: [{
+        cardLast4: '7959',
+        holderName: '王小花',
+        primaryCardLast4: '4856',
+      }],
+    });
+  });
+
   it('附卡区块姓名按卡尾写入 holderMap，不得用抬头覆盖附卡', () => {
     const text = [
       '尊敬的张三 先生 ：',
@@ -1181,6 +1266,10 @@ describe('pab2026Parser.parse（平安账户级账单：卡区块归属）', () 
     expect(bill.holderName).toBe('张三');
     expect(bill.holderMap).toEqual({ '8837': '王小花' });
     expect(bill.cardLast4s).toEqual(['1765', '8837']);
+    expect(bill.businessCards).toEqual({
+      primaryCardLast4: '1765',
+      supplementaryCards: [{ cardLast4: '8837', holderName: '王小花' }],
+    });
   });
 
   it('附卡区块无附卡人时不写入该卡映射', () => {

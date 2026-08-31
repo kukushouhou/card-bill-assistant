@@ -10,6 +10,20 @@ export interface AppInfo {
   name: string;
 }
 
+export interface UpgradeTask {
+  key: string;
+  fromVersion: string | null;
+  toVersion: string;
+  banks: string[];
+  status: 'pending' | 'running' | 'failed';
+  total: number;
+  processed: number;
+  updated: number;
+  missing: number;
+  failed: number;
+  error: string | null;
+}
+
 export interface SetupStatus {
   installed: boolean;
   dbOk: boolean;
@@ -91,6 +105,16 @@ export interface CardRow {
   annualFeeDate: string | null;
   /** true=用户手动设置，自动识别不覆盖 */
   annualFeeDateManual: boolean;
+  /** 账单明确的业务身份；standalone 表示普通套卡。 */
+  businessRole: 'standalone' | 'primary' | 'secondary' | 'supplementary';
+  businessPrimaryCardId: number | null;
+  businessPrimaryCardLast4: string | null;
+  billingEditable: boolean;
+  businessGroupMembers: Array<{
+    id: number;
+    cardLast4: string;
+    role: 'primary' | 'secondary' | 'supplementary';
+  }>;
   source: string;
   status: 'active' | 'frozen' | 'closed';
   hasSecret: boolean;

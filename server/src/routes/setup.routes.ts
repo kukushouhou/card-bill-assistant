@@ -8,6 +8,7 @@ import { config } from '../config';
 import { derivePinKey, makePinVerifier, randomBytes } from '../lib/crypto';
 import { getNotificationProvider, listNotificationProviderDefinitions } from '../notify/registry';
 import { sealNotificationConfig } from '../notify/notification-config';
+import { APP_VERSION } from '../version';
 
 /**
  * 安装向导路由（免认证）：
@@ -91,6 +92,7 @@ router.post(
       await tx.appSetting.create({
         data: { key: INSTALLED_AT_KEY, value: new Date().toISOString() },
       });
+      await tx.appSetting.create({ data: { key: 'installedVersion', value: APP_VERSION } });
       for (const item of parsedNotifications) {
         await tx.notificationChannel.upsert({
           where: { type: item.provider.definition.type },

@@ -28,6 +28,7 @@ import { api } from '../api/client';
 import { useAppName } from '../appName';
 import { useResponsive } from '../responsive';
 import { useHistoryGate } from '../historyGate';
+import UpgradePrompt from './UpgradePrompt';
 import {
   MobileShellContext,
   type MobileFlowMeta,
@@ -528,6 +529,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
 
   return (
     <MobileShellContext.Provider value={mobileShellValue}>
+      <UpgradePrompt />
       <div className={`app-shell ${isMobile ? 'app-shell-mobile' : 'app-shell-desktop'}`}>
         {isMobile ? (
           <header className="mobile-app-header">

@@ -12,8 +12,25 @@ import { fromYmd } from '../src/lib/dates';
 
 // mock prisma：$transaction 直接把 tx 传给回调，不落真库
 const tx = vi.hoisted(() => ({
-  card: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-  bill: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn() },
+  card: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    delete: vi.fn(),
+  },
+  cardAlias: { findMany: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
+  bill: {
+    upsert: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
   billCard: { count: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), upsert: vi.fn() },
   billTransaction: {
     deleteMany: vi.fn(),
@@ -196,6 +213,7 @@ describe('applyParsedBill 明细元数据落库', () => {
         bankName: '测试银行',
         cardId: 7,
         cardLast4: '1234',
+        sourceCardLast4: '1234',
         transactionDate: fromYmd('2026-08-01'),
         dateText: '08/01',
         description: '境外消费',
@@ -241,6 +259,36 @@ describe('applyParsedBill 明细元数据落库', () => {
       { cardId_period_currency: { cardId: 7, period: '2026-08', currency: 'CNY' } },
       { cardId_period_currency: { cardId: 7, period: '2026-08', currency: 'USD' } },
     ]);
+  });
+
+  it('历史重读改变账单归属时原子替换旧行并承接手动还款状态', async () => {
+    tx.bill.findMany.mockResolvedValue([{
+      id: 89,
+      cardId: 99,
+      period: '2027-08',
+      currency: 'CNY',
+      paidStatus: 'partial',
+      paidAt: fromYmd('2026-08-20'),
+      paidAmount: 40,
+    }]);
+
+    await applyParsedBill(66, 'icbc2026', {
+      ...makeBill(),
+      period: '2027-08',
+      statementDate: fromYmd('2027-08-05'),
+      dueDate: fromYmd('2027-08-23'),
+    });
+
+    const moved = tx.bill.upsert.mock.calls[0]![0] as { create: Record<string, unknown> };
+    expect(moved.create).toMatchObject({
+      paidStatus: 'partial',
+      paidAt: fromYmd('2026-08-20'),
+      paidAmount: 40,
+    });
+    expect(tx.bill.deleteMany).toHaveBeenCalledWith({ where: { mailLogId: 66, id: { notIn: [101] } } });
+    expect(tx.card.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ priority: expect.any(Number) }) }),
+    );
   });
 
   it('入账币种与所属账单不一致时拒绝写入整封邮件', async () => {
@@ -523,6 +571,167 @@ describe('applyParsedBill 合并账单多卡', () => {
         { billId: 201, cardId: 8 },
       ],
     });
+  });
+
+  it('明确业务关系只建主副卡，手机信用卡明细归入主卡', async () => {
+    await applyParsedBill(79, 'icbc2026', {
+      ...makeMergedBill(),
+      businessCards: {
+        primaryCardLast4: '5888',
+        secondaryCardLast4s: ['6666'],
+        mobileCardLast4s: ['9999'],
+      },
+      transactions: [{
+        date: '08-01',
+        description: '支付宝消费',
+        amount: 88,
+        currency: 'CNY',
+        cardLast4: '9999',
+      }],
+    });
+
+    expect(tx.card.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        cardLast4: '6666',
+        businessRole: 'secondary',
+        businessPrimaryId: 7,
+      }),
+    }));
+    expect(tx.card.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ cardLast4: '9999' }) }),
+    );
+    expect(tx.cardAlias.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ cardLast4: '9999', primaryCardId: 7, type: 'mobile' }),
+    }));
+    expect(tx.billTransaction.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        cardId: 7,
+        cardLast4: '5888',
+        sourceCardLast4: '9999',
+        description: '支付宝消费（手机信用卡尾号 9999）',
+      })],
+    });
+  });
+
+  it('后续账单未重复标注时沿用已确认的手机信用卡关系', async () => {
+    tx.cardAlias.findMany.mockResolvedValue([{ cardLast4: '9999' }]);
+    await applyParsedBill(81, 'icbc2026', {
+      ...makeMergedBill(),
+      cardLast4s: ['5888', '6666', '9999'],
+      businessCards: {
+        primaryCardLast4: '5888',
+        secondaryCardLast4s: ['6666', '9999'],
+      },
+      transactions: [{
+        date: '08-01',
+        description: '唯品会',
+        amount: 137.18,
+        currency: 'CNY',
+        cardLast4: '9999',
+      }],
+    });
+
+    expect(tx.card.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ cardLast4: '9999' }) }),
+    );
+    expect(tx.billTransaction.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        cardId: 7,
+        cardLast4: '5888',
+        sourceCardLast4: '9999',
+      })],
+    });
+  });
+
+  it('同封账单的多组主附卡分别保留各自业务主卡', async () => {
+    tx.card.create.mockImplementation(async ({ data }: { data: { cardLast4: string } }) => ({
+      id: data.cardLast4 === '7777' ? 9 : data.cardLast4 === '8888' ? 10 : 8,
+      ...data,
+    }));
+    await applyParsedBill(80, 'pab2026', {
+      ...makeMergedBill(),
+      cardLast4s: ['5888', '7777', '8888'],
+      businessCards: {
+        primaryCardLast4: '5888',
+        additionalPrimaryCardLast4s: ['7777'],
+        supplementaryCards: [{
+          cardLast4: '8888',
+          holderName: '王小花',
+          primaryCardLast4: '7777',
+        }],
+      },
+      transactions: [
+        { date: '08-01', description: '主卡消费', amount: 50, cardLast4: '5888' },
+        { date: '08-02', description: '另一主卡消费', amount: 70, cardLast4: '7777' },
+        { date: '08-03', description: '附属卡消费', amount: 80, cardLast4: '8888' },
+      ],
+    });
+
+    expect(tx.card.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ cardLast4: '7777', businessRole: 'primary', businessPrimaryId: null }),
+    }));
+    expect(tx.card.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        cardLast4: '8888',
+        holderName: '王小花',
+        businessRole: 'supplementary',
+        businessPrimaryId: 9,
+      }),
+    }));
+    expect(tx.bill.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ cardId: 7 }),
+    }));
+  });
+
+  it('当期未再列出附属卡对应主卡时保留已确认的历史归属', async () => {
+    tx.card.findUnique.mockImplementation(async ({ where }: { where: { bankName_cardLast4: { cardLast4: string } } }) => {
+      const tail = where.bankName_cardLast4.cardLast4;
+      if (tail === '5888') {
+        return {
+          id: 7,
+          holderName: '张三',
+          statementDay: 5,
+          dueRule: 'offset',
+          dueDay: null,
+          dueOffsetDays: 18,
+          annualFeeDate: null,
+          annualFeeDateManual: false,
+          businessRole: 'primary',
+          businessPrimaryId: null,
+        };
+      }
+      if (tail === '8888') {
+        return {
+          id: 10,
+          holderName: '王小花',
+          statementDay: 5,
+          dueRule: 'offset',
+          dueDay: null,
+          dueOffsetDays: 18,
+          annualFeeDate: null,
+          annualFeeDateManual: false,
+          businessRole: 'supplementary',
+          businessPrimaryId: 9,
+          businessRelationDate: fromYmd('2026-07-05'),
+        };
+      }
+      return null;
+    });
+
+    await applyParsedBill(82, 'pab2026', {
+      ...makeMergedBill(),
+      cardLast4s: ['5888', '8888'],
+      businessCards: {
+        primaryCardLast4: '5888',
+        supplementaryCards: [{ cardLast4: '8888', holderName: '王小花' }],
+      },
+      transactions: [{ date: '08-03', description: '附属卡消费', amount: 80, cardLast4: '8888' }],
+    });
+
+    expect(tx.card.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 10 },
+      data: expect.objectContaining({ businessRole: 'supplementary', businessPrimaryId: 9 }),
+    }));
   });
 
   it('多卡账单按年费明细卡尾更新消费卡，不误写承接卡', async () => {

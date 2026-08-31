@@ -25,6 +25,13 @@ export interface EmailAccountParams {
 
 const syncingAccounts = new Set<number>();
 
+/** 供历史升级任务复用同一邮箱并发边界；返回释放函数。 */
+export function acquireEmailAccountLock(accountId: number): () => void {
+  if (syncingAccounts.has(accountId)) throw new ApiError(409, '该邮箱正在同步中，请稍后');
+  syncingAccounts.add(accountId);
+  return () => syncingAccounts.delete(accountId);
+}
+
 function createClient(host: string, port: number, tls: boolean, user: string, pass: string): ImapFlow {
   return new ImapFlow({ host, port, secure: tls, auth: { user, pass }, logger: false });
 }
@@ -641,40 +648,78 @@ export async function dryRunParse(accountId: number, limit = 20, parserId?: stri
   return { total: results.length, results: results.reverse() };
 }
 
-/** 实时读取单封邮件正文（不落库），供解析器调试 */
-export async function fetchMailBody(accountId: number, uid: number) {
+export interface MailBodyResult {
+  uid: number;
+  from: string;
+  subject: string;
+  date: string;
+  text: string | null;
+  html: string | null;
+  pdfText: string | null;
+  attachText: string | null;
+  attachments: Array<{ filename: string; size: number }>;
+}
+
+async function fetchMailBodyFromClient(client: ImapFlow, uid: number): Promise<MailBodyResult> {
+  const msg = await client.fetchOne(uid, { uid: true, envelope: true, source: true }, { uid: true });
+  if (!msg || !msg.envelope) throw new ApiError(404, '邮件不存在');
+  if (!msg.source) throw new ApiError(404, '邮件原文为空');
+  const fromAddress = (msg.envelope.from || []).map((a) => a.address || '').join(', ');
+  const parsed = await simpleParser(prepareRawForParser(msg.source, fromAddress));
+  const pdfText = await extractPdfText(parsed.attachments || []);
+  const attachText = extractAttachmentHtmlText(parsed.attachments || []);
+  return {
+    uid,
+    from: (msg.envelope.from || []).map((a) => `${a.name || ''} <${a.address || ''}>`.trim()).join(', '),
+    subject: msg.envelope.subject || '(无标题)',
+    date: (msg.envelope.date || new Date()).toISOString(),
+    text: parsed.text || null,
+    html: typeof parsed.html === 'string' ? parsed.html : null,
+    pdfText: pdfText ?? null,
+    attachText: attachText ?? null,
+    attachments: (parsed.attachments || []).map((a) => ({
+      filename: a.filename || '(未命名附件)',
+      size: (a.content as Buffer | undefined)?.length ?? 0,
+    })),
+  };
+}
+
+/** 历史任务按账户复用一次 IMAP 连接，仍逐封只在内存中读取原文。 */
+export async function openAccountMailReader(accountId: number): Promise<{
+  fetch: (uid: number) => Promise<MailBodyResult>;
+  close: () => Promise<void>;
+}> {
   const account = await prisma.emailAccount.findUnique({ where: { id: accountId } });
   if (!account) throw new ApiError(404, '邮箱账户不存在');
 
   const password = decrypt(config.encryptionKey, Buffer.from(account.authPasswordEnc));
   const client = createClient(account.imapHost, account.imapPort, account.tls, account.authUser, password);
-  await client.connect();
-  const lock = await client.getMailboxLock('INBOX');
   try {
-    const msg = await client.fetchOne(uid, { uid: true, envelope: true, source: true }, { uid: true });
-    if (!msg || !msg.envelope) throw new ApiError(404, '邮件不存在');
-    if (!msg.source) throw new ApiError(404, '邮件原文为空');
-    const fromAddress = (msg.envelope.from || []).map((a) => a.address || '').join(', ');
-    const parsed = await simpleParser(prepareRawForParser(msg.source, fromAddress));
-    const pdfText = await extractPdfText(parsed.attachments || []);
-    const attachText = extractAttachmentHtmlText(parsed.attachments || []);
+    await client.connect();
+    const lock = await client.getMailboxLock('INBOX');
+    let closed = false;
     return {
-      uid,
-      from: (msg.envelope.from || []).map((a) => `${a.name || ''} <${a.address || ''}>`.trim()).join(', '),
-      subject: msg.envelope.subject || '(无标题)',
-      date: (msg.envelope.date || new Date()).toISOString(),
-      text: parsed.text || null,
-      html: typeof parsed.html === 'string' ? parsed.html : null,
-      pdfText: pdfText ?? null,
-      attachText: attachText ?? null,
-      attachments: (parsed.attachments || []).map((a) => ({
-        filename: a.filename || '(未命名附件)',
-        size: (a.content as Buffer | undefined)?.length ?? 0,
-      })),
+      fetch: (uid) => fetchMailBodyFromClient(client, uid),
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        lock.release();
+        await client.logout().catch(() => client.close());
+      },
     };
-  } finally {
-    lock.release();
+  } catch (error) {
     await client.logout().catch(() => client.close());
+    throw error;
+  }
+}
+
+/** 实时读取单封邮件正文（不落库），供解析器调试 */
+export async function fetchMailBody(accountId: number, uid: number): Promise<MailBodyResult> {
+  const reader = await openAccountMailReader(accountId);
+  try {
+    return await reader.fetch(uid);
+  } finally {
+    await reader.close();
   }
 }
 

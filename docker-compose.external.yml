@@ -5,7 +5,7 @@
 #   3. docker compose -f docker-compose.external.yml up -d
 services:
   app:
-    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.2.3}
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.3.0}
     container_name: due-reminder-app
     restart: unless-stopped
     environment:

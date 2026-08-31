@@ -86,13 +86,39 @@ model Card {
   priority           Float     @default(0)
   /** 隐藏标记：未完善占位卡在同账期出现真尾号卡后隐藏，不物理删除 */
   hidden             Boolean   @default(false)
+  /** 银行业务身份：standalone 普通卡 / primary 主卡 / secondary 副卡 / supplementary 附属卡 */
+  businessRole       String    @default("standalone")
+  /** 副卡、附属卡归属的业务主卡；只允许账单解析流程维护 */
+  businessPrimaryId  Int?
+  /** 当前业务关系所依据的最新账单日，防止旧邮件重解析覆盖新关系 */
+  businessRelationDate DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime  @updatedAt
   bills              Bill[]
   billCards          BillCard[]
   transactions       BillTransaction[]
+  businessPrimary    Card?     @relation("CardBusinessHierarchy", fields: [businessPrimaryId], references: [id], onDelete: Cascade)
+  businessChildren   Card[]    @relation("CardBusinessHierarchy")
+  aliases            CardAlias[]
 
   @@unique([bankName, cardLast4])
+  @@index([businessPrimaryId])
+}
+
+/** 不形成独立卡片档案的支付卡号别名，如手机信用卡尾号。 */
+model CardAlias {
+  id             Int      @id @default(autoincrement())
+  bankName       String
+  cardLast4      String
+  type           String   @default("mobile")
+  primaryCardId  Int
+  relationDate   DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  primaryCard    Card     @relation(fields: [primaryCardId], references: [id], onDelete: Cascade)
+
+  @@unique([bankName, cardLast4])
+  @@index([primaryCardId])
 }
 
 model Bill {
@@ -150,6 +176,8 @@ model BillTransaction {
   card             Card?     @relation(fields: [cardId], references: [id], onDelete: SetNull)
   /** 解析当时的展示卡尾；卡档案后续删除时仍可展示来源。 */
   cardLast4        String?   @db.VarChar(8)
+  /** 邮件原始卡尾；手机信用卡交易的 cardLast4 归主卡，此字段保留来源尾号。 */
+  sourceCardLast4  String?   @db.VarChar(8)
   /** 规范化交易日；银行只给月日且无法可靠归年时允许为空。 */
   transactionDate  DateTime?
   /** 银行原始交易日文本。 */
@@ -168,6 +196,44 @@ model BillTransaction {
   @@index([bankName, transactionDate])
   @@index([transactionDate, id])
   @@index([cardId, transactionDate])
+}
+
+/** 需要用户确认并可跨重启恢复的版本升级任务。 */
+model UpgradeTask {
+  id             Int       @id @default(autoincrement())
+  key            String    @unique @db.VarChar(100)
+  fromVersion    String?   @db.VarChar(32)
+  toVersion      String    @db.VarChar(32)
+  banks          Json
+  status         String    @default("pending") @db.VarChar(20)
+  total          Int       @default(0)
+  processed      Int       @default(0)
+  updated        Int       @default(0)
+  missing        Int       @default(0)
+  failed         Int       @default(0)
+  error          String?   @db.VarChar(512)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  items          UpgradeTaskItem[]
+}
+
+/** 升级任务中的单封已知账单邮件，逐封提交以便中断后恢复。 */
+model UpgradeTaskItem {
+  id          Int       @id @default(autoincrement())
+  taskId      Int
+  accountId   Int
+  uid         Int
+  bankName    String    @db.VarChar(64)
+  parserId    String    @db.VarChar(64)
+  status      String    @default("pending") @db.VarChar(20)
+  error       String?   @db.VarChar(512)
+  processedAt DateTime?
+  task        UpgradeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, accountId, uid])
+  @@index([taskId, status])
 }
 
 model CustomReminder {
