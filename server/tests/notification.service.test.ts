@@ -14,6 +14,7 @@ import {
   getNotificationSettings,
   resolveNotificationChannels,
   saveNotificationChannel,
+  testNotificationChannel,
 } from '../src/notify/notification.service';
 import { barkProvider } from '../src/notify/providers/bark.provider';
 import { sealNotificationConfig, unsealNotificationConfig } from '../src/notify/notification-config';
@@ -37,7 +38,16 @@ describe('notification.service', () => {
 
     const settings = await getNotificationSettings();
     expect(settings.providers).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'bark', fields: [expect.objectContaining({ key: 'url' })] }),
+      expect.objectContaining({
+        type: 'bark',
+        fields: expect.arrayContaining([
+          expect.objectContaining({ key: 'url' }),
+          expect.objectContaining({ key: 'group', advanced: true }),
+          expect.objectContaining({ key: 'sound', advanced: true }),
+          expect.objectContaining({ key: 'level', type: 'select', advanced: true }),
+          expect.objectContaining({ key: 'icon', advanced: true }),
+        ]),
+      }),
       expect.objectContaining({ type: 'custom-http', configMode: 'custom-http' }),
     ]));
     expect(settings.channels).toEqual([
@@ -88,6 +98,30 @@ describe('notification.service', () => {
       );
       expect(result).toEqual({ ok: false, error: '通知服务返回 HTTP 503' });
       expect(result.error).not.toContain('Bark');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('测试通知直接预览尚未保存的 Bark 高级设置', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(testNotificationChannel('bark', {
+        url: 'https://api.day.app/key',
+        group: '信用卡小管家',
+        sound: 'minuet',
+        level: 'timeSensitive',
+        icon: 'https://example.com/card.png',
+      })).resolves.toEqual({ ok: true });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).toEqual(expect.objectContaining({
+        group: '信用卡小管家',
+        sound: 'minuet',
+        level: 'timeSensitive',
+        icon: 'https://example.com/card.png',
+      }));
     } finally {
       vi.unstubAllGlobals();
     }

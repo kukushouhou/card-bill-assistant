@@ -1,6 +1,6 @@
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Col, Collapse, Form, Input, Row, Select, Space, Typography } from 'antd';
-import type { NotificationProviderDefinition } from '../api/types';
+import type { NotificationProviderDefinition, NotificationProviderField } from '../api/types';
 
 type PathPart = string | number;
 
@@ -187,13 +187,17 @@ export function NotificationConfigFields({
 }) {
   if (provider.configMode === 'custom-http') return <CustomHttpFields prefix={prefix} />;
 
-  return (
+  const basicFields = provider.fields.filter((field) => !field.advanced);
+  const advancedFields = provider.fields.filter((field) => field.advanced);
+
+  const renderFields = (fields: NotificationProviderField[]) => (
     <Row gutter={16}>
-      {provider.fields.map((field) => (
-        <Col xs={24} lg={provider.fields.length > 1 ? 12 : 24} key={field.key}>
+      {fields.map((field) => (
+        <Col xs={24} lg={fields.length > 1 ? 12 : 24} key={field.key}>
           <Form.Item
             name={path(prefix, field.key)}
             label={field.label}
+            extra={field.description}
             rules={[
               ...(field.required ? [{ required: true, message: `请输入${field.label}` }] : []),
               ...(field.type === 'url' ? [{ type: 'url' as const, message: `${field.label}格式不正确` }] : []),
@@ -201,15 +205,38 @@ export function NotificationConfigFields({
           >
             {field.type === 'password' ? (
               <Input.Password placeholder={field.placeholder} autoComplete="new-password" />
+            ) : field.type === 'select' ? (
+              <Select
+                allowClear
+                options={field.options ?? []}
+                placeholder={field.placeholder}
+              />
             ) : (
               <Input type={field.type === 'url' ? 'url' : 'text'} placeholder={field.placeholder} />
             )}
           </Form.Item>
         </Col>
       ))}
-      {provider.fields.length === 0 && (
-        <Col span={24}><Typography.Text type="secondary">此渠道没有额外配置项。</Typography.Text></Col>
-      )}
     </Row>
+  );
+
+  return (
+    <>
+      {renderFields(basicFields)}
+      {advancedFields.length > 0 && (
+        <Collapse
+          ghost
+          className="notification-advanced-collapse"
+          items={[{
+            key: 'advanced',
+            label: '高级设置',
+            children: renderFields(advancedFields),
+          }]}
+        />
+      )}
+      {provider.fields.length === 0 && (
+        <Typography.Text type="secondary">此渠道没有额外配置项。</Typography.Text>
+      )}
+    </>
   );
 }

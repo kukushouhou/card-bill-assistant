@@ -11,9 +11,12 @@ export interface NotificationSendResult {
 export interface NotificationProviderField {
   key: string;
   label: string;
-  type: 'url' | 'text' | 'password';
+  type: 'url' | 'text' | 'password' | 'select';
   placeholder?: string;
+  description?: string;
   required: boolean;
+  advanced?: boolean;
+  options?: Array<{ value: string; label: string }>;
 }
 
 export interface NotificationProviderDefinition {
