@@ -519,7 +519,7 @@ export default function Dashboard() {
                   <Row gutter={10} className="mobile-dashboard-key-stats">
                     <Col span={12}>
                       <Card className="mobile-dashboard-key-stat mobile-dashboard-key-stat-primary" size="small">
-                        <Typography.Text type="secondary">本期待还</Typography.Text>
+                        <Typography.Text type="secondary">当前待还</Typography.Text>
                         <strong>{summary?.currentPeriod.unpaidCount ?? 0} 笔</strong>
                         <div className="mobile-dashboard-key-stat-detail">
                           {summary?.currentPeriod.totalsByCurrency.some((entry) => entry.unpaidTotal > 0)
@@ -848,7 +848,7 @@ export default function Dashboard() {
               <Col xs={12} lg={12} xl={6}>
                 <Card className="stat-card dash-stat-card" variant="outlined">
                   <Statistic
-                    title={`${summary?.currentPeriod.period ?? ''} 期未还`}
+                    title="当前待还"
                     value={summary ? summary.currentPeriod.unpaidCount : 0}
                     precision={0}
                     prefix={<PayCircleOutlined style={{ color: summary && summary.currentPeriod.unpaidCount > 0 ? '#cf1322' : undefined }} />}
