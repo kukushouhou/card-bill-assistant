@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
-import { monthParts, today, ymd } from '../lib/dates';
+import { monthParts, today } from '../lib/dates';
 import { remainingOf } from '../modules/bills/paid';
+import { buildLedger, type LedgerBillInput, type LedgerCard } from '../modules/bills/ledger';
 import {
   ANNUAL_FEE_NOTICE_CURSOR_KEY,
   annualFeeBillCursor,
@@ -57,33 +58,77 @@ router.get(
 
     const activeCards = cards.filter((c) => c.status === 'active');
 
-    // 本期账单汇总（有账单的卡）
-    const currentBills = billRows.filter((b) => b.period === period);
-    const unpaidCurrent = currentBills.filter((b) => b.paidStatus !== 'paid');
-    const annualFeeBills = currentBills.filter((b) => b.annualFeeAmount != null && Number(b.annualFeeAmount) > 0);
-    const currentCustomBills = customOccurrenceRows.filter((row) =>
+    // 当前待还：buildLedger 未还清全集（含逾期上期真实账单 + 未取得账单占位行）
+    // 作用域与今日待办一致：hidden 卡不进台账；冻结/注销卡的真实未还清账单仍由 buildLedger 保留
+    const ledgerCards: LedgerCard[] = cards.filter((c) => !c.hidden).map((c) => ({
+      id: c.id,
+      bankName: c.bankName,
+      cardLast4: c.cardLast4,
+      currency: c.currency,
+      statementDay: c.statementDay,
+      dueRule: c.dueRule,
+      dueDay: c.dueDay,
+      dueOffsetDays: c.dueOffsetDays,
+      status: c.status,
+      createdAt: c.createdAt,
+      businessRole: c.businessRole,
+      businessPrimaryId: c.businessPrimaryId,
+    }));
+    const ledgerBills: LedgerBillInput[] = billRows.map((b) => ({
+      id: b.id,
+      cardId: b.cardId,
+      period: b.period,
+      statementDate: b.statementDate,
+      dueDate: b.dueDate,
+      amount: b.amount != null ? Number(b.amount) : null,
+      minAmount: b.minAmount != null ? Number(b.minAmount) : null,
+      currency: b.currency,
+      paidStatus: b.paidStatus,
+      paidAt: b.paidAt,
+      paidAmount: b.paidAmount != null ? Number(b.paidAmount) : null,
+      hasDetails: b.hasDetails,
+      annualFeeAmount: b.annualFeeAmount != null ? Number(b.annualFeeAmount) : null,
+      source: b.source,
+      linkedCardIds: [b.cardId, ...b.cards.map((bc) => bc.cardId)].filter(
+        (id, idx, arr) => arr.indexOf(id) === idx,
+      ),
+    }));
+    const unpaidLedger = buildLedger(ledgerCards, ledgerCards, ledgerBills, now)
+      .filter((row) => row.paidStatus !== 'paid');
+    const unpaidCustomBills = customOccurrenceRows.filter((row) =>
       (row.businessType === 'fixed_bill' || row.businessType === 'dynamic_bill')
-      && ymd(row.targetDate).slice(0, 7) === period,
+      && row.status !== 'paid',
     );
-    const unpaidCustomBills = currentCustomBills.filter((row) => row.status !== 'paid');
     const byCurrency = new Map<string, { unpaidCount: number; unpaidTotal: number; annualFeeTotal: number }>();
-    for (const bill of currentBills) {
-      const entry = byCurrency.get(bill.currency) ?? { unpaidCount: 0, unpaidTotal: 0, annualFeeTotal: 0 };
-      if (bill.paidStatus !== 'paid') {
-        entry.unpaidCount++;
+    let unknownAmountCount = 0;
+    let annualFeeCount = 0;
+    for (const row of unpaidLedger) {
+      const entry = byCurrency.get(row.currency) ?? { unpaidCount: 0, unpaidTotal: 0, annualFeeTotal: 0 };
+      entry.unpaidCount++;
+      entry.unpaidTotal += remainingOf({
+        amount: row.amount,
+        paidStatus: row.paidStatus ?? 'unpaid',
+        paidAmount: row.paidAmount,
+      });
+      if (row.amount == null) unknownAmountCount++;
+      if (row.annualFeeAmount != null && row.annualFeeAmount > 0) {
+        entry.annualFeeTotal += row.annualFeeAmount;
+        annualFeeCount++;
+      }
+      byCurrency.set(row.currency, entry);
+    }
+    for (const row of unpaidCustomBills) {
+      const entry = byCurrency.get('CNY') ?? { unpaidCount: 0, unpaidTotal: 0, annualFeeTotal: 0 };
+      entry.unpaidCount++;
+      if (row.amount == null) {
+        unknownAmountCount++;
+      } else {
         entry.unpaidTotal += remainingOf({
-          amount: bill.amount == null ? null : Number(bill.amount),
-          paidStatus: bill.paidStatus,
-          paidAmount: bill.paidAmount == null ? null : Number(bill.paidAmount),
+          amount: Number(row.amount),
+          paidStatus: 'unpaid',
+          paidAmount: null,
         });
       }
-      if (bill.annualFeeAmount != null) entry.annualFeeTotal += Number(bill.annualFeeAmount);
-      byCurrency.set(bill.currency, entry);
-    }
-    if (currentCustomBills.length > 0) {
-      const entry = byCurrency.get('CNY') ?? { unpaidCount: 0, unpaidTotal: 0, annualFeeTotal: 0 };
-      entry.unpaidCount += unpaidCustomBills.length;
-      entry.unpaidTotal += unpaidCustomBills.reduce((sum, row) => sum + (row.amount == null ? 0 : Number(row.amount)), 0);
       byCurrency.set('CNY', entry);
     }
     const totalsByCurrency = [...byCurrency.entries()]
@@ -125,12 +170,12 @@ router.get(
       },
       currentPeriod: {
         period,
-        bills: currentBills.length + currentCustomBills.length,
-        unpaidCount: unpaidCurrent.length + unpaidCustomBills.length,
+        bills: unpaidLedger.length + unpaidCustomBills.length,
+        unpaidCount: unpaidLedger.length + unpaidCustomBills.length,
         unpaidTotal: cny?.unpaidTotal ?? 0,
         totalsByCurrency,
-        unknownAmountCount: currentCustomBills.filter((row) => row.amount == null).length,
-        annualFeeCount: annualFeeBills.length,
+        unknownAmountCount,
+        annualFeeCount,
         annualFeeTotal: cny?.annualFeeTotal ?? 0,
         currency: 'CNY',
       },

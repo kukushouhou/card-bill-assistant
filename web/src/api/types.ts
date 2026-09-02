@@ -389,15 +389,20 @@ export interface AnnualFeeNotice {
 export interface DashboardSummary {
   date: string;
   cards: { total: number; active: number; withSecret: number };
+  /** 全量未还清统计（含逾期上期、占位行、固定/动态账单）；period 仅作日历月份参考，不作为标题 */
   currentPeriod: {
     period: string;
+    /** 全量未还清台账行数（含占位行与自定义账单） */
     bills: number;
+    /** 全量未还清笔数，按台账行计数 */
     unpaidCount: number;
+    /** 全量未还清金额（CNY） */
     unpaidTotal: number;
+    /** 占位行 + 自定义账单金额为 null 的笔数 */
     unknownAmountCount: number;
-    /** 本期含年费账单数 */
+    /** 未还清项中含年费的笔数 */
     annualFeeCount: number;
-    /** 本期年费合计 */
+    /** 未还清项年费合计（CNY） */
     annualFeeTotal: number;
     currency: string;
     totalsByCurrency: Array<{
