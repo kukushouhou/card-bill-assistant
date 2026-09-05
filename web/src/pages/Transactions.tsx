@@ -272,23 +272,26 @@ export default function Transactions() {
         </div>
       ) : (
         <Table<TransactionRow>
+          className="transaction-table"
+          tableLayout="fixed"
+          scroll={{ x: 850 }}
           rowKey="id"
           loading={loading}
           dataSource={data.items}
           locale={{ emptyText: <Empty description={noRecords} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
           pagination={{ current: data.page, pageSize: data.pageSize, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 笔`, onChange: setPage }}
           columns={[
-            { title: '交易日', width: 175, render: (_, row) => transactionDate(row) },
-            { title: '银行 / 卡尾', width: 190, render: (_, row) => `${row.bankName}（${row.cardLast4 ?? '----'}）` },
-            { title: '方向', width: 80, align: 'center', render: (_, row) => transactionDirection(row.amount) },
+            { title: '交易日', width: 130, render: (_, row) => transactionDate(row) },
+            { title: '银行 / 卡尾', width: 170, render: (_, row) => `${row.bankName}（${row.cardLast4 ?? '----'}）` },
+            { title: '方向', width: 70, align: 'center', render: (_, row) => transactionDirection(row.amount) },
             { title: '交易描述', dataIndex: 'description' },
-            { title: '金额', width: 170, align: 'right', render: (_, row) => transactionAmount(row) },
             {
               title: '账期',
               dataIndex: 'period',
-              width: 90,
-              render: (value, row) => <Tag color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? value : displayPeriod(value)}</Tag>,
+              width: 120,
+              render: (value, row) => <Tag className="transaction-period" color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? value : displayPeriod(value)}</Tag>,
             },
+            { title: '金额', width: 170, align: 'right', fixed: 'right', render: (_, row) => transactionAmount(row) },
           ]}
         />
       ))}

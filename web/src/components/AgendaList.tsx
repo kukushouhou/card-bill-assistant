@@ -1,7 +1,7 @@
 import { Popup } from 'antd-mobile';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, App, Button, Dropdown, Empty, Pagination, Skeleton, Space, Table, Tag } from 'antd';
-import { DownOutlined, RightOutlined } from '../skins/icons';
+import { BellOutlined, CreditCardOutlined, DownOutlined, FileTextOutlined, MoreOutlined, RightOutlined } from '../skins/icons';
 import type { AgendaItem, AgendaResult, AgendaSummary, BillRow, CardRow } from '../api/types';
 import { api } from '../api/client';
 import { useResponsive } from '../responsive';
@@ -35,7 +35,11 @@ function Identity({ item }: { item: AgendaItem }) {
 
 function BillAmount({ item }: { item: AgendaItem }) {
   const bill = item.bill;
-  if (bill) return <strong className="agenda-amount">{bill.missing ? '未取得账单' : (item.completed ? bill.amount : bill.remainingAmount) == null ? '金额待填写' : formatMoney((item.completed ? bill.amount : bill.remainingAmount)!, bill.currency)}</strong>;
+  if (bill) {
+    const amount = item.completed ? bill.amount : bill.remainingAmount;
+    if (bill.missing || amount == null) return <strong className="agenda-amount-state">{bill.missing ? '未取得账单' : '金额待填写'}</strong>;
+    return <strong className="agenda-amount">{formatMoney(amount, bill.currency)}</strong>;
+  }
   if (item.previewAmount != null) return <span>{formatMoney(item.previewAmount, item.previewCurrency ?? 'CNY')}</span>;
   return null;
 }
@@ -52,6 +56,14 @@ function Dates({ item }: { item: AgendaItem }) {
     {item.bill ? <>{item.bill.statementDate && <span>出账 {displayDate(item.bill.statementDate)}</span>}<span>还款 {displayDate(item.bill.dueDate)}</span>{item.bill.minAmount != null && <span>最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</> : <span>{displayDate(item.date)}</span>}
     {item.daysOverdue != null && <span className="agenda-overdue">{overdueText(item.daysOverdue)}</span>}
   </div>;
+}
+
+/** 桌面按列组织信息：日期成对对齐，最低还款额与金额放在一起。 */
+function DesktopDates({ item }: { item: AgendaItem }) {
+  return <dl className="agenda-date-cell">
+    <div><dt>{item.bill ? '还款' : item.kind === 'statement' ? '出账' : item.kind === 'fee' ? '年费' : '提醒'}</dt><dd>{displayDate(item.bill?.dueDate ?? item.date)}</dd></div>
+    {item.bill?.statementDate && <div className="agenda-date-secondary"><dt>出账</dt><dd>{displayDate(item.bill.statementDate)}</dd></div>}
+  </dl>;
 }
 
 function Notices({ item }: { item: AgendaItem }) {
@@ -81,13 +93,13 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
     if (!card) throw new Error('卡片不存在，请刷新');
     setAbnormal({ cardId: card.id, bankName: card.bankName, cardLast4: card.displayLast4, status: card.status });
   });
-  const actions = (item: AgendaItem) => <Space size={8} wrap onClick={event => event.stopPropagation()}>
-    {item.bill && <Button type={isMobile && !item.completed ? 'primary' : 'default'} onClick={() => setPaid(paymentTarget(item.bill!))}>{item.completed ? '调整还款' : '还款'}</Button>}
-    {item.action === 'complete' && item.occurrenceId != null && <Button type={isMobile ? 'primary' : 'default'} loading={busy === item.key} onClick={() => void execute(item.key, async () => { await api.post('/api/reminders/occurrences/' + item.occurrenceId + '/complete'); message.success('已完成'); onChanged(); })}>完成</Button>}
+  const actions = (item: AgendaItem) => <Space className="agenda-record-actions" size={isMobile ? 8 : 4} wrap onClick={event => event.stopPropagation()}>
+    {item.bill && <Button size={isMobile ? 'middle' : 'small'} type={isMobile && !item.completed ? 'primary' : 'default'} onClick={() => setPaid(paymentTarget(item.bill!))}>{item.completed ? '调整还款' : '还款'}</Button>}
+    {item.action === 'complete' && item.occurrenceId != null && <Button size={isMobile ? 'middle' : 'small'} type={isMobile ? 'primary' : 'default'} loading={busy === item.key} onClick={() => void execute(item.key, async () => { await api.post('/api/reminders/occurrences/' + item.occurrenceId + '/complete'); message.success('已完成'); onChanged(); })}>完成</Button>}
     {item.bill?.recordType === 'card' && (isMobile ? <Button type="text" onClick={() => setMoreItem(item)}>更多</Button> : <Dropdown trigger={['click']} menu={{ items: [
       { key: 'status', label: '标记异常', onClick: () => openStatus(item) },
       ...(canOpen(item) ? [{ key: 'delete', label: '删除账单', danger: true, onClick: () => setDeleting(item.bill) }] : []),
-    ] }}><Button type="text" loading={busy === item.key}>更多</Button></Dropdown>)}
+    ] }}><Button className="agenda-more-button" size="small" type="text" aria-label="更多" title="更多" icon={<MoreOutlined />} loading={busy === item.key} /></Dropdown>)}
   </Space>;
   return <>
     {isMobile ? <div className="agenda-mobile-list">{items.map(item => <article key={item.key} className="agenda-mobile-row" data-skin-slot="list-row">
@@ -97,13 +109,13 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
         <Dates item={item} /><Notices item={item} />
       </button>
       {(item.bill || item.action === 'complete') && <div className="agenda-row-actions">{actions(item)}</div>}
-    </article>)}</div> : <Table<AgendaItem> rowKey="key" pagination={false} dataSource={items} size="middle" columns={[
-      { title: '账单 / 提醒', key: 'identity', render: (_, item) => <><Identity item={item} /><Notices item={item} /></> },
-      { title: '账期', key: 'period', width: 110, render: (_, item) => <span className="agenda-period">{canOpen(item) ? <Button className="agenda-period-link" type="link" onClick={() => openBill(item.bill!.id!)}>{displayPeriod(item.period)}</Button> : <span>{displayPeriod(item.period)}</span>}</span> },
-      { title: '日期', key: 'date', render: (_, item) => <Dates item={item} /> },
-      { title: '金额', key: 'amount', align: 'right', render: (_, item) => <BillAmount item={item} /> },
-      { title: '状态', key: 'status', width: 100, render: (_, item) => <Status item={item} /> },
-      { title: '操作', key: 'actions', render: (_, item) => actions(item) },
+    </article>)}</div> : <Table<AgendaItem> className="agenda-table" rowKey="key" pagination={false} dataSource={items} size="middle" tableLayout="fixed" scroll={{ x: 740 }} columns={[
+      { title: '账单 / 提醒', key: 'identity', width: '21%', render: (_, item) => <div className="agenda-record-identity"><span className="agenda-record-mark" aria-hidden="true">{item.bill?.recordType === 'card' ? <CreditCardOutlined /> : item.bill ? <FileTextOutlined /> : <BellOutlined />}</span><div className="agenda-record-description"><Identity item={item} /><Notices item={item} /></div></div> },
+      { title: '账期', key: 'period', width: '12%', render: (_, item) => <span className="agenda-period">{canOpen(item) ? <Button className="agenda-period-link" type="link" onClick={() => openBill(item.bill!.id!)}>{displayPeriod(item.period)}</Button> : <span>{displayPeriod(item.period)}</span>}</span> },
+      { title: '日期', key: 'date', width: '21%', render: (_, item) => <DesktopDates item={item} /> },
+      { title: '金额', key: 'amount', width: '18%', align: 'right', render: (_, item) => <div className="agenda-money-cell"><BillAmount item={item} />{item.bill?.minAmount != null && <span className="agenda-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</div> },
+      { title: '状态', key: 'status', width: '11%', render: (_, item) => <div className="agenda-status-cell"><Status item={item} />{item.daysOverdue != null && <span className="agenda-overdue">{overdueText(item.daysOverdue)}</span>}</div> },
+      { title: '操作', key: 'actions', width: '17%', render: (_, item) => actions(item) },
     ]} />}
     <Popup visible={moreItem != null} position="bottom" closeOnMaskClick onClose={() => setMoreItem(null)} bodyClassName="agenda-more-sheet">
       {moreItem && <section role="dialog" aria-label="账单操作"><Identity item={moreItem} /><Button block onClick={() => { openStatus(moreItem); setMoreItem(null); }}>标记异常</Button>{canOpen(moreItem) && <Button block danger onClick={() => { setDeleting(moreItem.bill); setMoreItem(null); }}>删除账单</Button>}<Button block onClick={() => setMoreItem(null)}>取消</Button></section>}
@@ -117,14 +129,14 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
 }
 
 /** 每个账期拥有自己的分页，不用第一页代替完整汇总。 */
-export function AgendaPage({ query, revision = 0, onChanged, initialPage = 1 }: { query: string; revision?: number; onChanged?: () => void; initialPage?: number }) {
+export function AgendaPage({ query, revision = 0, onChanged, initialPage = 1, controls }: { query: string; revision?: number; onChanged?: () => void; initialPage?: number; controls?: ReactNode }) {
   const [page, setPage] = useViewState('agenda-page:' + query, initialPage);
   const params = new URLSearchParams(query); params.set('page', String(page));
   // 分页由同一清单控制，不追加同一范围的重复内容。
-  return <PagedAgenda query={params.toString()} revision={revision} onChanged={onChanged} onPage={setPage} />;
+  return <PagedAgenda query={params.toString()} revision={revision} onChanged={onChanged} onPage={setPage} controls={controls} />;
 }
 
-function PagedAgenda({ query, revision, onChanged, onPage }: { query: string; revision: number; onChanged?: () => void; onPage: (page: number) => void }) {
+function PagedAgenda({ query, revision, onChanged, onPage, controls }: { query: string; revision: number; onChanged?: () => void; onPage: (page: number) => void; controls?: ReactNode }) {
   const { data, error, loading, refresh } = useResource<AgendaResult>('/api/agenda?' + query, revision);
   const [expanded, setExpanded] = useViewState<string[]>('agenda-open:' + query.replace(/&?page=\d+/, ''), []);
   useEffect(() => { if (data && data.page > Math.max(1, Math.ceil(data.total / data.pageSize))) onPage(Math.max(1, Math.ceil(data.total / data.pageSize))); }, [data, onPage]);
@@ -132,8 +144,10 @@ function PagedAgenda({ query, revision, onChanged, onPage }: { query: string; re
   return <div className="agenda-list" aria-busy={loading}>
     {error && <Alert type="error" title={data ? '刷新失败，仍显示上次内容' : '暂时无法加载'} description={error} action={<Button onClick={() => void refresh()}>重试</Button>} />}
     {!data && loading && <Skeleton active paragraph={{ rows: 4 }} />}
-    {data && <>
-      {!new URLSearchParams(query).has('period') && <AgendaTotals summary={data.summary} pending={data.view !== 'history'} />}
+    {data && !new URLSearchParams(query).has('period') && <AgendaTotals summary={data.summary} pending={data.view !== 'history'} />}
+    <div className={controls ? 'agenda-workspace' : 'agenda-results'}>
+      {controls}
+      {data && <>
       {data.total === 0 && <Empty description={new URLSearchParams(query).has('q') || new URLSearchParams(query).has('kind') ? '没有符合筛选条件的记录' : '暂无记录'} />}
       {data.grouped ? data.groups.map(group => <section className="agenda-history-group" key={group.period}>
         <button className="agenda-history-heading" aria-expanded={expanded.includes(group.period)} onClick={() => setExpanded(current => current.includes(group.period) ? current.filter(p => p !== group.period) : [...current, group.period])}>
@@ -142,6 +156,7 @@ function PagedAgenda({ query, revision, onChanged, onPage }: { query: string; re
         {expanded.includes(group.period) && <AgendaPage query={query.replace(/&?page=\d+/, '') + '&period=' + group.period} revision={revision} onChanged={changed} />}
       </section>) : <AgendaRows items={data.items} onChanged={changed} />}
       {data.total > data.pageSize && <Pagination current={data.page} total={data.total} pageSize={data.pageSize} showSizeChanger={false} onChange={onPage} />}
-    </>}
+      </>}
+    </div>
   </div>;
 }

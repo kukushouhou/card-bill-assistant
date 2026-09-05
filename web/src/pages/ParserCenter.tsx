@@ -503,30 +503,34 @@ export default function ParserCenter() {
 
             {resultSession && !isMobile && (
               <Table<DryRunResult>
+                className="parser-result-table"
+                tableLayout="fixed"
+                scroll={{ x: 1080 }}
                 rowKey="uid"
                 dataSource={resultSession.results}
                 size="small"
                 pagination={{ pageSize: 10, current: resultPage, onChange: setResultPage }}
                 columns={[
-                  { title: 'UID', dataIndex: 'uid', width: 90 },
-                  { title: '日期', dataIndex: 'date', width: 110, render: (v) => displayDate(v, { time: true }) },
-                  { title: '发件人', dataIndex: 'from', width: 200, ellipsis: true },
+                  { title: 'UID', dataIndex: 'uid', width: 80 },
+                  { title: '日期', dataIndex: 'date', width: 140, render: (v) => displayDate(v, { time: true }) },
+                  { title: '发件人', dataIndex: 'from', width: 170, ellipsis: true },
                   { title: '主题', dataIndex: 'subject', ellipsis: true },
                   {
                     title: '解析器',
                     dataIndex: 'parserId',
-                    width: 90,
+                    width: 100,
                     render: (v) => (v ? <Tag color="blue">{v}</Tag> : '-'),
                   },
                   {
                     title: '结果',
                     dataIndex: 'parsed',
-                    width: 90,
+                    width: 80,
                     render: (v) => (v ? <Tag color="green">成功</Tag> : <Tag color="red">失败</Tag>),
                   },
                   {
                     title: '解析出的账单 / 错误',
                     key: 'detail',
+                    width: 300,
                     render: (_, r) =>
                       r.bills && r.bills.length > 0 ? (
                         <div className="parser-result-bills">{r.bills.map((bill, index) => <ParsedBillSummary key={index} bill={bill} />)}</div>
@@ -539,7 +543,8 @@ export default function ParserCenter() {
                   {
                     title: '原文',
                     key: 'view',
-                    width: 80,
+                    width: 90,
+                    fixed: 'right',
                     render: (_, r) => (
                       <Button
                         size="small"

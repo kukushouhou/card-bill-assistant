@@ -1071,17 +1071,19 @@ export default function Email() {
             label: '邮箱账户',
             children: (
               <Table<EmailAccount>
+                className="email-account-table"
+                tableLayout="fixed"
                 rowKey="id"
                 dataSource={accounts}
                 pagination={false}
                 locale={{ emptyText: '尚未绑定邮箱，绑定后可自动同步信用卡账单' }}
                 columns={[
-                  { title: '邮箱', dataIndex: 'email' },
-                  { title: 'IMAP', key: 'imap', render: (_, r) => `${r.imapHost}:${r.imapPort}${r.tls ? ' (SSL)' : ''}` },
+                  { title: '邮箱', dataIndex: 'email', render: (value, r) => <div className="email-account-identity"><span>{value}</span><span className="email-account-host">{r.imapHost}:{r.imapPort}{r.tls ? ' (SSL)' : ''}</span></div> },
+                  { title: 'IMAP', key: 'imap', width: 200, responsive: ['xl'], render: (_, r) => `${r.imapHost}:${r.imapPort}${r.tls ? ' (SSL)' : ''}` },
                   {
                     title: '上次同步',
                     dataIndex: 'lastSyncAt',
-                    width: 160,
+                    width: 140,
                     render: (v) => (v ? displayDate(v, { time: true }) : '从未'),
                   },
                   {
@@ -1101,9 +1103,9 @@ export default function Email() {
                   {
                     title: '操作',
                     key: 'op',
-                    width: 460,
+                    width: 310,
                     render: (_, r) => (
-                      <Space>
+                      <Space wrap>
                         <Button
                           size="small"
                           type="primary"
@@ -1211,6 +1213,8 @@ export default function Email() {
                   </Checkbox>
                 </Space>
                 <Table<MailLogRow>
+                  tableLayout="fixed"
+                  scroll={{ x: 1000 }}
                   rowKey="id"
                   loading={logLoading}
                   dataSource={logs.items}

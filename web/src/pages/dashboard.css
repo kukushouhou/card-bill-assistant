@@ -490,9 +490,13 @@
 }
 
 @media (min-width: 1024px) {
+  .dash-stat-card > .ant-card-body { padding: 16px 18px; }
+  .dash-stat-card .ant-statistic-content { margin-top: 8px; }
+  .dash-stat-card .ant-statistic-content-value { font-size: 26px; }
+  .dash-stat-card .dashboard-currencies, .dash-stat-card .dashboard-attention { margin-top: 8px; }
   .dashboard-desktop-lower-card {
     display: flex;
-    height: 600px;
+    max-height: 460px;
     flex-direction: column;
   }
 

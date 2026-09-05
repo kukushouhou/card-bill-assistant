@@ -1,6 +1,6 @@
 .transaction-filters {
   display: grid;
-  grid-template-columns: 180px 230px 260px minmax(220px, 1fr);
+  grid-template-columns: minmax(140px, 180px) minmax(180px, 230px) minmax(240px, 260px) minmax(200px, 1fr);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -51,6 +51,12 @@
   justify-content: space-between;
   gap: 10px;
 }
+.transaction-filters > * { min-width: 0; }
+.transaction-table .transaction-period { margin-inline-end: 0; }
+.transaction-filters .ant-select, .transaction-filters .ant-picker { width: 100%; }
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .transaction-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .transaction-mobile-heading { align-items: baseline; flex-wrap: wrap; }
 .transaction-mobile-heading strong { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 .transaction-mobile-heading .ant-tag { margin: 0; }
@@ -90,7 +96,7 @@
   padding: 8px 0 4px;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .transaction-mobile-card .ant-card-body {
     padding: 14px;
   }

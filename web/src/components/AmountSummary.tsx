@@ -1,5 +1,6 @@
 import { currencyPrefix, formatMoney } from '../lib/money';
-import { ExclamationCircleFilled, WalletOutlined } from '../skins/icons';
+import { BellOutlined, ExclamationCircleFilled, FileTextOutlined, WalletOutlined } from '../skins/icons';
+import { useResponsive } from '../responsive';
 import './agenda.css';
 
 const currencyNames: Record<string, string> = {
@@ -28,24 +29,32 @@ export default function AmountSummary({
   amounts,
   metrics,
   notices = [],
+  mobile,
 }: {
   title: string;
   amounts: Amount[];
   metrics: SummaryCount[];
   notices?: SummaryCount[];
+  mobile?: boolean;
 }) {
+  const { isMobile } = useResponsive();
+  const compact = mobile ?? isMobile;
   // 只调整展示顺序，不换算币种或重新计算合计。
   const primary = amounts.find(entry => entry.currency.toUpperCase() === 'CNY') ?? amounts[0];
   const others = amounts.filter(entry => entry !== primary);
-  return <section className="agenda-totals" data-skin-slot="summary" aria-label={title}>
+  const counts = <ul className="agenda-summary-metrics">{metrics.map((metric, index) => <li key={metric.label}>
+    {!compact && <span className="agenda-summary-metric-icon" aria-hidden="true">{index === 0 ? <FileTextOutlined /> : <BellOutlined />}</span>}
+    <span className="agenda-summary-metric-copy"><span className="agenda-summary-metric-number">{metric.prefix}<strong>{metric.count}</strong></span> <span>{metric.label}</span></span>
+  </li>)}</ul>;
+  return <section className={'agenda-totals' + (notices.length ? ' agenda-totals-with-notices' : '')} data-skin-slot="summary" aria-label={title}>
     <div className="agenda-summary-overview">
       <header className="agenda-summary-header">
         <div className="agenda-summary-title"><span className="agenda-summary-icon" aria-hidden="true"><WalletOutlined /></span><span>{title}</span></div>
-        <ul className="agenda-summary-metrics">{metrics.map(metric => <li key={metric.label}>{metric.prefix}<strong>{metric.count}</strong> {metric.label}</li>)}</ul>
+        {compact && counts}
       </header>
       <div className={'agenda-summary-amounts' + (others.length ? ' agenda-summary-multiple' : '')}>
         {primary ? <div className="agenda-summary-primary">
-          <div className="agenda-summary-currency-name">{currencyNames[primary.currency.toUpperCase()] ?? primary.currency.toUpperCase()}{currencyNames[primary.currency.toUpperCase()] && <span>{primary.currency.toUpperCase()}</span>}</div>
+          {primary.currency.toUpperCase() !== 'CNY' && <div className="agenda-summary-currency-name"><span className="agenda-summary-currency-code">{primary.currency.toUpperCase()}</span>{currencyNames[primary.currency.toUpperCase()] && <span>{currencyNames[primary.currency.toUpperCase()]}</span>}</div>}
           <Balance {...primary} />
         </div> : <span className="agenda-summary-empty">暂无可汇总金额</span>}
         {others.length > 0 && <dl className="agenda-summary-other">{others.map(entry => <div className="agenda-summary-currency" key={entry.currency}>
@@ -54,6 +63,7 @@ export default function AmountSummary({
         </div>)}</dl>}
       </div>
     </div>
+    {!compact && <div className="agenda-summary-records">{counts}</div>}
     {notices.length > 0 && <div className="agenda-summary-notices">
       <span className="agenda-summary-notice-heading"><ExclamationCircleFilled aria-hidden="true" /><span>待补充</span></span>
       <ul className="agenda-summary-notes">{notices.map(notice => <li key={notice.label}>

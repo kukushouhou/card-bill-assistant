@@ -168,9 +168,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                 description="请检查数据库配置与网络连通性，恢复后点击「重新检测」。"
               />
             )}
-            <Button type="primary" block disabled={!dbOk} onClick={() => setStep(1)}>
+            <div className="setup-actions"><Button type="primary" disabled={!dbOk} onClick={() => setStep(1)}>
               下一步
-            </Button>
+            </Button></div>
           </>
         )}
 
@@ -264,11 +264,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               style={{ marginTop: 8 }}
             />
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            <div className="setup-actions">
               <Button onClick={() => setStep(0)}>上一步</Button>
               <Button
                 type="primary"
-                style={{ flex: 1 }}
                 onClick={() => {
                   void form
                     .validateFields(['password', 'confirm', 'pin', 'pinConfirm'])
@@ -351,9 +350,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             )}
 
             <BuiltinSkinPicker value={skinId} onChange={setSkinId} />
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            <div className="setup-actions">
               <Button onClick={() => setStep(1)}>上一步</Button>
-              <Button type="primary" htmlType="submit" loading={installing} style={{ flex: 1 }}>
+              <Button type="primary" htmlType="submit" loading={installing}>
                 完成安装
               </Button>
             </div>
@@ -363,9 +362,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         {step === 3 && (
           <>
             <Alert type="success" showIcon title="安装完成！" style={{ marginBottom: 24 }} />
-            <Button type="primary" block size="large" onClick={onDone}>
+            <div className="setup-actions"><Button type="primary" size="large" onClick={onDone}>
               前往登录
-            </Button>
+            </Button></div>
           </>
         )}
       </Card>

@@ -856,7 +856,7 @@ export default function Dashboard() {
             />
           ) : (
             <Spin spinning={trendLoading}>
-              <TrendChart items={trend.items} currency={trend.currency} height={200} />
+              <TrendChart items={trend.items} currency={trend.currency} height={120} />
             </Spin>
           )}
         </Card>

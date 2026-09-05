@@ -4,6 +4,9 @@
   gap: 12px;
   align-items: start;
 }
+.email-account-identity { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.email-account-host { font-size: 12px; color: var(--text-secondary); }
+@media (min-width: 1200px) { .email-account-host { display: none; } }
 
 .email-history-progress { display: grid; gap: 16px; }
 .email-progress-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }

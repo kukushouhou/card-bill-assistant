@@ -574,7 +574,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
         ) : (
           <header className="desktop-app-header" data-skin-slot="header">
             <SkinDecorations slot="header" />
-            <Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title>
+            <div className="desktop-app-brand"><span className="desktop-brand-mark" aria-hidden="true"><CreditCardOutlined /></span><Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title></div>
             <div className="desktop-header-actions">{(historyGate.blocked || historyGate.focusedTask) && <Button onClick={openHistoryProgress}>历史拉取进度</Button>}<ColorModeSwitch /><Button icon={<LogoutOutlined />} type="text" onClick={logout}>
               退出登录
             </Button></div>

@@ -326,7 +326,7 @@ function MobileCardMarkPaidFlow({
       <section className="mobile-action-identity">
         <span className="mobile-action-identity-icon"><WalletOutlined /></span>
         <div className="mobile-action-identity-copy">
-          <span>{displayPeriod(target.period)} · {currency} · 尾号 {target.cardLast4}</span>
+          <span>{displayPeriod(target.period)}{currency.toUpperCase() !== 'CNY' && ` · ${currency}`} · 尾号 {target.cardLast4}</span>
           <strong>{target.bankName}</strong>
         </div>
         <Tag color={hasBill ? currentStatus.color : undefined}>

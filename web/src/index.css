@@ -86,6 +86,10 @@ select {
   margin: 0;
 }
 
+.desktop-app-brand { display: flex; align-items: center; gap: 10px; }
+.desktop-brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--surface); background: var(--text); font-size: 18px; }
+.desktop-app-brand > .ant-typography { font-size: 16px; font-weight: 650; }
+
 .app-shell-main-row {
   display: flex;
   min-height: calc(100vh - 64px);
@@ -135,6 +139,18 @@ select {
 
 .page-heading > .ant-typography {
   margin: 0;
+}
+
+@media (min-width: 1024px) {
+  .desktop-app-sider { width: 208px; flex-basis: 208px; }
+  .desktop-app-sider .ant-menu { padding-top: 20px; }
+  .desktop-app-sider .ant-menu-item { height: 42px; line-height: 42px; margin: 5px 12px; width: calc(100% - 24px); border-radius: 9px; font-size: 13px; }
+  .desktop-app-sider .ant-menu-item-selected { font-weight: 600; }
+  .desktop-app-sider .ant-menu-item .anticon { font-size: 17px; }
+  .app-shell-desktop .route-outlet > .page.page-desktop { padding: 28px 24px; }
+  .page-desktop .page-heading > .ant-typography { font-size: 22px; font-weight: 650; }
+  .desktop-header-actions .ant-segmented { background: var(--background); }
+  .desktop-header-actions .ant-segmented-item-label { font-size: 12px; }
 }
 
 .mobile-flow-screen {
@@ -227,6 +243,9 @@ select {
 .setup-check > .ant-btn { margin-left: auto; }
 .setup-notification-heading { display: grid; gap: 8px; }
 .setup-section-title { display: flex; align-items: center; gap: 8px; }
+.setup-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.setup-actions > .ant-btn { min-width: 104px; }
+@media(max-width:1023px) { .setup-actions > .ant-btn:last-child { flex: 1; } }
 @media(max-width:1023px) { .setup-card .ant-col-md-12 { flex-basis: 100%; max-width: 100%; } .setup-check > .ant-btn { min-height: 44px; } }
 
 .notification-pair-list > .ant-form-item-row {

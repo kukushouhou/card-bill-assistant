@@ -238,7 +238,7 @@ export function CustomForm({
           </Form.Item>
           {businessType === 'fixed_bill' && (
             <Form.Item name="fixedAmount" label="固定金额" rules={[{ required: true, message: '请输入固定金额' }]}>
-              <InputNumber min={0.01} max={99_999_999} precision={2} prefix="CNY ¥" style={{ width: '100%' }} />
+              <InputNumber min={0.01} max={99_999_999} precision={2} prefix="¥" style={{ width: '100%' }} />
             </Form.Item>
           )}
           <Form.Item name="note" label="备注（可选）">
