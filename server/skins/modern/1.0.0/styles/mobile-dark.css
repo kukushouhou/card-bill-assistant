@@ -1,0 +1,4 @@
+:root { --skin-panel-shadow: 0 1px 2px #00000008; --skin-overlay-shadow: 0 18px 60px #00000030; --skin-tag-radius: 4px; }
+.page-mobile { padding: 16px; }
+.agenda-row-body { padding: 18px 16px; }
+.mobile-bottom-nav { border-top: 1px solid var(--border); }

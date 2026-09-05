@@ -18,6 +18,9 @@ vi.mock('../api/client', () => ({
   api: apiMocks,
 }));
 
+vi.mock('../skins/SkinProvider', () => ({ useSkin: () => ({ refresh: async () => undefined }), SkinDecorations: () => null }));
+vi.mock('../skins/BuiltinSkinPicker', () => ({ default: () => null }));
+
 vi.mock('../appName', () => ({ useAppName: () => '守候信用卡小管家' }));
 vi.mock('../responsive', () => ({ useResponsive: () => ({ isMobile: false }) }));
 
@@ -55,6 +58,7 @@ describe('安装向导', () => {
 
     await waitFor(() => {
       expect(apiMocks.post).toHaveBeenCalledWith('/api/setup/install', {
+        skinId: 'modern',
         password: 'password123',
         pin: '123456',
         notifications: [],

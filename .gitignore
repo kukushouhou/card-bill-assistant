@@ -26,3 +26,7 @@ server/tmp-*.out
 tmp-*.ts
 docs/sessions/
 test_debug*.log
+
+server/data/
+
+.ui-fixture/

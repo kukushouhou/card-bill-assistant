@@ -1,3 +1,4 @@
+import { displayDate, displayPeriod } from '../lib/displayDate';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -18,17 +19,28 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { BankOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { BankOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined } from '../skins/icons';
 import { formatMoney } from '../lib/money';
 import { Virtuoso } from 'react-virtuoso';
 import { api, ApiError } from '../api/client';
 import type { DryRunResult, EmailAccount, MailBody, ParserInfo } from '../api/types';
 import { Page } from '../components/Layout';
+import InfoFields from '../components/InfoFields';
 import { useResponsive, useResetOnModeChange } from '../responsive';
 import { useHistoryGate } from '../historyGate';
 import { MobileFlow, MobilePullToRefresh, useCoalescedRefresh } from '../components/MobilePrimitives';
 import './parser-center.css';
+
+function ParsedBillSummary({ bill }: { bill: NonNullable<DryRunResult['bills']>[number] }) {
+  return <article className="parser-bill-summary">
+    <header><strong>{bill.bankName} · {bill.cardLast4}</strong><span>{displayPeriod(bill.period)}</span></header>
+    <InfoFields plain items={[
+      { label: '账单金额', value: <span className="agenda-amount">{formatMoney(bill.amount, bill.currency)}</span> },
+      { label: '还款日', value: displayDate(bill.dueDate) },
+      ...(bill.holderName ? [{ label: '持卡人', value: bill.holderName }] : []),
+    ]} />
+  </article>;
+}
 
 export default function ParserCenter() {
   const { message } = App.useApp();
@@ -41,6 +53,7 @@ export default function ParserCenter() {
   const [viewing, setViewing] = useState<{ accountId: number; uid: number } | null>(null);
   const [viewBody, setViewBody] = useState<MailBody | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [resultPage, setResultPage] = useState(1);
   const [mobileScrollParent, setMobileScrollParent] = useState<HTMLElement | null>(null);
@@ -155,6 +168,7 @@ export default function ParserCenter() {
     }
     const generation = ++viewGeneration.current;
     setViewing({ accountId, uid });
+    setViewError('');
     setViewBody(null);
     setViewLoading(true);
     try {
@@ -162,8 +176,7 @@ export default function ParserCenter() {
       if (generation === viewGeneration.current) setViewBody(body);
     } catch (err) {
       if (generation !== viewGeneration.current) return;
-      message.error(err instanceof ApiError ? err.message : '读取原文失败');
-      setViewing(null);
+      setViewError(err instanceof ApiError ? err.message : '读取原文失败');
     } finally {
       if (generation === viewGeneration.current) {
         viewLoadingRef.current = false;
@@ -178,17 +191,19 @@ export default function ParserCenter() {
     setViewing(null);
     setViewBody(null);
     setViewLoading(false);
+    setViewError('');
   };
 
   const mailContent = (
     <>
       {viewLoading && <div className="mobile-section-loading"><Spin /></div>}
+      {viewError && viewing && <Alert type="error" showIcon title={viewError} action={<Button onClick={() => void viewMail(viewing.accountId, viewing.uid)}>重试</Button>} />}
       {viewBody && (
         <Space direction="vertical" style={{ width: '100%' }}>
           <Descriptions size="small" column={1} bordered>
             <Descriptions.Item label="主题">{viewBody.subject}</Descriptions.Item>
             <Descriptions.Item label="发件人">{viewBody.from}</Descriptions.Item>
-            <Descriptions.Item label="日期">{dayjs(viewBody.date).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
+            <Descriptions.Item label="日期">{displayDate(viewBody.date, { time: true })}</Descriptions.Item>
             {viewBody.attachments.length > 0 && (
               <Descriptions.Item label="附件">
                 {viewBody.attachments.map((attachment) => (
@@ -350,15 +365,15 @@ export default function ParserCenter() {
             <Form
               form={form}
               initialValues={{ mode: 'count', limit: 50, sinceDays: 90 }}
-              layout={isMobile ? 'vertical' : 'inline'}
-              className={isMobile ? 'mobile-parser-form' : undefined}
+              layout="vertical"
+              className={'parser-run-form' + (isMobile ? ' mobile-parser-form' : '')}
               style={{ marginBottom: 16 }}
             >
               <Form.Item name="accountId" label="邮箱账户" rules={[{ required: true, message: '必选' }]}>
                 <Select
                   open={accountSelectOpen}
                   onOpenChange={setAccountSelectOpen}
-                  style={{ width: isMobile ? '100%' : 220 }}
+                  style={{ width: '100%' }}
                   options={accounts.map((a) => ({ value: a.id, label: a.email }))}
                 />
               </Form.Item>
@@ -368,15 +383,15 @@ export default function ParserCenter() {
                   open={parserSelectOpen}
                   onOpenChange={setParserSelectOpen}
                   placeholder="自动匹配"
-                  style={{ width: isMobile ? '100%' : 160 }}
+                  style={{ width: '100%' }}
                   options={parsers.map((p) => ({ value: p.id, label: `${p.bankName} (${p.id})` }))}
                 />
               </Form.Item>
-              <Form.Item name="mode">
+              <Form.Item name="mode" label="邮件范围">
                 <Radio.Group
                   options={[
-                    { value: 'count', label: '最近 N 封' },
-                    { value: 'days', label: '近 N 天' },
+                    { value: 'count', label: '按封数' },
+                    { value: 'days', label: '按天数' },
                   ]}
                   optionType="button"
                 />
@@ -384,17 +399,17 @@ export default function ParserCenter() {
               <Form.Item noStyle shouldUpdate={(a, b) => a.mode !== b.mode}>
                 {({ getFieldValue }) =>
                   getFieldValue('mode') === 'days' ? (
-                    <Form.Item name="sinceDays" rules={[{ required: true }]} style={{ marginRight: isMobile ? 0 : 8 }}>
-                      <InputNumber min={1} max={365} suffix="天" style={{ width: isMobile ? '100%' : 120 }} />
+                    <Form.Item name="sinceDays" label="最近天数" rules={[{ required: true }]}>
+                      <InputNumber min={1} max={365} suffix="天" style={{ width: '100%' }} />
                     </Form.Item>
                   ) : (
-                    <Form.Item name="limit" rules={[{ required: true }]} style={{ marginRight: isMobile ? 0 : 8 }}>
-                      <InputNumber min={1} max={1000} suffix="封" style={{ width: isMobile ? '100%' : 130 }} />
+                    <Form.Item name="limit" label="最近封数" rules={[{ required: true }]}>
+                      <InputNumber min={1} max={1000} suffix="封" style={{ width: '100%' }} />
                     </Form.Item>
                   )
                 }
               </Form.Item>
-              <Form.Item className={isMobile ? 'mobile-parser-submit-item' : undefined}>
+              <Form.Item className={'parser-submit-item' + (isMobile ? ' mobile-parser-submit-item' : '')}>
                 <Button
                   className={isMobile ? 'mobile-parser-submit-button' : undefined}
                   type="primary"
@@ -453,7 +468,7 @@ export default function ParserCenter() {
                           </div>
                           <div className="mobile-parser-result-meta">
                             <Typography.Text type="secondary">
-                              UID {result.uid} · {dayjs(result.date).format('MM-DD HH:mm')}
+                              UID {result.uid} · {displayDate(result.date, { time: true })}
                             </Typography.Text>
                             <Typography.Text type="secondary">{result.from}</Typography.Text>
                           </div>
@@ -461,14 +476,7 @@ export default function ParserCenter() {
                             {result.parserId ? <Tag color="blue">{result.parserId}</Tag> : <Tag>未匹配解析器</Tag>}
                           </div>
                           {result.bills && result.bills.length > 0 ? (
-                            <Space className="mobile-parser-result-bills" direction="vertical" size={4}>
-                              {result.bills.map((bill, index) => (
-                                <Typography.Text key={index}>
-                                  {bill.bankName}（{bill.cardLast4}）{bill.period} 期 {formatMoney(bill.amount, bill.currency)}，还款日 {dayjs(bill.dueDate).format('MM-DD')}
-                                  {bill.holderName ? `，${bill.holderName}` : ''}
-                                </Typography.Text>
-                              ))}
-                            </Space>
+                            <div className="parser-result-bills">{result.bills.map((bill, index) => <ParsedBillSummary key={index} bill={bill} />)}</div>
                           ) : (result.currentCycleTransactionCount ?? 0) > 0 ? (
                             <Typography.Text>未出账明细 {result.currentCycleTransactionCount} 笔</Typography.Text>
                           ) : (
@@ -501,7 +509,7 @@ export default function ParserCenter() {
                 pagination={{ pageSize: 10, current: resultPage, onChange: setResultPage }}
                 columns={[
                   { title: 'UID', dataIndex: 'uid', width: 90 },
-                  { title: '日期', dataIndex: 'date', width: 110, render: (v) => dayjs(v).format('MM-DD HH:mm') },
+                  { title: '日期', dataIndex: 'date', width: 110, render: (v) => displayDate(v, { time: true }) },
                   { title: '发件人', dataIndex: 'from', width: 200, ellipsis: true },
                   { title: '主题', dataIndex: 'subject', ellipsis: true },
                   {
@@ -521,15 +529,7 @@ export default function ParserCenter() {
                     key: 'detail',
                     render: (_, r) =>
                       r.bills && r.bills.length > 0 ? (
-                        <Space direction="vertical" size={0}>
-                          {r.bills.map((b, i) => (
-                            <span key={i}>
-                              {b.bankName}（{b.cardLast4}）{b.period} 期 {formatMoney(b.amount, b.currency)}，还款日{' '}
-                              {dayjs(b.dueDate).format('MM-DD')}
-                              {b.holderName ? `，${b.holderName}` : ''}
-                            </span>
-                          ))}
-                        </Space>
+                        <div className="parser-result-bills">{r.bills.map((bill, index) => <ParsedBillSummary key={index} bill={bill} />)}</div>
                       ) : (r.currentCycleTransactionCount ?? 0) > 0 ? (
                         <Typography.Text>未出账明细 {r.currentCycleTransactionCount} 笔</Typography.Text>
                       ) : (

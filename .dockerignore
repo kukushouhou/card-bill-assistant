@@ -12,3 +12,9 @@ server/src/generated
 server/tmp-*
 server/scripts/tmp-*
 test_debug*.log
+
+server/data/
+
+.ui-fixture/
+
+server/scripts/ui-fixture.ts

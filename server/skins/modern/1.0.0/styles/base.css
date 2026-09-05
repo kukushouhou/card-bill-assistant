@@ -1,0 +1,15 @@
+[data-skin-slot="brand"] { letter-spacing: -.025em; font-weight: 650; }
+.ant-btn { font-weight: 550; box-shadow: none; transition: background .16s ease, border-color .16s ease, transform .16s ease; }
+.ant-btn:active { transform: translateY(1px); }
+.ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker { transition: border-color .16s ease, box-shadow .16s ease; }
+.ant-card, .agenda-mobile-row, .agenda-history-group { box-shadow: var(--skin-panel-shadow); }
+.ant-table-thead > tr > th { font-weight: 600; letter-spacing: .02em; }
+.ant-tag { border-radius: var(--skin-tag-radius); padding-inline: 8px; }
+.ant-modal-content, .adm-popup-body { box-shadow: var(--skin-overlay-shadow); }
+.desktop-app-sider { background: var(--surface); }
+.desktop-app-header { background: var(--surface); }
+.mobile-bottom-nav, .mobile-app-header { background: var(--surface); }
+[data-skin-decoration="background"] { opacity: .08; background-size: 64px 64px; }
+h1, h2, h3 { letter-spacing: -.025em; }
+.agenda-amount, .stat-amount { font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
+.ant-btn-primary { box-shadow: 0 1px 2px #00000012; }

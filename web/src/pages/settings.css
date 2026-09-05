@@ -7,7 +7,7 @@
   align-items: stretch;
 }
 
-.settings-grid-alert,
+.settings-grid-skins,
 .settings-grid-notifications {
   grid-column: 1 / -1;
 }
@@ -47,13 +47,16 @@
 }
 
 .settings-notification-form {
-  max-width: 720px;
+  display: grid;
+  grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+  gap: 20px;
+  align-items: start;
 }
 
 .settings-notification-form .ant-select,
 .settings-notification-form .ant-input,
 .settings-notification-form .ant-input-affix-wrapper {
-  max-width: 620px;
+  width: 100%;
 }
 
 .settings-notification-description {
@@ -63,6 +66,14 @@
 .settings-notification-channel-summary {
   margin-bottom: 16px;
 }
+.settings-notification-form > .mobile-inline-confirm, .settings-notification-form > .ant-alert, .settings-notification-remove-confirm, .settings-notification-actions { grid-column: 1 / -1; }
+.settings-notification-actions { justify-self: end; }
+.settings-channel-section .ant-alert { padding: 14px; }
+.settings-delivery-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 16px; margin-top: 20px; border-top: 1px solid var(--border); }
+.settings-delivery-copy { display: grid; gap: 4px; }
+.settings-delivery-copy strong { font-size: 14px; font-weight: 500; line-height: 1.5; }
+.settings-delivery-copy > span { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.settings-connection-section .ant-form-item:last-child, .settings-connection-section .notification-advanced-collapse:last-child { margin-bottom: 0; }
 
 .settings-card-title {
   display: inline-flex;
@@ -136,7 +147,7 @@
     gap: 12px;
   }
 
-  .settings-grid-alert,
+  .settings-grid-skins,
   .settings-grid-notifications {
     grid-column: auto;
   }
@@ -153,6 +164,11 @@
 }
 
 @media (width < 1024px) {
+  .settings-notification-form { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .settings-provider-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .settings-provider-options .ant-radio-button-wrapper { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; height: auto; margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; line-height: 1.5; white-space: normal; text-align: center; }
+  .settings-provider-options .ant-radio-button-wrapper::before { display: none; }
+  .settings-provider-options .ant-radio-button-wrapper-checked { border-color: var(--primary); }
   .settings-form-actions {
     width: 100%;
   }

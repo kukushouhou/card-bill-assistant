@@ -1,0 +1,194 @@
+{
+  "formatVersion": 1,
+  "id": "warm-ledger",
+  "version": "1.0.0",
+  "name": "温润账本",
+  "description": "温暖纸感、柔和绿色与账本式排版",
+  "author": "守候",
+  "compatibility": {
+    "skinApi": 1
+  },
+  "styles": [
+    "styles/base.css"
+  ],
+  "assets": [
+    "assets/paper.svg",
+    "assets/ledger.svg",
+    "previews/desktop-light.svg",
+    "previews/desktop-dark.svg",
+    "previews/mobile-light.svg",
+    "previews/mobile-dark.svg",
+    "assets/Lora.ttf"
+  ],
+  "variants": {
+    "desktop-light": {
+      "styles": [
+        "styles/desktop-light.css"
+      ],
+      "tokens": {
+        "primary": "#356448",
+        "primarySoft": "#edf2e9",
+        "background": "#f3f0e7",
+        "surface": "#fffdf6",
+        "elevated": "#fffffb",
+        "text": "#28342b",
+        "textSecondary": "#596557",
+        "border": "#dcded1",
+        "danger": "#ae352a",
+        "success": "#346849",
+        "warning": "#906a16",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "fontSize": 14,
+        "radius": 14,
+        "controlHeight": 38,
+        "chartColors": [
+          "#356448",
+          "#346849",
+          "#906a16",
+          "#ae352a"
+        ],
+        "chart": {
+          "lineWidth": 2,
+          "pointSize": 3,
+          "gridWidth": 1,
+          "axisFontSize": 12
+        }
+      },
+      "icons": {
+        "ProfileOutlined": "assets/ledger.svg"
+      },
+      "decorations": {
+        "background": "assets/paper.svg"
+      }
+    },
+    "desktop-dark": {
+      "styles": [
+        "styles/desktop-dark.css"
+      ],
+      "tokens": {
+        "primary": "#8bae94",
+        "primarySoft": "#26392d",
+        "background": "#181d19",
+        "surface": "#212822",
+        "elevated": "#2b332c",
+        "text": "#eeefe6",
+        "textSecondary": "#bcc6ba",
+        "border": "#3d493e",
+        "danger": "#ffaaa0",
+        "success": "#9dccae",
+        "warning": "#e1bc73",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "fontSize": 14,
+        "radius": 14,
+        "controlHeight": 38,
+        "chartColors": [
+          "#8bae94",
+          "#9dccae",
+          "#e1bc73",
+          "#ffaaa0"
+        ],
+        "chart": {
+          "lineWidth": 2,
+          "pointSize": 3,
+          "gridWidth": 1,
+          "axisFontSize": 12
+        }
+      },
+      "icons": {
+        "ProfileOutlined": "assets/ledger.svg"
+      },
+      "decorations": {
+        "background": "assets/paper.svg"
+      }
+    },
+    "mobile-light": {
+      "styles": [
+        "styles/mobile-light.css"
+      ],
+      "tokens": {
+        "primary": "#356448",
+        "primarySoft": "#edf2e9",
+        "background": "#f3f0e7",
+        "surface": "#fffdf6",
+        "elevated": "#fffffb",
+        "text": "#28342b",
+        "textSecondary": "#596557",
+        "border": "#dcded1",
+        "danger": "#ae352a",
+        "success": "#346849",
+        "warning": "#906a16",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "fontSize": 15,
+        "radius": 14,
+        "controlHeight": 44,
+        "chartColors": [
+          "#356448",
+          "#346849",
+          "#906a16",
+          "#ae352a"
+        ],
+        "chart": {
+          "lineWidth": 2,
+          "pointSize": 3,
+          "gridWidth": 1,
+          "axisFontSize": 12
+        }
+      },
+      "icons": {
+        "ProfileOutlined": "assets/ledger.svg"
+      },
+      "decorations": {
+        "background": "assets/paper.svg"
+      }
+    },
+    "mobile-dark": {
+      "styles": [
+        "styles/mobile-dark.css"
+      ],
+      "tokens": {
+        "primary": "#8bae94",
+        "primarySoft": "#26392d",
+        "background": "#181d19",
+        "surface": "#212822",
+        "elevated": "#2b332c",
+        "text": "#eeefe6",
+        "textSecondary": "#bcc6ba",
+        "border": "#3d493e",
+        "danger": "#ffaaa0",
+        "success": "#9dccae",
+        "warning": "#e1bc73",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "fontSize": 15,
+        "radius": 14,
+        "controlHeight": 44,
+        "chartColors": [
+          "#8bae94",
+          "#9dccae",
+          "#e1bc73",
+          "#ffaaa0"
+        ],
+        "chart": {
+          "lineWidth": 2,
+          "pointSize": 3,
+          "gridWidth": 1,
+          "axisFontSize": 12
+        }
+      },
+      "icons": {
+        "ProfileOutlined": "assets/ledger.svg"
+      },
+      "decorations": {
+        "background": "assets/paper.svg"
+      }
+    }
+  },
+  "previews": {
+    "desktop-light": "previews/desktop-light.svg",
+    "desktop-dark": "previews/desktop-dark.svg",
+    "mobile-light": "previews/mobile-light.svg",
+    "mobile-dark": "previews/mobile-dark.svg"
+  },
+  "licenses": [
+    "assets/OFL.txt"
+  ]
+}

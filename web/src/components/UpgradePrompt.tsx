@@ -1,3 +1,4 @@
+import { useResponsive } from '../responsive';
 import { App, Button, List, Modal, Progress, Space, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
@@ -18,6 +19,7 @@ function taskStatusText(task: UpgradeTask): string | null {
 
 export default function UpgradePrompt() {
   const { message } = App.useApp();
+  const { isMobile } = useResponsive();
   const [plan, setPlan] = useState<UpgradePlan | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const hadExecution = useRef(false);
@@ -63,7 +65,7 @@ export default function UpgradePrompt() {
   };
 
   return (
-    <Modal open width="min(820px, 94vw)" title={`系统升级 ${plan.fromVersion ?? '旧版本'} → ${plan.toVersion}`}
+    <Modal open width={isMobile ? '100vw' : 'min(820px, 94vw)'} className={isMobile ? 'mobile-upgrade-flow' : undefined} style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined} title={`系统升级 ${plan.fromVersion ?? '旧版本'} → ${plan.toVersion}`}
       closable={false} maskClosable={false} keyboard={false} footer={null}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {plan.hasRequired && (
@@ -115,7 +117,7 @@ export default function UpgradePrompt() {
         }} />
         {plan.tasks.some((task) => task.mode === 'optional' && task.status === 'awaiting_decision') && (
           <Typography.Text type="secondary">
-            忽略迁移后，版本游标一旦越过该版本，该迁移将永久不能再执行。
+            忽略后，本次数据更新将不再提供执行入口。
           </Typography.Text>
         )}
       </Space>

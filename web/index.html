@@ -4,9 +4,35 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0"
     />
     <meta name="robots" content="noindex, nofollow" />
+    <script>
+      // 在应用首次绘制前恢复最近成功的外观；应用启动后会核对全站选择。
+      try {
+        const root = document.documentElement;
+        const preference = localStorage.getItem('appearance.mode');
+        const mode = preference === 'light' || preference === 'dark' ? preference : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        root.dataset.mode = mode;
+        root.style.colorScheme = mode;
+        const cached = JSON.parse(localStorage.getItem('appearance.skin-cache') || 'null');
+        const variant = (innerWidth < 1024 ? 'mobile' : 'desktop') + '-' + mode;
+        const manifest = cached?.manifest;
+        const tokens = manifest?.variants?.[variant]?.tokens;
+        const fallback = mode === 'dark' ? { background: '#141920', surface: '#1d242e', text: '#e9eff7', textSecondary: '#aebdd0', border: '#364454' } : { background: '#f3f5f8', surface: '#ffffff', text: '#1b2a3b', textSecondary: '#58687a', border: '#dce2e9' };
+        Object.entries({ background: 'background', surface: 'surface', text: 'text', textSecondary: 'text-secondary', border: 'border' }).forEach(([key, variable]) => {
+          const value = tokens?.[key]; root.style.setProperty('--' + variable, /^#[\da-f]{6,8}$/i.test(value) ? value : fallback[key]);
+        });
+        if (manifest?.compatibility?.skinApi === 1 && /^[a-z][a-z0-9-]{1,47}$/.test(manifest.id) && /^[\w.-]+$/.test(manifest.version)) {
+          root.dataset.skin = manifest.id + '@' + manifest.version;
+          [...manifest.styles, ...manifest.variants[variant].styles].slice(0, 24).forEach(file => {
+            if (!/^[\w/.-]+\.css$/.test(file) || file.includes('..')) return;
+            const link = document.createElement('link'); link.rel = 'stylesheet'; link.dataset.skinDynamic = 'active';
+            link.href = '/api/skins/assets/' + manifest.id + '/' + manifest.version + '/' + file; document.head.appendChild(link);
+          });
+        }
+      } catch { /* 私密浏览或缓存损坏时由应用提供默认外观。 */ }
+    </script>
     <title>守候信用卡小管家</title>
   </head>
   <body>

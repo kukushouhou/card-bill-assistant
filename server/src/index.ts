@@ -20,6 +20,9 @@ import emailRoutes from './routes/email.routes';
 import jobsRoutes from './routes/jobs.routes';
 import settingsRoutes from './routes/settings.routes';
 import transactionsRoutes from './routes/transactions.routes';
+import agendaRoutes from './routes/agenda.routes';
+import skinsRoutes from './routes/skins.routes';
+import { activeSkin } from './modules/skins/service';
 import upgradesRoutes from './routes/upgrades.routes';
 import { initializeUpgradeState, resumeUpgradeExecution } from './modules/upgrades/upgrade.service';
 import { getUpgradeRuntimeState, upgradeBusinessGate } from './modules/upgrades/upgrade.runtime';
@@ -44,14 +47,15 @@ async function main(): Promise<void> {
   });
 
   // 应用信息（免认证：登录页/安装向导需在登录前显示应用名）
-  app.get('/api/app', (_req, res) => {
-    res.json({ name: config.appName });
+  app.get('/api/app', async (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ name: config.appName, skin: await activeSkin() });
   });
 
   // API 路由（安装、认证和升级在业务门禁前，便于必选迁移期间完成登录与确认）
   app.use('/api/setup', setupRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/upgrades', upgradesRoutes);
+  app.use('/api/skins', skinsRoutes);
   app.use('/api', upgradeBusinessGate);
   app.use('/api/cards', cardsRoutes);
   app.use('/api/bills', billsRoutes);
@@ -61,6 +65,7 @@ async function main(): Promise<void> {
   app.use('/api/jobs', jobsRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/transactions', transactionsRoutes);
+  app.use('/api/agenda', agendaRoutes);
 
   // 前端静态资源（生产模式）
   const dist = config.webDistDir;
@@ -80,6 +85,10 @@ async function main(): Promise<void> {
 
   // 统一错误处理
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.too.large') {
+      res.status(413).json({ error: '上传文件超过容量限制' });
+      return;
+    }
     if (err instanceof ApiError) {
       res.status(err.status).json({ error: err.message });
       return;

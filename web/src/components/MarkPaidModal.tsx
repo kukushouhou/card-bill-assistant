@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react';
-import { App, Button, InputNumber, Modal, Radio, Typography } from 'antd';
+import { displayPeriod } from '../lib/displayDate';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedExit } from '../lib/draftGuard';
+import { App, Button, Form, InputNumber, Modal, Radio, Typography } from 'antd';
 import { api, ApiError } from '../api/client';
 import { currencyPrefix, formatMoney } from '../lib/money';
 import { useResetOnModeChange, useResponsive } from '../responsive';
 import MobileMarkPaidFlow from './MobileMarkPaidFlow';
+import InfoFields from './InfoFields';
 
 /**
- * 标记还款目标（任何入口：首页今日提醒 / 未来 14 天 / 账单记录行 / 提醒中心）。
+ * 标记还款目标（任何入口：首页 / 账单中心 / 卡片账单）。
  * billId 缺省 = 场景 A（该期缺账单补录）；传入 = 场景 B（已有账单改标记）。
  */
 export interface MarkPaidTarget {
@@ -77,6 +80,10 @@ export default function MarkPaidModal({
   const [amount, setAmount] = useState<number | null>(null);
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const dirty = !isMobile && target != null && (amount !== (target.targetType === 'custom' ? target.amount ?? null : null)
+    || paidAmount !== (target.billId != null && target.paidStatus === 'partial' ? target.paidAmount ?? null : null));
+  const { requestExit, confirmation } = useUnsavedExit(dirty, onClose, saving);
 
   useResetOnModeChange(() => {
     // 未提交的还款选择属于待执行确认；跨断点重置，已经发出的写请求则继续接管结果。
@@ -98,7 +105,8 @@ export default function MarkPaidModal({
   const currency = target.currency ?? 'CNY';
 
   const submit = async () => {
-    if (!target || saving) return;
+    if (!target || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       if (isCustom) {
@@ -189,14 +197,15 @@ export default function MarkPaidModal({
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '操作失败');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   // 写请求已经发出后由当前共享流程接管结果，避免遮罩、Esc 或手机返回让旧响应串到新目标。
   const dismiss = () => {
-    if (saving) return;
-    onClose();
+    if (savingRef.current) return;
+    requestExit();
   };
 
   const content = isCustom ? (
@@ -206,6 +215,7 @@ export default function MarkPaidModal({
               该账单已还款，恢复后会重新进入待还账单。
             </Typography.Paragraph>
           ) : target.businessType === 'dynamic_bill' ? (
+            <Form.Item label="本期账单金额" className="payment-input-field">
             <InputNumber
               autoFocus
               min={0}
@@ -217,18 +227,18 @@ export default function MarkPaidModal({
               value={amount}
               onChange={(value) => setAmount(value)}
             />
+            </Form.Item>
           ) : (
-            <Typography.Paragraph style={{ marginBottom: 0 }}>
-              本期金额 {formatMoney(target.amount ?? 0, currency)}
-            </Typography.Paragraph>
+            <InfoFields items={[{ label: '本期金额', value: formatMoney(target.amount ?? 0, currency) }]} />
           )}
         </>
       ) : hasBill ? (
         <>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            该期账单{target.amount != null ? `应还 ${formatMoney(target.amount, currency)}` : '金额未取得'}
-            {target.minAmount != null ? `（最低还款 ${formatMoney(target.minAmount, currency)}）` : ''}，请选择还款情况：
-          </Typography.Paragraph>
+          <InfoFields label="本期账单金额" items={[
+            { label: '本期应还', value: target.amount != null ? formatMoney(target.amount, currency) : '金额待填写' },
+            ...(target.minAmount != null ? [{ label: '最低还款', value: formatMoney(target.minAmount, currency) }] : []),
+          ]} />
+          <p className="payment-choice-heading">选择还款情况</p>
           <Radio.Group
             className="choice-card-group"
             aria-label="选择还款情况"
@@ -268,7 +278,7 @@ export default function MarkPaidModal({
             />
           </Radio.Group>
           {choice === 'partial' && (
-            <div style={{ marginTop: 16 }}>
+            <Form.Item label="累计已还金额" className="payment-input-field payment-input-after-choice">
               <InputNumber
                 autoFocus
                 min={0}
@@ -280,7 +290,7 @@ export default function MarkPaidModal({
                 value={paidAmount}
                 onChange={(v) => setPaidAmount(v)}
               />
-            </div>
+            </Form.Item>
           )}
         </>
       ) : (
@@ -318,7 +328,7 @@ export default function MarkPaidModal({
             />
           </Radio.Group>
           {choice === 'full' && (
-            <div style={{ marginTop: 16 }}>
+            <Form.Item label="应还金额" className="payment-input-field payment-input-after-choice">
               <InputNumber
                 autoFocus
                 min={0}
@@ -330,31 +340,35 @@ export default function MarkPaidModal({
                 value={amount}
                 onChange={(v) => setAmount(v)}
               />
-            </div>
+            </Form.Item>
           )}
           {choice === 'partial' && (
-            <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div className="payment-input-pair payment-input-after-choice">
+              <Form.Item label="应还金额" className="payment-input-field">
               <InputNumber
                 autoFocus
                 min={0}
                 max={99_999_999}
                 precision={2}
-                style={{ flex: '1 1 180px' }}
+                style={{ width: '100%' }}
                 placeholder="应还金额"
                 prefix={currencyPrefix(currency)}
                 value={amount}
                 onChange={(v) => setAmount(v)}
               />
+              </Form.Item>
+              <Form.Item label="累计已还金额" className="payment-input-field">
               <InputNumber
                 min={0}
                 max={99_999_999}
                 precision={2}
-                style={{ flex: '1 1 180px' }}
+                style={{ width: '100%' }}
                 placeholder="累计已还金额"
                 prefix={currencyPrefix(currency)}
                 value={paidAmount}
                 onChange={(v) => setPaidAmount(v)}
               />
+              </Form.Item>
             </div>
           )}
         </>
@@ -362,7 +376,7 @@ export default function MarkPaidModal({
 
   const title = isCustom
     ? `${target.paidStatus === 'paid' ? '恢复待还' : '还款'} - ${target.name ?? ''}`
-    : `标记还款 - ${target.bankName}（${target.cardLast4}）${target.period}期`;
+    : `标记还款 - ${target.bankName}（${target.cardLast4}）${displayPeriod(target.period)}`;
 
   if (isMobile) {
     return <MobileMarkPaidFlow target={target} onClose={dismiss} onDone={onDone} />;
@@ -388,16 +402,18 @@ export default function MarkPaidModal({
   return (
     <Modal
       title={title}
+      className="payment-modal"
       open
       onCancel={dismiss}
       footer={footer}
       destroyOnHidden
-      width={560}
+      width="min(760px, 94vw)"
       closable={!saving}
       mask={{ closable: !saving }}
       keyboard={!saving}
     >
       {content}
+      {confirmation}
     </Modal>
   );
 }

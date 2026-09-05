@@ -5,7 +5,7 @@ import {
   DeleteOutlined,
   PauseCircleOutlined,
   UndoOutlined,
-} from '@ant-design/icons';
+} from '../skins/icons';
 import { App, Button, Modal, Radio, Tag, Typography } from 'antd';
 import { List as MobileList } from 'antd-mobile';
 import { api, ApiError } from '../api/client';

@@ -1,10 +1,13 @@
+import BuiltinSkinPicker from '../skins/BuiltinSkinPicker';
+import { useSkin, SkinDecorations } from '../skins/SkinProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Card, Checkbox, Col, Collapse, Divider, Form, Input, Row, Steps, Tag, Typography } from 'antd';
-import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '../skins/icons';
 import { api, ApiError } from '../api/client';
 import { useAppName } from '../appName';
 import type { SetupStatus } from '../api/types';
 import { useResponsive } from '../responsive';
+import { useDraftGuard } from '../lib/draftGuard';
 import {
   defaultNotificationConfig,
   NotificationConfigFields,
@@ -34,9 +37,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const appName = useAppName();
   const { isMobile } = useResponsive();
   const [step, setStep] = useState(0);
+  const [skinId, setSkinId] = useState('modern');
+  const appearance = useSkin();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+  useDraftGuard(hasDraft && step < 3);
   const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
   const [expandedNotificationType, setExpandedNotificationType] = useState<string>();
   const [form] = Form.useForm<SetupFormValues>();
@@ -77,6 +84,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     setInstalling(true);
     try {
       await api.post('/api/setup/install', {
+        skinId,
         password: accountValues.password,
         pin: accountValues.pin || undefined,
         notifications: notificationTypes.map((type) => ({
@@ -84,6 +92,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           config: values.notificationConfigs?.[type] ?? {},
         })),
       });
+      void appearance.refresh().catch(() => undefined);
       message.success('安装完成');
       form.resetFields();
       accountValuesRef.current = null;
@@ -113,9 +122,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'var(--background)',
       }}
     >
+      <SkinDecorations slot="background" />
       <Card className="auth-card setup-card" title={`${appName} · 安装向导`}>
         <Steps
           size="small"
@@ -127,7 +137,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
 
         {step === 0 && (
           <>
-            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="setup-check">
+              <div className="setup-check-state">
               <ApiOutlined />
               <span>数据库连接：</span>
               {checking ? (
@@ -143,6 +154,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               ) : (
                 <Tag color="error">服务器无响应</Tag>
               )}
+              </div>
               <Button size="small" icon={<ReloadOutlined />} onClick={() => void check()} loading={checking}>
                 重新检测
               </Button>
@@ -163,7 +175,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 1 && (
-          <Form form={form} layout="vertical" autoFocus>
+          <Form onValuesChange={() => setHasDraft(true)} form={form} layout="vertical" autoFocus>
             <Row gutter={32}>
               <Col xs={24} md={12}>
                 <Form.Item label="管理员账号">
@@ -244,23 +256,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               title="卡片信息仅你可见"
               description={
                 <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                  设置 PIN 后，卡号、有效期、CVV 将以 PIN 双密钥加密保管，这把钥匙只在你手中。
+                  PIN 用于保护完整卡号、有效期和 CVV。忘记 PIN 后无法恢复这些信息；重置 PIN 会清空已保存的敏感信息。
                   <br />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    · PIN 不做任何留存——服务器、数据库、日志均无处可寻
-                  </Typography.Text>
-                  <br />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    · 遗忘 PIN，任何人都无法找回你的数据
-                  </Typography.Text>
-                  <br />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    · 重置 PIN 将清空已保存的全部卡片数据
-                  </Typography.Text>
-                  <br />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    · PIN 设置可跳过，之后可在设置页补设；未设置时将无法保存卡号等信息
-                  </Typography.Text>
+                  暂不设置也可以完成安装，之后在系统设置中补设。
                 </Typography.Text>
               }
               style={{ marginTop: 8 }}
@@ -291,13 +289,10 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 2 && (
-          <Form form={form} layout="vertical" onFinish={onInstall} initialValues={{ notificationConfigs: {} }}>
-            <div className="setup-notification-heading" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <BellOutlined />
-              <div>
-                <Typography.Title level={5} style={{ margin: 0 }}>选择通知渠道</Typography.Title>
+          <Form onValuesChange={() => setHasDraft(true)} form={form} layout="vertical" onFinish={onInstall} initialValues={{ notificationConfigs: {} }}>
+            <div className="setup-notification-heading">
+                <Typography.Title className="setup-section-title" level={5} style={{ margin: 0 }}><BellOutlined /><span>选择通知渠道</span></Typography.Title>
                 <Typography.Text type="secondary">可选择多个渠道同时发送，也可暂不配置，安装后再到系统设置中添加。</Typography.Text>
-              </div>
             </div>
 
             <Checkbox.Group
@@ -355,6 +350,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               />
             )}
 
+            <BuiltinSkinPicker value={skinId} onChange={setSkinId} />
             <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
               <Button onClick={() => setStep(1)}>上一步</Button>
               <Button type="primary" htmlType="submit" loading={installing} style={{ flex: 1 }}>

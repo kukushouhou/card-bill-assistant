@@ -1,10 +1,13 @@
+/* 默认可用外观；皮肤运行时通过同一语义接口覆盖。 */
+:root { --background: #f3f5f8; --surface: #fff; --elevated: #fff; --text: #1b2a3b; --text-secondary: #58687a; --border: #dce2e9; --primary: #275da8; --primary-soft: #eaf1fb; --surface-hover: #eaf1fb; --danger: #b5302c; --success: #217450; --warning: #8c650f; --radius: 10px; --radius-lg: 14px; --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; --font-size: 14px; }
+body { font-family: var(--font-family); font-size: var(--font-size); }
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: #f5f6fa;
+  background: var(--background);
 }
 
 * {
@@ -12,7 +15,7 @@ body,
 }
 
 body {
-  color: #172033;
+  color: var(--text);
   overflow-wrap: anywhere;
 }
 
@@ -43,7 +46,7 @@ select {
   line-height: 1.4;
   text-align: center;
   white-space: normal;
-  border: 1.5px solid #d9d9d9;
+  border: 1.5px solid var(--border);
   border-radius: 10px !important;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
@@ -53,21 +56,19 @@ select {
 }
 
 .choice-card-group .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
-  background: #f0f7ff;
-  border-color: #1677ff;
+  background: var(--surface-hover);
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
 }
 
 .choice-card-group .ant-radio-button-wrapper:focus-within {
-  outline: 2px solid #2f54eb;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .app-shell {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 90% 0%, rgba(47, 84, 235, 0.08), transparent 28rem),
-    #f5f6fa;
+  background: var(--background);
 }
 
 .desktop-app-header {
@@ -76,8 +77,8 @@ select {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid #e8ebf2;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border-bottom: 1px solid var(--border);
   backdrop-filter: blur(12px);
 }
 
@@ -93,8 +94,8 @@ select {
 .desktop-app-sider {
   width: 180px;
   flex: 0 0 180px;
-  background: #fff;
-  border-right: 1px solid #e8ebf2;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
 .desktop-app-sider .ant-menu {
@@ -140,7 +141,7 @@ select {
   min-height: calc(100dvh - 45px);
   display: flex;
   flex-direction: column;
-  background: #f5f6fa;
+  background: var(--background);
 }
 
 .mobile-flow-body {
@@ -154,8 +155,8 @@ select {
   bottom: 0;
   z-index: 5;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid #e8ebf2;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border-top: 1px solid var(--border);
   backdrop-filter: blur(12px);
 }
 
@@ -164,7 +165,7 @@ select {
 }
 
 .mobile-inline-confirm {
-  border: 1px solid #ffccc7;
+  border: 1px solid color-mix(in srgb, var(--danger) 10%, var(--surface));
   box-shadow: 0 8px 24px rgba(160, 20, 20, 0.08);
 }
 
@@ -220,6 +221,13 @@ select {
 .setup-card {
   width: min(960px, 94vw);
 }
+.setup-check { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.setup-check-state { display: flex; align-items: center; gap: 8px; }
+.setup-check-state .ant-tag { margin: 0; }
+.setup-check > .ant-btn { margin-left: auto; }
+.setup-notification-heading { display: grid; gap: 8px; }
+.setup-section-title { display: flex; align-items: center; gap: 8px; }
+@media(max-width:1023px) { .setup-card .ant-col-md-12 { flex-basis: 100%; max-width: 100%; } .setup-check > .ant-btn { min-height: 44px; } }
 
 .notification-pair-list > .ant-form-item-row {
   display: block;
@@ -235,7 +243,7 @@ select {
 .notification-advanced-collapse {
   margin: 4px 0 16px;
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .notification-advanced-collapse > .ant-collapse-item > .ant-collapse-header {
@@ -290,8 +298,8 @@ select {
   word-break: break-word;
   font-size: 12px;
   line-height: 1.6;
-  background: #fafafa;
-  border-radius: 10px;
+  background: var(--surface-hover);
+  border-radius: var(--radius);
 }
 
 .stat-card .ant-statistic-content-value {
@@ -305,7 +313,7 @@ select {
 
 /* 账单明细中年费行整行高亮 */
 .annual-fee-row td {
-  background: #fff1f0 !important;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface)) !important;
 }
 
 /* ===== 卡片管理：银行卡样式 ===== */
@@ -614,15 +622,15 @@ select {
   bottom: 8px;
   width: 4px;
   border-radius: 2px;
-  background: #91caff;
+  background: var(--primary);
 }
 
 .todo-item-overdue::before {
-  background: #ff4d4f;
+  background: var(--danger);
 }
 
 .todo-item-today::before {
-  background: #fa8c16;
+  background: var(--warning);
 }
 
 @media (width < 1024px) {
@@ -668,8 +676,8 @@ select {
     display: block;
     min-height: calc(45px + env(safe-area-inset-top));
     padding-top: env(safe-area-inset-top);
-    background: rgba(255, 255, 255, 0.96);
-    border-bottom: 1px solid #e8ebf2;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border-bottom: 1px solid var(--border);
     backdrop-filter: blur(14px);
   }
 
@@ -751,8 +759,8 @@ select {
     z-index: 40;
     display: block;
     min-height: calc(58px + env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.97);
-    border-top: 1px solid #e8ebf2;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border-top: 1px solid var(--border);
     box-shadow: 0 -8px 30px rgba(32, 44, 78, 0.08);
     backdrop-filter: blur(14px);
   }
@@ -780,9 +788,9 @@ select {
   }
 
   .mobile-tab-action:focus-visible {
-    outline: 2px solid #2f54eb;
+    outline: 2px solid var(--primary);
     outline-offset: -3px;
-    border-radius: 8px;
+    border-radius: var(--radius);
   }
 
   .mobile-more-page {
@@ -798,9 +806,10 @@ select {
     gap: 12px;
     margin: 4px 0 16px;
     padding: 18px;
-    color: #fff;
-    background: linear-gradient(135deg, #1d39c4, #4776e6 62%, #85a5ff);
-    border-radius: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-lg);
     box-shadow: 0 10px 28px rgba(47, 84, 235, 0.2);
   }
 
@@ -832,10 +841,10 @@ select {
     gap: 12px;
     margin: 10px 12px 0;
     padding: 9px 12px;
-    color: #10239e;
-    background: #e6f4ff;
-    border: 1px solid #91caff;
-    border-radius: 12px;
+    color: var(--primary);
+    background: var(--surface-hover);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius);
     cursor: pointer;
   }
 
@@ -1004,7 +1013,7 @@ select {
   .auth-screen-mobile .auth-card {
     width: 100%;
     margin: auto 0;
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
   }
 
   .auth-screen-mobile .ant-card-head {
@@ -1051,7 +1060,7 @@ select {
   }
 
   .mobile-dashboard-section.ant-card {
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 4px 16px rgba(32, 44, 78, 0.06);
   }
 
@@ -1133,7 +1142,7 @@ select {
   }
 
   .mobile-entity-card {
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 4px 14px rgba(32, 44, 78, 0.06);
   }
 
@@ -1199,7 +1208,7 @@ select {
   }
 
   .parser-page-content > .ant-card {
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
   }
 
   .mail-body-content {
@@ -1213,12 +1222,12 @@ select {
     word-break: break-word;
     font-size: 12px;
     line-height: 1.6;
-    background: #fafafa;
-    border-radius: 10px;
+    background: var(--surface-hover);
+    border-radius: var(--radius);
   }
 
   .page-mobile > .adm-pull-to-refresh .ant-space-vertical > .ant-card {
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
   }
 
   @keyframes mobile-page-in {
@@ -1242,3 +1251,19 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+.desktop-header-actions { display: flex; align-items: center; gap: 16px; }
+.mobile-more-appearance { padding: 0 16px 20px; }
+.mobile-more-appearance .ant-segmented { width: 100%; }
+.auth-card { box-shadow: 0 8px 32px #0000000d; border: 1px solid var(--border); }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media(max-width:1023px) {
+  .ant-btn, .ant-select-single, .ant-input-affix-wrapper, .ant-picker, .ant-segmented-item-label { min-height: 44px; }
+  .ant-input { min-height: 42px; }
+  .ant-input-affix-wrapper .ant-input { min-height: 0; }
+  .mobile-nav-back-button, .mobile-tab-action { min-width: 44px; min-height: 44px; }
+}
+
+.email-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.email-editor-grid h3 { margin: 0 0 20px; }
+@media(max-width:1023px) { .email-editor-grid { grid-template-columns: 1fr; gap: 16px; } }

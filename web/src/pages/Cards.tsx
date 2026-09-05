@@ -1,3 +1,5 @@
+import { displayDate } from '../lib/displayDate';
+import { useDraftGuard } from '../lib/draftGuard';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -38,7 +40,7 @@ import {
   SortAscendingOutlined,
   StarOutlined,
   WarningOutlined,
-} from '@ant-design/icons';
+} from '../skins/icons';
 import { Popup, SearchBar } from 'antd-mobile';
 import dayjs from 'dayjs';
 import { useLocation, useNavigate } from 'react-router';
@@ -46,14 +48,13 @@ import { formatMoney } from '../lib/money';
 import {
   businessCoverOf,
   businessPrimaryFirst,
-  businessRelationshipLabel,
   businessRelationshipPrimaryOf,
   cardGroupTitle,
   shouldShowBusinessRole,
 } from '../lib/business-cards';
 import { Virtuoso } from 'react-virtuoso';
 import { api, ApiError } from '../api/client';
-import type { BillRow, CardInput, CardRow } from '../api/types';
+import type { CardInput, CardRow } from '../api/types';
 import { Page } from '../components/Layout';
 import BusinessRoleRibbon from '../components/BusinessRoleRibbon';
 import MarkAbnormalModal, { type MarkAbnormalTarget } from '../components/MarkAbnormalModal';
@@ -66,6 +67,9 @@ import {
 } from '../components/MobilePrimitives';
 import { useResetOnModeChange, useResponsive, type ResponsiveMode } from '../responsive';
 import MobileCardDetail from './cards/MobileCardDetail';
+import CardBillSection from '../components/CardBillSection';
+import { useSourceSnapshot } from '../lib/billNavigation';
+import { useViewState } from '../lib/viewState';
 import './cards/cards.css';
 
 /** 卡敏感信息明文（PIN 验证后临时持有，仅存前端内存，弹窗关闭/收起即清除） */
@@ -198,13 +202,14 @@ function CardForm({
   const dueRule = Form.useWatch('dueRule', form) ?? formInitialValues.dueRule;
   const billingEditable = initial?.billingEditable ?? true;
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  useDraftGuard(Boolean(restoreDraft?.dirty));
 
   useResetOnModeChange(() => setLeaveConfirm(false));
 
   const title = initial ? `编辑卡片 - ${initial.bankName}（${initial.displayLast4}）` : '新增卡片';
   const requestClose = () => {
     if (confirmLoading) return;
-    if (isMobile && restoreDraft?.dirty) {
+    if (restoreDraft?.dirty) {
       setLeaveConfirm(true);
       return;
     }
@@ -238,9 +243,10 @@ function CardForm({
         });
       }}
     >
-      <Row gutter={24}>
+      <Row gutter={[24, 20]} className="cards-edit-sections">
         {/* 左栏：基础信息 */}
-        <Col xs={24} lg={12}>
+        <Col xs={24} lg={isMobile ? 24 : 12}>
+          <h3 className="cards-edit-section-title">基础信息</h3>
           <Form.Item name="bankName" label="银行名称" rules={[{ required: true, message: '请输入银行名称' }]}>
             <Input placeholder="如：招商银行" disabled={!!initial && !billingEditable} />
           </Form.Item>
@@ -266,7 +272,8 @@ function CardForm({
           </Form.Item>
         </Col>
         {/* 右栏：账单规则；副卡、附属卡仅保留身份与年费日 */}
-        <Col xs={24} lg={12}>
+        <Col xs={24} lg={isMobile ? 24 : 12}>
+          <h3 className="cards-edit-section-title">账单与提醒</h3>
           {!billingEditable && initial ? (
             <>
               <Form.Item label="卡片身份">
@@ -381,6 +388,7 @@ function CardForm({
       destroyOnHidden
       width={WIDE_MODAL_WIDTH}
     >
+      {leaveConfirm && <InlineConfirm title="放弃未保存的修改？" description="退出后本次修改不会保存。" confirmText="放弃修改" onConfirm={onCancel} onCancel={() => setLeaveConfirm(false)} />}
       {formContent}
     </Modal>
   );
@@ -733,7 +741,7 @@ function nextFeeOfGroup(cards: CardRow[]): { label: string; lines: string[] } | 
   }
   if (items.length === 0) return null;
   items.sort((a, b) => a.next.valueOf() - b.next.valueOf() || a.line.localeCompare(b.line));
-  return { label: items[0]!.next.format('M月D日'), lines: items.map((i) => i.line) };
+  return { label: displayDate(items[0]!.next.format('YYYY-MM-DD')), lines: items.map((i) => i.line) };
 }
 
 type SortKey = 'bank' | 'statement' | 'due' | 'fee';
@@ -837,8 +845,7 @@ function BankCardItem({
 }) {
   const groupSize = groupCards.length;
   const groupTails = groupCards.map((c) => c.displayLast4);
-  const relationshipLabel = businessRelationshipLabel(groupCards);
-  const groupLabel = relationshipLabel ?? `同一账期 ${groupSize} 张卡`;
+  const groupLabel = `${groupSize} 张卡`;
   const stacked = groupSize > 1 && !plain;
   const feeAgg = nextFeeOfGroup(stacked ? groupCards : [card]);
   const expanded = revealed != null;
@@ -857,7 +864,7 @@ function BankCardItem({
       disabled: secretPending,
     },
     ...(allowSetPrimary
-      ? [{ key: 'primary', icon: <StarOutlined />, label: '设为优先展示', disabled: primaryPending }]
+      ? [{ key: 'primary', icon: <StarOutlined />, label: '设为主卡', disabled: primaryPending }]
       : []),
     { key: 'abnormal', icon: <WarningOutlined />, label: '标记异常' },
     { key: 'remove', icon: <DeleteOutlined />, label: '删除', danger: true },
@@ -1046,7 +1053,7 @@ function BankCardItem({
             <div className="bank-card-label">出账日 每月{card.statementDay}日</div>
             <div className="bank-card-value">
               {showCurrentCycle
-                ? `下一还款 ${dayjs(card.currentCycle.dueDate).format('M月D日')}`
+                ? `下一还款 ${displayDate(card.currentCycle.dueDate)}`
                 : card.status === 'frozen' ? '账期提醒已暂停' : '卡片已注销'}
             </div>
           </div>
@@ -1266,7 +1273,7 @@ function MobileCardActionSheet({
                 disabled={primaryPending}
                 onClick={onPrimary}
               >
-                设为优先展示
+                设为主卡
               </Button>
             )}
             <Button type="text" block icon={<WarningOutlined />} onClick={onStatus}>
@@ -1318,10 +1325,10 @@ function MobileCardConfirmSheet({
             title={
               isRemove
                 ? `删除 ${target.card.bankName}（${target.card.displayLast4}）？`
-                : `将（${target.card.displayLast4}）设为优先展示？`
+                : `将（${target.card.displayLast4}）设为主卡？`
             }
             description={isRemove ? deleteCardDescription(target.card) : '设置后，此卡将在卡片列表中优先展示。'}
-            confirmText={isRemove ? '删除卡片' : '设为优先展示'}
+            confirmText={isRemove ? '删除卡片' : '设为主卡'}
             danger={isRemove}
             loading={loading}
             onCancel={onClose}
@@ -1359,8 +1366,8 @@ export default function Cards() {
     responsiveMode: ResponsiveMode;
   } | null>(null);
   /** 展开的账户组弹窗 key（多卡组点击卡片本体；数据随 rows 刷新） */
-  const [groupModalKey, setGroupModalKey] = useState<string | null>(null);
-  const [groupDetailCardId, setGroupDetailCardId] = useState<number | null>(null);
+  const [groupModalKey, setGroupModalKey] = useState<string | null>(location.state?.sourceSnapshot?.groupModalKey ?? null);
+  const [groupDetailCardId, setGroupDetailCardId] = useState<number | null>(location.state?.sourceSnapshot?.groupDetailCardId ?? null);
   const [markTarget, setMarkTarget] = useState<MarkPaidTarget | null>(null);
   const [cardDetailReloadKey, setCardDetailReloadKey] = useState(0);
   /** 设为优先展示请求中的卡 ID */
@@ -1371,10 +1378,10 @@ export default function Cards() {
   const [abnormalTarget, setAbnormalTarget] = useState<ResponsiveAbnormalFlowTarget | null>(null);
   const [secretPendingCardIds, setSecretPendingCardIds] = useState<Set<number>>(() => new Set());
   const [saving, setSaving] = useState(false);
-  const [q, setQ] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('bank');
+  const [q, setQ] = useViewState('cards:query', '');
+  const [sortKey, setSortKey] = useViewState<SortKey>('cards:sort', 'bank');
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useViewState('cards:page', 1);
   const lifecycleGen = useRef(0);
   const writeEpoch = useRef(0);
   const lastAppliedEpoch = useRef(-1);
@@ -1767,7 +1774,7 @@ export default function Cards() {
       const mutationEpoch = commitWrite();
       setRevealed(null);
       await refreshAfterMutation(mutationEpoch);
-      message.success(`已将（${card.displayLast4}）设为优先展示`);
+      message.success(`已将（${card.displayLast4}）设为主卡，将在卡片列表中优先展示`);
       setMobileConfirm((current) =>
         current?.action === 'primary' && current.card.id === card.id ? null : current,
       );
@@ -1794,6 +1801,7 @@ export default function Cards() {
   };
 
   const openEditing = (card: CardRow | null) => {
+    if (groupModalKey && card) setGroupDetailCardId(card.id);
     setRevealed(null);
     setCardDraft(null);
     setEditing(card);
@@ -1819,10 +1827,10 @@ export default function Cards() {
       title:
         action === 'remove'
           ? `删除 ${card.bankName}（${card.displayLast4}）？`
-          : `将（${card.displayLast4}）设为优先展示？`,
+          : `将（${card.displayLast4}）设为主卡？`,
       content:
         action === 'remove' ? deleteCardDescription(card) : '设置后，此卡将在卡片列表中优先展示。',
-      okText: action === 'remove' ? '删除卡片' : '设为优先展示',
+      okText: action === 'remove' ? '删除卡片' : '设为主卡',
       okButtonProps: action === 'remove' ? { danger: true } : undefined,
       onOk: () => (action === 'remove' ? remove(card) : setPrimary(card)),
       afterClose: () => {
@@ -1839,9 +1847,9 @@ export default function Cards() {
       card={card}
       revealed={revealed?.responsiveMode === mode && revealed.cardId === card.id ? revealed.secrets : null}
       groupCards={group.cards}
-      onEye={() => onEye(card)}
+      onEye={() => { if (groupModalKey) setGroupDetailCardId(card.id); onEye(card); }}
       onEdit={() => openEditing(card)}
-      onSecret={() => onSecretEntry(card)}
+      onSecret={() => { if (groupModalKey) setGroupDetailCardId(card.id); onSecretEntry(card); }}
       onMobileActions={() =>
         setMobileCardAction({
           cardId: card.id,
@@ -1891,26 +1899,12 @@ export default function Cards() {
     action();
   };
 
-  const markBill = (bill: BillRow) => {
-    if (bill.cardId == null || !bill.bankName) return;
-    setMarkTarget({
-      cardId: bill.cardId,
-      bankName: bill.bankName,
-      cardLast4: bill.cardLast4 ?? bill.cardTails[0] ?? '',
-      period: bill.period,
-      currency: bill.currency,
-      billId: bill.id ?? undefined,
-      amount: bill.amount,
-      minAmount: bill.minAmount,
-      paidStatus: bill.paidStatus,
-      paidAmount: bill.paidAmount,
-    });
-  };
-
   /**
    * MarkAbnormalModal 固定为所有响应式分支的同一个带 key 兄弟节点。
    * 因此断点切换可以清掉 target/选择态，但组件内已经开始的 saving 锁会一直存活到原请求 finally。
    */
+  useSourceSnapshot({ groupModalKey, groupDetailCardId });
+
   const withAbnormalFlow = (content: React.ReactNode) => (
     <>
       {content}
@@ -2057,7 +2051,7 @@ export default function Cards() {
           setGroupDetailCardId(null);
           setGroupModalKey(null);
         }}
-        onMarkPaid={markBill}
+        onChanged={() => { void load(); }}
       />,
     );
   }
@@ -2292,6 +2286,7 @@ export default function Cards() {
               </Col>
             ))}
           </Row>
+          <CardBillSection cardIds={groupModal.cards.map(card => card.id)} revision={cardDetailReloadKey} onChanged={() => { void load(); }} />
         </Modal>
       )}
     </Page>,

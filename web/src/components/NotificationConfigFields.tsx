@@ -1,4 +1,4 @@
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined } from '../skins/icons';
 import { Alert, Button, Col, Collapse, Form, Input, Row, Select, Space, Typography } from 'antd';
 import type { NotificationProviderDefinition, NotificationProviderField } from '../api/types';
 

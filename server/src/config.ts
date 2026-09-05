@@ -48,4 +48,11 @@ export const config = {
   get webDistDir(): string {
     return process.env.WEB_DIST_DIR || path.resolve(here, '../../web/dist');
   },
+  /** 皮肤资源独立持久化；Docker 映射到 /app/data/skins。 */
+  get skinStorageDir(): string {
+    return path.resolve(process.env.SKIN_STORAGE_DIR || path.resolve(here, '../data/skins'));
+  },
+  get builtinSkinDir(): string {
+    return path.resolve(here, '../skins');
+  },
 };

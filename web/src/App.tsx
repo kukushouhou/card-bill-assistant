@@ -1,3 +1,4 @@
+import AppRouter from './components/AppRouter';
 import {
   Component,
   lazy,
@@ -10,9 +11,9 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
 import { Button, Result, Space, Spin } from 'antd';
-import { ReloadOutlined, SyncOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SyncOutlined } from './skins/icons';
 import { api } from './api/client';
 import type { AppInfo, MeInfo, SetupStatus } from './api/types';
 import { AppNameContext, DEFAULT_APP_NAME } from './appName';
@@ -28,7 +29,6 @@ const loadDashboard: LazyPageLoader = () => import('./pages/Dashboard');
 const loadCards: LazyPageLoader = () => import('./pages/Cards');
 const loadBills: LazyPageLoader = () => import('./pages/Bills');
 const loadTransactions: LazyPageLoader = () => import('./pages/Transactions');
-const loadReminders: LazyPageLoader = () => import('./pages/Reminders');
 const loadEmail: LazyPageLoader = () => import('./pages/Email');
 const loadParserCenter: LazyPageLoader = () => import('./pages/ParserCenter');
 const loadSettings: LazyPageLoader = () => import('./pages/Settings');
@@ -177,7 +177,7 @@ export default function App() {
     }
 
     return (
-      <BrowserRouter>
+      <AppRouter>
         <Routes>
           <Route
             path="/login"
@@ -199,14 +199,14 @@ export default function App() {
             <Route path="cards" element={<DeferredPage loader={loadCards} />} />
             <Route path="bills" element={<DeferredPage loader={loadBills} />} />
             <Route path="transactions" element={<DeferredPage loader={loadTransactions} />} />
-            <Route path="reminders" element={<DeferredPage loader={loadReminders} />} />
+            <Route path="reminders" element={<Navigate to="/bills?view=today" replace />} />
             <Route path="email" element={<DeferredPage loader={loadEmail} />} />
             <Route path="parsers" element={<DeferredPage loader={loadParserCenter} />} />
             <Route path="settings" element={<DeferredPage loader={loadSettings} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </AppRouter>
     );
   })();
 

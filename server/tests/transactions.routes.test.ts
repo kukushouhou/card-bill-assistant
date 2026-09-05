@@ -19,6 +19,47 @@ import transactionsRouter from '../src/routes/transactions.routes';
 import billsRouter from '../src/routes/bills.routes';
 import { ApiError } from '../src/lib/errors';
 
+describe('统一账单明细来源', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.billTransaction.count.mockResolvedValue(0);
+    prisma.billTransaction.findMany.mockResolvedValue([]);
+    prisma.bill.findUnique.mockResolvedValue({ id: 11, period: '2026-08', currency: 'CNY', amount: 43.4,
+      card: { id: 1, bankName: '交通银行', cardLast4: '0988', displayLast4: '0988' },
+      cards: [{ card: { id: 2, cardLast4: '2233', displayLast4: '2233' } }],
+    });
+  });
+  it('无明细的真实账单仍返回来源上下文，查询不附加交易月份', async () => {
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, mode: 'bill', cards: [{ id: 1 }, { id: 2 }] } });
+    });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: 11 } });
+  });
+  it('历史只限定来源账单关联卡，账期筛选使用所属账单而非交易日期', async () => {
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      expect((await fetch(url + '/api/transactions?scopeBillId=11&period=2026-07')).status).toBe(200);
+    });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: { not: null }, cardId: { in: [1, 2] }, bill: { period: '2026-07' } } });
+    expect(prisma.bill.findUnique).toHaveBeenCalledTimes(1);
+  });
+  it('账单不存在明确返回 404，不能扩大成全量明细', async () => {
+    prisma.bill.findUnique.mockResolvedValue(null);
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      expect((await fetch(url + '/api/transactions?billId=999')).status).toBe(404);
+    });
+    expect(prisma.billTransaction.findMany).not.toHaveBeenCalled();
+  });
+  it('本账单与历史范围互斥，来源外卡片不会扩大范围', async () => {
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      expect((await fetch(url + '/api/transactions?billId=11&scopeBillId=11')).status).toBe(400);
+      expect((await fetch(url + '/api/transactions?scopeBillId=11&cardId=999')).status).toBe(200);
+    });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: { not: null }, cardId: { in: [] } } });
+  });
+});
+
 async function withServer(prefix: string, router: Router, run: (url: string) => Promise<void>): Promise<void> {
   const app = express();
   app.use(express.json());

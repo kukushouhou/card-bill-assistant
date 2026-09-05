@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { Alert, App, Button, Card, Col, Empty, Modal, Row, Select, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
 import {
   CreditCardOutlined,
@@ -10,24 +10,20 @@ import {
   SyncOutlined,
   FileTextOutlined,
   ExclamationCircleFilled,
-  LeftOutlined,
   RightOutlined,
-} from '@ant-design/icons';
+} from '../skins/icons';
 import { api, ApiError } from '../api/client';
-import type { AnnualFeeNotice, BillDetails, BillsTrend, DashboardSummary, TodoItem, UpcomingItem } from '../api/types';
+import type { AnnualFeeNotice, PagedTransactions, BillsTrend, DashboardSummary, TodoItem, UpcomingItem } from '../api/types';
 import { overdueText } from '../lib/overdue';
 import { hasMetMinimumPayment } from '../lib/billPayment';
 import { Page } from '../components/Layout';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
-import {
-  billCardTailsText,
-  DesktopBillDetailsContent,
-  MobileBillDetails,
-} from '../components/BillDetailsView';
+import { useBillNavigation, useSourceSnapshot } from '../lib/billNavigation';
+import { displayDate, displayPeriod } from '../lib/displayDate';
 import TrendChart from '../components/TrendChart';
 import dayjs from 'dayjs';
 import { useResponsive } from '../responsive';
-import { MobileFlow, MobilePullToRefresh, useCoalescedRefresh, useMobileFlowNavigation } from '../components/MobilePrimitives';
+import { MobileFlow, MobilePullToRefresh, useCoalescedRefresh } from '../components/MobilePrimitives';
 import './dashboard.css';
 import { formatMoney } from '../lib/money';
 import { useHistoryGate } from '../historyGate';
@@ -169,9 +165,9 @@ function AnnualFeeNoticeList({
             <span className="annual-fee-panel-item-main">
               <strong>{item.bankName}</strong>
               <span>
-                {item.period}期
+                {displayPeriod(item.period)}期
                 {item.cardTails.length > 0 ? ` · 尾号 ${item.cardTails.join('、')}` : ''}
-                {!item.hasDetails ? ' · 暂无交易明细' : ''}
+
               </span>
             </span>
             <strong className="annual-fee-panel-item-amount">
@@ -187,10 +183,11 @@ function AnnualFeeNoticeList({
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const navigateFromMobileFlow = useMobileFlowNavigation();
+  const openBill = useBillNavigation();
+  const location = useLocation();
   const { message } = App.useApp();
   const { isMobile } = useResponsive();
-  const { blocked, blockedReason, mayRunRestrictedAction } = useHistoryGate();
+  const { blockedReason, mayRunRestrictedAction } = useHistoryGate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingItem[]>([]);
@@ -210,12 +207,9 @@ export default function Dashboard() {
   const [trendKey, setTrendKey] = useState(0);
   const [markTarget, setMarkTarget] = useState<MarkPaidTarget | null>(null);
   const [annualFeeAcknowledging, setAnnualFeeAcknowledging] = useState(false);
-  const [annualFeeSnapshot, setAnnualFeeSnapshot] = useState<AnnualFeeNotice | null>(null);
-  const [annualFeeDetailItem, setAnnualFeeDetailItem] = useState<AnnualFeeNoticeItem | null>(null);
-  const [annualFeeDetails, setAnnualFeeDetails] = useState<BillDetails | null>(null);
+  const [annualFeeSnapshot, setAnnualFeeSnapshot] = useState<AnnualFeeNotice | null>(location.state?.sourceSnapshot?.annualFeeSnapshot ?? null);
+  useSourceSnapshot({ annualFeeSnapshot });
   const [annualFeeDetailLoading, setAnnualFeeDetailLoading] = useState(false);
-  const [annualFeeDetailError, setAnnualFeeDetailError] = useState<string | null>(null);
-  const annualFeeDetailGeneration = useRef(0);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -329,67 +323,24 @@ export default function Dashboard() {
     return true;
   };
 
-  const closeAnnualFeePanel = () => {
-    annualFeeDetailGeneration.current += 1;
-    setAnnualFeeSnapshot(null);
-    setAnnualFeeDetailItem(null);
-    setAnnualFeeDetails(null);
-    setAnnualFeeDetailLoading(false);
-    setAnnualFeeDetailError(null);
-  };
-
-  const backFromAnnualFeeDetail = () => {
-    if ((annualFeeSnapshot?.items.length ?? 0) <= 1) {
-      closeAnnualFeePanel();
-      return;
-    }
-    annualFeeDetailGeneration.current += 1;
-    setAnnualFeeDetailItem(null);
-    setAnnualFeeDetails(null);
-    setAnnualFeeDetailLoading(false);
-    setAnnualFeeDetailError(null);
-  };
-
-  const openAnnualFeeDetail = async (
-    notice: AnnualFeeNotice,
-    item: AnnualFeeNoticeItem,
-    acknowledgeAfterLoad: boolean,
-  ) => {
-    if (!mayRunRestrictedAction()) {
-      message.warning(blockedReason);
-      return;
-    }
-    const generation = ++annualFeeDetailGeneration.current;
-    setAnnualFeeSnapshot(notice);
-    setAnnualFeeDetailItem(item);
-    setAnnualFeeDetails(null);
-    setAnnualFeeDetailError(null);
-    setAnnualFeeDetailLoading(true);
+  const closeAnnualFeePanel = () => setAnnualFeeSnapshot(null);
+  const annualFeeOpenLock = useRef(false);
+  const openAnnualFeeDetail = async (notice: AnnualFeeNotice, item: AnnualFeeNoticeItem, acknowledgeAfterLoad: boolean) => {
+    if (annualFeeOpenLock.current) return;
+    if (!mayRunRestrictedAction()) { message.warning(blockedReason); return; }
+    annualFeeOpenLock.current = true; setAnnualFeeDetailLoading(true);
     try {
-      const details = await api.get<BillDetails>(`/api/bills/${item.billId}/details`);
-      if (generation !== annualFeeDetailGeneration.current) return;
-      setAnnualFeeDetails(details);
-      if (acknowledgeAfterLoad) void acknowledgeAnnualFeeNotice(notice);
-    } catch (error) {
-      if (generation !== annualFeeDetailGeneration.current) return;
-      setAnnualFeeDetailError(errMsg(error));
-    } finally {
-      if (generation === annualFeeDetailGeneration.current) setAnnualFeeDetailLoading(false);
-    }
+      await api.get<PagedTransactions>('/api/transactions?billId=' + item.billId + '&pageSize=1');
+      if (acknowledgeAfterLoad) await acknowledgeAnnualFeeNotice(notice);
+      openBill(item.billId);
+    } catch (error) { message.error(errMsg(error)); }
+    finally { annualFeeOpenLock.current = false; setAnnualFeeDetailLoading(false); }
   };
-
   const openAnnualFeeNotice = () => {
     const notice = summary?.annualFeeNotice;
     if (!notice || notice.items.length === 0) return;
-    if (notice.items.length === 1) {
-      void openAnnualFeeDetail(notice, notice.items[0], true);
-      return;
-    }
+    if (notice.items.length === 1) { void openAnnualFeeDetail(notice, notice.items[0], true); return; }
     setAnnualFeeSnapshot(notice);
-    setAnnualFeeDetailItem(null);
-    setAnnualFeeDetails(null);
-    setAnnualFeeDetailError(null);
-    setAnnualFeeDetailLoading(false);
     void acknowledgeAnnualFeeNotice(notice);
   };
 
@@ -444,11 +395,13 @@ export default function Dashboard() {
   };
 
   const openTodoCard = (item: TodoItem) => {
-    if (!isMobile || item.recordType !== 'card' || item.cardId == null) return;
+    if (item.recordType !== 'card' || item.cardId == null) return;
+    if (item.billId != null) { openBill(item.billId); return; }
     navigate('/cards', { state: { mobileCardId: item.cardId } });
   };
 
   const handleUpcoming = (item: UpcomingItem) => {
+    if (item.billId != null && item.hasBill) { openBill(item.billId); return; }
     if (item.cardId) {
       navigate(`/bills?cardId=${item.cardId}`);
       return;
@@ -520,13 +473,12 @@ export default function Dashboard() {
                     <Col span={12}>
                       <Card className="mobile-dashboard-key-stat mobile-dashboard-key-stat-primary" size="small">
                         <Typography.Text type="secondary">当前待还</Typography.Text>
-                        <strong>{summary?.currentPeriod.unpaidCount ?? 0} 笔</strong>
+                        <div className="dashboard-count"><strong>{summary?.currentPeriod.unpaidCount ?? 0}</strong><span>笔</span></div>
                         <div className="mobile-dashboard-key-stat-detail">
                           {summary?.currentPeriod.totalsByCurrency.some((entry) => entry.unpaidTotal > 0)
                             ? summary.currentPeriod.totalsByCurrency
                                 .filter((entry) => entry.unpaidTotal > 0)
-                                .map((entry) => formatMoney(entry.unpaidTotal, entry.currency))
-                                .join(' · ')
+                                .map((entry) => <span className="dashboard-currency-value" key={entry.currency}>{formatMoney(entry.unpaidTotal, entry.currency)}</span>)
                             : '暂无待还金额'}
                         </div>
                       </Card>
@@ -534,7 +486,7 @@ export default function Dashboard() {
                     <Col span={12}>
                       <Card className="mobile-dashboard-key-stat" size="small">
                         <Typography.Text type="secondary">14 天内到期</Typography.Text>
-                        <strong>{summary?.upcoming14d.dueCount ?? 0} 项</strong>
+                        <div className="dashboard-count"><strong>{summary?.upcoming14d.dueCount ?? 0}</strong><span>项</span></div>
                         <div className="mobile-dashboard-key-stat-detail">
                           {summary?.upcoming14d.dueCount ? '请留意近期安排' : '暂无到期事项'}
                         </div>
@@ -542,16 +494,14 @@ export default function Dashboard() {
                     </Col>
                   </Row>
                   {(summary?.currentPeriod.unknownAmountCount ?? 0) > 0 && (
-                    <Typography.Text type="secondary" className="mobile-dashboard-unknown-note">
-                      {summary!.currentPeriod.unknownAmountCount} 笔账单金额待填写
-                    </Typography.Text>
+                    <div className="dashboard-attention"><span>账单金额待填写</span><span className="dashboard-count"><strong>{summary!.currentPeriod.unknownAmountCount}</strong><span>笔</span></span></div>
                   )}
                 </Spin>
               )}
               {summary?.annualFeeNotice && (
                 <AnnualFeeNoticeAlert
                   notice={summary.annualFeeNotice}
-                  acknowledging={annualFeeAcknowledging}
+                  acknowledging={annualFeeAcknowledging || annualFeeDetailLoading}
                   mobile
                   onView={openAnnualFeeNotice}
                   onAcknowledge={() => void acknowledgeAnnualFeeNotice()}
@@ -563,7 +513,7 @@ export default function Dashboard() {
               title="今日待办"
               extra={
                 todos.length > visibleTodos.length ? (
-                  <Button type="link" onClick={() => navigate('/reminders')}>查看全部 {todos.length}</Button>
+                  <Button type="link" onClick={() => navigate('/bills')}>查看全部 {todos.length}</Button>
                 ) : undefined
               }
               size="small"
@@ -585,7 +535,7 @@ export default function Dashboard() {
                 <div className="dashboard-list" role="list">
                   {visibleTodos.map((item) => (
                     <article
-                      key={item.recordType === 'custom' ? `custom-${item.occurrenceId}` : `${item.cardId}-${item.period}`}
+                      key={item.recordType === 'custom' ? `custom-${item.occurrenceId}` : `${item.billId ?? item.cardId}-${item.period}-${item.currency}`}
                       className={`dashboard-list-item mobile-todo-card ${todoBandClass(item)}${item.recordType === 'card' ? ' is-card' : ''}`}
                       role="listitem"
                       onClick={() => openTodoCard(item)}
@@ -627,7 +577,7 @@ export default function Dashboard() {
                         </div>
                         <div className={`mobile-todo-card-due${item.daysOverdue != null ? ' is-overdue' : ''}`}>
                           <strong>{todoDueCopy(item)}</strong>
-                          <span>{dayjs(item.dueDate).format('MM-DD')}</span>
+                          <span>{displayDate(item.dueDate)}</span>
                         </div>
                         {item.paidStatus !== 'paid' && (
                           <Button
@@ -657,7 +607,7 @@ export default function Dashboard() {
               title="未来 14 天"
               extra={
                 upcoming.length > 5 ? (
-                  <Button type="link" onClick={() => navigate('/reminders')}>查看全部 {upcoming.length}</Button>
+                  <Button type="link" onClick={() => navigate('/bills?view=upcoming')}>查看全部 {upcoming.length}</Button>
                 ) : undefined
               }
               size="small"
@@ -693,7 +643,7 @@ export default function Dashboard() {
                     >
                       <div className="mobile-upcoming-row">
                         <div className="mobile-upcoming-date">
-                          <Typography.Text strong>{dayjs(item.date).format('MM-DD')}</Typography.Text>
+                          <Typography.Text strong>{displayDate(item.date)}</Typography.Text>
                           <Typography.Text type="secondary">{item.daysLeft === 0 ? '今天' : `${item.daysLeft} 天后`}</Typography.Text>
                         </div>
                         <div className="mobile-upcoming-main">
@@ -756,35 +706,13 @@ export default function Dashboard() {
           </MobilePullToRefresh>
         </Page>}
         <MarkPaidModal target={markTarget} onClose={() => setMarkTarget(null)} onDone={reloadPaid} />
-        {annualFeeSnapshot && !annualFeeDetailItem && (
+        {annualFeeSnapshot && (
           <MobileFlow title={`年费账单（${annualFeeSnapshot.items.length} 笔）`} onBack={closeAnnualFeePanel}>
             <AnnualFeeNoticeList
               notice={annualFeeSnapshot}
               onSelect={(item) => void openAnnualFeeDetail(annualFeeSnapshot, item, false)}
             />
           </MobileFlow>
-        )}
-        {annualFeeSnapshot && annualFeeDetailItem && (
-          <MobileBillDetails
-            target={{
-              billId: annualFeeDetailItem.billId,
-              bankName: annualFeeDetailItem.bankName,
-              cardTails: annualFeeDetailItem.cardTails,
-              period: annualFeeDetailItem.period,
-            }}
-            details={annualFeeDetails}
-            loading={annualFeeDetailLoading}
-            error={annualFeeDetailError}
-            blocked={blocked}
-            blockedReason={blockedReason}
-            onBack={backFromAnnualFeeDetail}
-            onRetry={() => void openAnnualFeeDetail(
-              annualFeeSnapshot,
-              annualFeeDetailItem,
-              annualFeeSnapshot.items.length === 1,
-            )}
-            onViewHistory={() => navigateFromMobileFlow('/email', { state: { showHistoryProgress: true } })}
-          />
         )}
       </>
     );
@@ -838,56 +766,51 @@ export default function Dashboard() {
               <Col xs={12} lg={12} xl={6}>
                 <Card className="stat-card dash-stat-card" variant="outlined">
                   <Statistic
-                    title="启用卡片"
+                    title={<span className="dashboard-stat-title"><CreditCardOutlined />启用卡片</span>}
                     value={summary ? `${summary.cards.active}/${summary.cards.total}` : '-'}
-                    prefix={<CreditCardOutlined style={{ color: '#1677ff' }} />}
-                    styles={{ content: { color: '#1677ff' } }}
+                    styles={{ content: { color: 'var(--primary)' } }}
                   />
                 </Card>
               </Col>
               <Col xs={12} lg={12} xl={6}>
                 <Card className="stat-card dash-stat-card" variant="outlined">
                   <Statistic
-                    title="当前待还"
+                    title={<span className="dashboard-stat-title"><PayCircleOutlined />当前待还</span>}
                     value={summary ? summary.currentPeriod.unpaidCount : 0}
                     precision={0}
-                    prefix={<PayCircleOutlined style={{ color: summary && summary.currentPeriod.unpaidCount > 0 ? '#cf1322' : undefined }} />}
-                    suffix="笔待还"
-                    styles={summary && summary.currentPeriod.unpaidCount > 0 ? { content: { color: '#cf1322' } } : undefined}
+                    suffix="笔"
+                    styles={summary && summary.currentPeriod.unpaidCount > 0 ? { content: { color: 'var(--primary)' } } : undefined}
                   />
-                  <Space size={8} wrap>
+                  <div className="dashboard-currencies">
                     {summary?.currentPeriod.totalsByCurrency.filter((entry) => entry.unpaidTotal > 0).map((entry) => (
-                      <Typography.Text key={entry.currency} type="danger">{formatMoney(entry.unpaidTotal, entry.currency)}</Typography.Text>
+                      <span className="dashboard-currency-value" key={entry.currency}>{formatMoney(entry.unpaidTotal, entry.currency)}</span>
                     ))}
-                  </Space>
+                  </div>
                   {(summary?.currentPeriod.unknownAmountCount ?? 0) > 0 && (
-                    <Typography.Text type="secondary" className="dash-stat-note">
-                      {summary!.currentPeriod.unknownAmountCount} 笔金额待填写
-                    </Typography.Text>
+                    <div className="dashboard-attention"><span>金额待填写</span><span className="dashboard-count"><strong>{summary!.currentPeriod.unknownAmountCount}</strong><span>笔</span></span></div>
                   )}
                 </Card>
               </Col>
               <Col xs={12} lg={12} xl={6}>
                 <Card className="stat-card dash-stat-card" variant="outlined">
                   <Statistic
-                    title="14 天内到期"
+                    title={<span className="dashboard-stat-title"><ClockCircleOutlined />14 天内到期</span>}
                     value={summary ? summary.upcoming14d.dueCount : 0}
-                    prefix={<ClockCircleOutlined style={{ color: summary && summary.upcoming14d.dueCount > 0 ? '#faad14' : undefined }} />}
-                    styles={summary && summary.upcoming14d.dueCount > 0 ? { content: { color: '#faad14' } } : undefined}
+                    suffix="项"
+                    styles={summary && summary.upcoming14d.dueCount > 0 ? { content: { color: 'var(--warning)' } } : undefined}
                   />
                 </Card>
               </Col>
               <Col xs={12} lg={12} xl={6}>
                 <Card className="stat-card dash-stat-card" variant="outlined">
                   <Statistic
-                    title="邮箱账户"
+                    title={<span className="dashboard-stat-title"><MailOutlined />邮箱账户</span>}
                     value={summary ? `${summary.email.enabled}/${summary.email.total}` : '-'}
-                    prefix={<MailOutlined style={{ color: '#52c41a' }} />}
-                    styles={{ content: { color: '#52c41a' } }}
+                    styles={{ content: { color: 'var(--success)' } }}
                   />
                   {summary?.email.lastSyncAt && (
                     <Typography.Text type="secondary" className="dash-stat-note">
-                      上次同步 {dayjs(summary.email.lastSyncAt).format('MM-DD HH:mm')}
+                      上次同步 {displayDate(summary.email.lastSyncAt, { time: true })}
                     </Typography.Text>
                   )}
                 </Card>
@@ -900,7 +823,7 @@ export default function Dashboard() {
       {summary?.annualFeeNotice && (
         <AnnualFeeNoticeAlert
           notice={summary.annualFeeNotice}
-          acknowledging={annualFeeAcknowledging}
+          acknowledging={annualFeeAcknowledging || annualFeeDetailLoading}
           onView={openAnnualFeeNotice}
           onAcknowledge={() => void acknowledgeAnnualFeeNotice()}
         />
@@ -964,19 +887,19 @@ export default function Dashboard() {
                 <div className="dashboard-list dashboard-list-compact" role="list">
                   {todos.map((item) => (
                     <div
-                      key={item.recordType === 'custom' ? `custom-${item.occurrenceId}` : `${item.cardId}-${item.period}`}
+                      key={item.recordType === 'custom' ? `custom-${item.occurrenceId}` : `${item.billId ?? item.cardId}-${item.period}-${item.currency}`}
                       className={`dashboard-list-item ${todoBandClass(item)}`}
                       role="listitem"
                     >
                       <div className="dashboard-list-main">
                         <div className="dashboard-list-title">
-                          <span>
-                            {todoTitle(item)}
+                          <span className="dashboard-todo-title">
+                            {item.recordType === 'card' && item.billId != null ? <Button type="link" className="dashboard-bill-link" onClick={() => openBill(item.billId!)}>{todoTitle(item)}</Button> : todoTitle(item)}
                             {todoStatus(item)}
                           </span>
                         </div>
                         <div className="dashboard-list-description">
-                          <span>
+                          <span className="dashboard-todo-facts">
                             {item.amount != null ? (
                               <Typography.Text type="danger" className="amount-strong">
                                 {formatMoney(item.amount, item.currency ?? 'CNY')}
@@ -987,17 +910,17 @@ export default function Dashboard() {
                               </Typography.Text>
                             )}
                             {item.paidStatus === 'partial' && item.amount != null && (
-                              <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                              <Typography.Text type="secondary" className="dashboard-todo-partial">
                                 已还 {formatMoney(item.paidAmount ?? 0, item.currency ?? 'CNY')}，剩{' '}
                                 {formatMoney(Math.max(0, item.amount - (item.paidAmount ?? 0)), item.currency ?? 'CNY')}
                               </Typography.Text>
                             )}
-                            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                            <Typography.Text type="secondary">
                               {item.action === 'complete'
-                                ? dayjs(item.dueDate).format('M月D日')
+                                ? displayDate(item.dueDate)
                                 : item.daysOverdue != null
-                                  ? `还款日 ${dayjs(item.dueDate).format('M月D日')}`
-                                  : `${dayjs(item.dueDate).format('M月D日')} 还款`}
+                                  ? `还款日 ${displayDate(item.dueDate)}`
+                                  : `${displayDate(item.dueDate)} 还款`}
                             </Typography.Text>
                           </span>
                         </div>
@@ -1021,7 +944,7 @@ export default function Dashboard() {
               title="未来 14 天"
               extra={
                 upcoming.length > 8 ? (
-                  <Button type="link" onClick={() => navigate('/reminders')}>查看全部 {upcoming.length}</Button>
+                  <Button type="link" onClick={() => navigate('/bills?view=upcoming')}>查看全部 {upcoming.length}</Button>
                 ) : undefined
               }
               size="small"
@@ -1053,7 +976,7 @@ export default function Dashboard() {
                     width: 110,
                     render: (v: string, r) => (
                       <div>
-                        <div>{dayjs(v).format('MM-DD ddd')}</div>
+                        <div>{displayDate(v) + ' ' + dayjs(v).format('ddd')}</div>
                         {r.daysLeft === 0 ? <Tag color="red">今天</Tag> : <Tag>{r.daysLeft} 天后</Tag>}
                       </div>
                     ),
@@ -1125,7 +1048,7 @@ export default function Dashboard() {
                   onKeyDown: (event) => {
                     if (!r.cardId || (event.key !== 'Enter' && event.key !== ' ')) return;
                     event.preventDefault();
-                    navigate(`/bills?cardId=${r.cardId}`);
+                    handleUpcoming(r);
                   },
                   role: r.cardId ? 'link' : undefined,
                   tabIndex: r.cardId ? 0 : undefined,
@@ -1146,39 +1069,9 @@ export default function Dashboard() {
       onCancel={closeAnnualFeePanel}
       footer={null}
       width={760}
-      title={annualFeeSnapshot && annualFeeDetailItem ? (
-        <Space size={6}>
-          {annualFeeSnapshot.items.length > 1 && (
-            <Button type="text" size="small" icon={<LeftOutlined />} onClick={backFromAnnualFeeDetail}>
-              返回
-            </Button>
-          )}
-          <span>
-            {annualFeeDetailItem.bankName}（{billCardTailsText(annualFeeDetailItem.cardTails)}）
-            {annualFeeDetailItem.period}期账单明细
-          </span>
-        </Space>
-      ) : `年费账单（${annualFeeSnapshot?.items.length ?? 0} 笔）`}
+      title={'年费账单（' + (annualFeeSnapshot?.items.length ?? 0) + ' 笔）'}
     >
-      {annualFeeSnapshot && annualFeeDetailItem ? (
-        <DesktopBillDetailsContent
-          details={annualFeeDetails}
-          loading={annualFeeDetailLoading}
-          error={annualFeeDetailError}
-          blocked={blocked}
-          onRetry={() => void openAnnualFeeDetail(
-            annualFeeSnapshot,
-            annualFeeDetailItem,
-            annualFeeSnapshot.items.length === 1,
-          )}
-          onViewHistory={() => navigate('/email', { state: { showHistoryProgress: true } })}
-        />
-      ) : annualFeeSnapshot ? (
-        <AnnualFeeNoticeList
-          notice={annualFeeSnapshot}
-          onSelect={(item) => void openAnnualFeeDetail(annualFeeSnapshot, item, false)}
-        />
-      ) : null}
+      {annualFeeSnapshot && <AnnualFeeNoticeList notice={annualFeeSnapshot} onSelect={item => void openAnnualFeeDetail(annualFeeSnapshot, item, false)} />}
     </Modal>
     </>
   );

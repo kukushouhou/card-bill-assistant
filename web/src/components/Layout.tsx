@@ -1,3 +1,7 @@
+import { NavigationGuard } from '../lib/draftGuard';
+import { ColorModeSwitch, SkinDecorations } from '../skins/SkinProvider';
+import { useSourceReturn } from '../lib/billNavigation';
+import { useSourceScroll } from '../lib/useSourceScroll';
 import {
   useCallback,
   useEffect,
@@ -8,14 +12,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router';
-import { Menu, Typography, Button, App, Tag } from 'antd';
+import { Menu, Typography, Button, App } from 'antd';
 import { List, TabBar } from 'antd-mobile';
 import {
   DashboardOutlined,
   CreditCardOutlined,
   FileTextOutlined,
   ProfileOutlined,
-  BellOutlined,
   MailOutlined,
   ExperimentOutlined,
   SettingOutlined,
@@ -23,7 +26,7 @@ import {
   AppstoreOutlined,
   LoadingOutlined,
   LeftOutlined,
-} from '@ant-design/icons';
+} from '../skins/icons';
 import { api } from '../api/client';
 import { useAppName } from '../appName';
 import { useResponsive } from '../responsive';
@@ -38,9 +41,8 @@ import {
 export const APP_MENU = [
   { key: '/', icon: <DashboardOutlined />, label: '仪表盘', mobileLabel: '首页' },
   { key: '/cards', icon: <CreditCardOutlined />, label: '卡片管理', mobileLabel: '卡片' },
-  { key: '/bills', icon: <FileTextOutlined />, label: '账单记录', mobileLabel: '账单' },
+  { key: '/bills', icon: <FileTextOutlined />, label: '账单中心', mobileLabel: '账单' },
   { key: '/transactions', icon: <ProfileOutlined />, label: '账单明细', mobileLabel: '明细' },
-  { key: '/reminders', icon: <BellOutlined />, label: '提醒中心', mobileLabel: '提醒' },
   { key: '/email', icon: <MailOutlined />, label: '邮箱绑定', mobileLabel: '邮箱' },
   { key: '/parsers', icon: <ExperimentOutlined />, label: '解析器中心', mobileLabel: '解析器' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统设置', mobileLabel: '设置' },
@@ -49,7 +51,7 @@ export const APP_MENU = [
 /** AntD Menu 会把未知字段透传到 DOM；桌面菜单只传其支持的字段。 */
 const DESKTOP_MENU_ITEMS = APP_MENU.map(({ key, icon, label }) => ({ key, icon, label }));
 
-const MOBILE_MAIN_KEYS = new Set(['/', '/cards', '/bills', '/reminders']);
+const MOBILE_MAIN_KEYS = new Set(['/', '/cards', '/bills']);
 const MOBILE_FLOW_HISTORY_KEY = '__mobileFlow';
 
 interface FlowReturnOrigin {
@@ -82,6 +84,8 @@ function routeTitle(pathname: string) {
 export default function Layout({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const returnToSource = useSourceReturn();
+  useSourceScroll();
   const { message } = App.useApp();
   const appName = useAppName();
   const { isMobile } = useResponsive();
@@ -113,6 +117,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
   const historyReleaseFallbackTimer = useRef<number | null>(null);
   const historyRecoveryTimer = useRef<number | null>(null);
   const staleHistoryRecoveryInProgress = useRef(false);
+  const staleHistoryTraversalStarted = useRef(false);
   const staleHistoryRecoveryFallbackTimer = useRef<number | null>(null);
   const [outletReady, setOutletReady] = useState(
     () => !Object.prototype.hasOwnProperty.call(currentHistoryState(), MOBILE_FLOW_HISTORY_KEY),
@@ -291,7 +296,11 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
       historySlotActive.current = false;
       if (!staleHistoryRecoveryInProgress.current) {
         staleHistoryRecoveryInProgress.current = true;
-        window.history.back();
+        // StrictMode 会重新执行挂载 effect；一次刷新只能退回一个临时条目。
+        if (!staleHistoryTraversalStarted.current) {
+          staleHistoryTraversalStarted.current = true;
+          window.history.back();
+        }
         // marker 一定由 pushState 产生并有前项；保留降级仅防浏览器拒绝历史遍历。
         staleHistoryRecoveryFallbackTimer.current = window.setTimeout(() => {
           if (staleHistoryRecoveryInProgress.current) finishStaleHistoryRecovery();
@@ -529,10 +538,11 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
 
   return (
     <MobileShellContext.Provider value={mobileShellValue}>
+      <NavigationGuard />
       <UpgradePrompt />
-      <div className={`app-shell ${isMobile ? 'app-shell-mobile' : 'app-shell-desktop'}`}>
+      <div className={`app-shell ${isMobile ? 'app-shell-mobile' : 'app-shell-desktop'}`}><SkinDecorations slot="background" />
         {isMobile ? (
-          <header className="mobile-app-header">
+          <header className="mobile-app-header" data-skin-slot="header"><SkinDecorations slot="header" />
             {flow || selected === '/transactions' ? (
               <div className="mobile-flow-nav">
                 <Button
@@ -540,7 +550,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
                   className="mobile-nav-back-button"
                   icon={<LeftOutlined />}
                   aria-label="返回"
-                  onClick={flow?.onBack ?? (() => navigate('/bills'))}
+                  onClick={flow?.onBack ?? returnToSource}
                 />
                 <div className="mobile-flow-nav-title">{flow?.title ?? '账单明细'}</div>
                 <span aria-hidden="true" />
@@ -562,17 +572,18 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
             )}
           </header>
         ) : (
-          <header className="desktop-app-header">
-            <Typography.Title level={4}>{appName}</Typography.Title>
-            <Button icon={<LogoutOutlined />} type="text" onClick={logout}>
+          <header className="desktop-app-header" data-skin-slot="header">
+            <SkinDecorations slot="header" />
+            <Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title>
+            <div className="desktop-header-actions">{(historyGate.blocked || historyGate.focusedTask) && <Button onClick={openHistoryProgress}>历史拉取进度</Button>}<ColorModeSwitch /><Button icon={<LogoutOutlined />} type="text" onClick={logout}>
               退出登录
-            </Button>
+            </Button></div>
           </header>
         )}
 
         <div className="app-shell-main-row">
           {!isMobile && (
-            <aside className="desktop-app-sider">
+            <aside className="desktop-app-sider" data-skin-slot="sidebar"><SkinDecorations slot="sidebar" />
               <Menu
                 mode="inline"
                 items={DESKTOP_MENU_ITEMS}
@@ -582,8 +593,8 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
             </aside>
           )}
 
-          <main className="app-shell-content">
-            {isMobile && historyGate.blocked && (
+          <main className="app-shell-content" data-skin-slot="content"><SkinDecorations slot="content" />
+            {isMobile && (historyGate.blocked || historyGate.focusedTask) && (
               <button type="button" className="mobile-history-task-bar" onClick={openHistoryProgress}>
                 <span>
                   <LoadingOutlined spin={historyGate.phase !== 'unknown'} />{' '}
@@ -600,9 +611,9 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
             {moreOpen && (
               <section className="mobile-more-page" aria-label="更多功能">
                 <div className="mobile-more-brand">
-                  <Typography.Title level={4}>{appName}</Typography.Title>
-                  <Tag color="blue">单管理员</Tag>
+                  <Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title>
                 </div>
+                <div className="mobile-more-appearance"><ColorModeSwitch /></div>
                 <List header="管理功能">
                   <List.Item>
                     <Button
@@ -658,7 +669,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
         </div>
 
         {isMobile && !flow && (
-          <nav className="mobile-bottom-nav" aria-label="主导航">
+          <nav className="mobile-bottom-nav" aria-label="主导航" data-skin-slot="footer"><SkinDecorations slot="footer" />
             <TabBar activeKey={mobileActive} onChange={goTopLevel} safeArea>
               {APP_MENU.filter((item) => MOBILE_MAIN_KEYS.has(item.key)).map((item) => (
                 <TabBar.Item

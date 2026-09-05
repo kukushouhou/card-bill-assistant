@@ -1,0 +1,18 @@
+@font-face { font-family: "Skin Lora"; src: url("../assets/Lora.ttf") format("truetype"); font-weight: 400 700; font-style: normal; font-display: swap; }
+[data-skin-slot="brand"] { letter-spacing: -.025em; font-weight: 650; }
+.ant-btn { font-weight: 550; box-shadow: none; transition: background .16s ease, border-color .16s ease, transform .16s ease; }
+.ant-btn:active { transform: translateY(1px); }
+.ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker { transition: border-color .16s ease, box-shadow .16s ease; }
+.ant-card, .agenda-mobile-row, .agenda-history-group { box-shadow: var(--skin-panel-shadow); }
+.ant-table-thead > tr > th { font-weight: 600; letter-spacing: .02em; }
+.ant-tag { border-radius: var(--skin-tag-radius); padding-inline: 8px; }
+.ant-modal-content, .adm-popup-body { box-shadow: var(--skin-overlay-shadow); }
+.desktop-app-sider { background: var(--surface); }
+.desktop-app-header { background: var(--surface); }
+.mobile-bottom-nav, .mobile-app-header { background: var(--surface); }
+[data-skin-decoration="background"] { opacity: .08; background-size: 64px 64px; }
+h1, h2, h3, .page-heading, .agenda-totals > strong { font-family: "Skin Lora", Georgia, "Noto Serif SC", "Songti SC", SimSun, serif; letter-spacing: .01em; }
+.ant-card-head, .agenda-history-heading { border-bottom: 1px solid var(--border); }
+.ant-btn-primary { background-image: linear-gradient(180deg, #ffffff0a, #00000008); }
+.desktop-app-sider { background-image: url('../assets/paper.svg'); }
+.agenda-amount, .stat-amount { font-family: "Skin Lora", Georgia, "Songti SC", serif; }

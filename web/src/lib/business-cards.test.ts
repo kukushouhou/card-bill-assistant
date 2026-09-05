@@ -60,15 +60,15 @@ describe('业务主卡封面', () => {
     expect(businessRelationshipLabel(secondary)).toBe('主卡与副卡');
     expect(businessRelationshipLabel(supplementary)).toBe('主卡与附属卡');
     expect(businessRelationshipLabel(cards)).toBe('主卡、副卡与附属卡');
-    expect(cardGroupTitle('平安银行', supplementary)).toBe('平安银行 · 主卡与附属卡');
+    expect(cardGroupTitle('平安银行', supplementary)).toBe('平安银行 · 2 张卡');
   });
 
-  it('普通套卡继续使用同一账期标题', () => {
+  it('套卡标题统一显示银行与卡片数量', () => {
     const ordinary = [
       { id: 6, businessRole: 'primary', businessPrimaryCardId: null },
       { id: 7, businessRole: 'primary', businessPrimaryCardId: null },
     ];
     expect(businessRelationshipLabel(ordinary)).toBeNull();
-    expect(cardGroupTitle('平安银行', ordinary)).toBe('平安银行 · 同一账期 2 张卡');
+    expect(cardGroupTitle('平安银行', ordinary)).toBe('平安银行 · 2 张卡');
   });
 });

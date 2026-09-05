@@ -1,6 +1,7 @@
+import { SkinDecorations } from '../skins/SkinProvider';
 import { useRef, useState } from 'react';
 import { Button, Card, Form, Input, App } from 'antd';
-import { LockOutlined, UserOutlined } from '@ant-design/icons';
+import { LockOutlined, UserOutlined } from '../skins/icons';
 import { api, ApiError } from '../api/client';
 import { useAppName } from '../appName';
 import { useResponsive } from '../responsive';
@@ -36,9 +37,10 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'var(--background)',
       }}
     >
+      <SkinDecorations slot="background" />
       <Card className="auth-card login-card" title={appName} variant="outlined">
         <Form layout="vertical" onFinish={onFinish} autoFocus>
           <Form.Item label="管理员账号">

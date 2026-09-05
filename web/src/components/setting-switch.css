@@ -1,0 +1,11 @@
+.setting-switch.ant-switch,
+.setting-switch.ant-switch:hover:not(.ant-switch-disabled) { position: relative; width: 52px; min-width: 52px; height: 44px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; box-shadow: none; line-height: 44px; vertical-align: middle; }
+.setting-switch.ant-switch::before { content: ''; position: absolute; inset-inline-start: 3px; top: 9px; width: 46px; height: 26px; border-radius: 13px; background: color-mix(in srgb, var(--text-secondary) 70%, var(--surface)); transition: background .16s ease; }
+.setting-switch.ant-switch.ant-switch-checked::before { background: var(--primary); }
+.setting-switch.ant-switch .ant-switch-handle { z-index: 1; top: 12px; inset-inline-start: 6px; width: 20px; height: 20px; }
+.setting-switch.ant-switch.ant-switch-checked .ant-switch-handle { inset-inline-start: 26px; }
+.setting-switch.ant-switch .ant-switch-handle::before { background: var(--surface); border-radius: 50%; box-shadow: 0 1px 3px #00000026; }
+.setting-switch.ant-switch:active:not(.ant-switch-disabled) .ant-switch-handle::before { inset-inline-end: 0; inset-inline-start: 0; }
+.setting-switch.ant-switch .ant-switch-inner { padding: 0; }
+.setting-switch.ant-switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.setting-switch.ant-switch .ant-switch-loading-icon { color: var(--primary); }

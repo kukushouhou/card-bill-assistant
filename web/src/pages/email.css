@@ -5,6 +5,18 @@
   align-items: start;
 }
 
+.email-history-progress { display: grid; gap: 16px; }
+.email-progress-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.email-progress-heading > div { display: flex; align-items: baseline; gap: 12px; }
+.email-progress-heading > div > span, .email-progress-count { color: var(--text-secondary); font-size: 13px; }
+.email-progress-heading > div > strong { color: var(--primary); font-size: 30px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.email-progress-count strong { color: var(--text); }
+.email-account-facts { padding-block: 12px; margin-top: 12px; border-top: 1px solid var(--border); }
+.email-account-facts .info-field { flex-wrap: nowrap; }
+.email-account-facts dd { text-align: right; }
+.email-sync-feedback .info-fields { margin-top: 12px; }
+@media(max-width:1023px) { .email-sync-feedback { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; } .email-sync-feedback .ant-alert-actions { grid-column: 2; justify-self: end; margin-top: 12px; } }
+
 @media (max-width: 1023px) {
   .mobile-email-editor-actions {
     display: grid;
@@ -22,7 +34,7 @@
     min-height: 44px;
     height: auto;
     padding-inline: 8px;
-    color: #667085;
+    color: var(--text-secondary);
   }
 
   .mobile-email-editor-main-row {

@@ -1,6 +1,10 @@
+import { useDraftGuard } from '../lib/draftGuard';
+import SkinManager from '../skins/SkinManager';
+import SettingSwitch from '../components/SettingSwitch';
+import '../components/info-fields.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
-import { BellOutlined, DeleteOutlined, InfoCircleOutlined, SafetyOutlined, SendOutlined } from '@ant-design/icons';
+import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
+import { BellOutlined, DeleteOutlined, InfoCircleOutlined, SafetyOutlined, SendOutlined } from '../skins/icons';
 import { Popup } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
 import type { MeInfo, SettingsInfo } from '../api/types';
@@ -37,6 +41,8 @@ function PasswordCard() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
+  const [dirty, setDirty] = useState(false);
+  useDraftGuard(dirty);
 
   const submit = async (values: { oldPassword: string; newPassword: string; confirm: string }) => {
     if (loadingRef.current) return;
@@ -53,6 +59,7 @@ function PasswordCard() {
       });
       message.success('密码已修改');
       form.resetFields();
+      setDirty(false);
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '修改失败');
     } finally {
@@ -63,7 +70,7 @@ function PasswordCard() {
 
   return (
     <Card className="settings-card" title="管理员密码" size="small" variant="outlined">
-      <Form className="settings-form" form={form} layout="vertical" onFinish={submit}>
+      <Form className="settings-form" form={form} layout="vertical" onValuesChange={() => setDirty(true)} onFinish={submit}>
         <Form.Item name="oldPassword" label="原密码" rules={[{ required: true }]}>
           <Input.Password />
         </Form.Item>
@@ -98,6 +105,8 @@ function usePinSettings({
   const { isMobile } = useResponsive();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useDraftGuard(dirty);
   const [destroyOpen, setDestroyOpen] = useState(false);
   const [destroyStep, setDestroyStep] = useState(0);
   const [destroyPin, setDestroyPin] = useState('');
@@ -114,7 +123,7 @@ function usePinSettings({
   }, []);
 
   useResetOnModeChange(() => {
-    form.resetFields();
+    form.resetFields(); setDirty(false);
     closeDestroy();
   });
 
@@ -130,7 +139,7 @@ function usePinSettings({
         await api.post('/api/auth/pin', { pin: values.newPin });
         message.success('PIN 已设置');
       }
-      form.resetFields();
+      form.resetFields(); setDirty(false);
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '操作失败');
     } finally {
@@ -188,6 +197,7 @@ function usePinSettings({
     setDestroyStep,
     setDestroyPin,
     setDestroyConfirmed,
+    onDraftChange: () => setDirty(true),
     setOrChange,
     destroy,
     openDestroy,
@@ -243,7 +253,7 @@ function PinCard({
     <div className="settings-security-content">
       <Typography.Title level={5}>PIN 如何保护卡信息</Typography.Title>
       <Typography.Paragraph>
-        完整卡号、有效期和 CVV 采用“环境密钥 + PIN 派生密钥”双密钥 AES-256-GCM 加密。
+        查看完整卡号、有效期和 CVV 时需要输入 PIN。
       </Typography.Paragraph>
       <ul>
         <li>PIN 不会保存在服务器、数据库或日志中。</li>
@@ -293,7 +303,7 @@ function PinCard({
           style={{ marginBottom: 16 }}
         />
       )}
-      <Form className="settings-form" form={form} layout="vertical" disabled={Boolean(readError)} onFinish={setOrChange}>
+      <Form className="settings-form" form={form} layout="vertical" disabled={Boolean(readError)} onValuesChange={controller.onDraftChange} onFinish={setOrChange}>
         {!pin ? (
           !readError && (
             <div className="mobile-section-loading">
@@ -496,10 +506,15 @@ function NotificationChannelsCard({
   const { message } = App.useApp();
   const { isMobile } = useResponsive();
   const [form] = Form.useForm<NotificationFormValues>();
+  const sendingEnabled = Form.useWatch('enabled', form);
   const [selectedType, setSelectedType] = useState('bark');
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [confirmRemoving, setConfirmRemoving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+  const initialized = useRef(false);
+  useDraftGuard(dirty);
   const loadingRef = useRef(false);
   const testingRef = useRef(false);
 
@@ -511,7 +526,8 @@ function NotificationChannelsCard({
   useEffect(() => {
     if (settings && !form.isFieldsTouched()) {
       const available = settings.notifications;
-      const nextType = available.channels[0]?.type ?? available.providers[0]?.type ?? 'bark';
+      const nextType = initialized.current ? selectedType : available.channels[0]?.type ?? available.providers[0]?.type ?? 'bark';
+      initialized.current = true;
       const nextChannel = available.channels.find((channel) => channel.type === nextType);
       setSelectedType(nextType);
       const provider = available.providers.find((item) => item.type === nextType) ?? available.providers[0];
@@ -520,9 +536,10 @@ function NotificationChannelsCard({
         config: { ...(provider ? defaultNotificationConfig(provider) : {}), ...(nextChannel?.config ?? {}) },
       });
     }
-  }, [form, settings]); // notificationSettings 由 settings 派生，不单独作为依赖避免重置正在编辑的表单。
+  }, [form, settings, selectedType]); // notificationSettings 由 settings 派生，不单独作为依赖避免重置正在编辑的表单。
 
-  const selectProvider = (type: string) => {
+  const commitProvider = (type: string) => {
+    setDirty(false); setPendingProvider(null); form.resetFields();
     const channel = notificationSettings.channels.find((item) => item.type === type);
     setSelectedType(type);
     setConfirmRemoving(false);
@@ -530,6 +547,11 @@ function NotificationChannelsCard({
       enabled: channel?.enabled ?? true,
       config: { ...defaultNotificationConfig(providers.find((item) => item.type === type)!), ...(channel?.config ?? {}) },
     });
+  };
+
+  const selectProvider = (type: string) => {
+    if (type === selectedType || loadingRef.current || testingRef.current) return;
+    if (dirty) setPendingProvider(type); else commitProvider(type);
   };
 
   const save = async (values: NotificationFormValues) => {
@@ -540,6 +562,7 @@ function NotificationChannelsCard({
     try {
       await api.put(`/api/settings/notification-channels/${encodeURIComponent(selectedProvider.type)}`, values);
       message.success('通知渠道已保存');
+      setDirty(false);
       form.resetFields();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '通知渠道保存失败');
@@ -596,7 +619,7 @@ function NotificationChannelsCard({
   return (
     <Card
       className="settings-card"
-      title={<span><BellOutlined /> 通知渠道</span>}
+      title={<span className="settings-card-title"><BellOutlined /><span>通知渠道</span></span>}
       size="small"
       variant="outlined"
       extra={selectedChannel ? <Tag color={selectedChannel.enabled ? 'success' : 'default'}>{selectedChannel.enabled ? '已启用' : '已停用'}</Tag> : <Tag>未配置</Tag>}
@@ -641,11 +664,16 @@ function NotificationChannelsCard({
           layout="vertical"
           disabled={Boolean(readError)}
           initialValues={{ enabled: true, config: {} }}
+          onValuesChange={() => setDirty(true)}
           onFinish={save}
         >
+          {pendingProvider && <InlineConfirm title="切换通知渠道？" description="当前渠道有未保存的修改。" confirmText="放弃修改并切换" onCancel={() => setPendingProvider(null)} onConfirm={() => commitProvider(pendingProvider)} />}
+          <section className="presentation-form-section settings-channel-section">
+          <h3>发送渠道</h3>
           <Form.Item label="渠道类型">
             {isMobile ? (
               <Radio.Group
+                className="settings-provider-options"
                 value={selectedProvider?.type}
                 options={providers.map((provider) => ({ value: provider.type, label: provider.name }))}
                 optionType="button"
@@ -670,10 +698,15 @@ function NotificationChannelsCard({
               style={{ marginBottom: 16 }}
             />
           )}
-          {selectedProvider && <NotificationConfigFields provider={selectedProvider} prefix={['config']} />}
-          <Form.Item name="enabled" label="发送状态" valuePropName="checked">
-            <Switch checkedChildren="已启用" unCheckedChildren="已停用" />
-          </Form.Item>
+          <div className="settings-delivery-row">
+            <div className="settings-delivery-copy"><strong>发送状态</strong><span>{sendingEnabled === false ? '关闭' : '开启'}</span></div>
+            <Form.Item name="enabled" valuePropName="checked" noStyle><SettingSwitch aria-label="发送状态" /></Form.Item>
+          </div>
+          </section>
+          <section className="presentation-form-section settings-connection-section">
+            <h3>连接配置</h3>
+            {selectedProvider && <NotificationConfigFields provider={selectedProvider} prefix={['config']} />}
+          </section>
           {confirmRemoving && (
             isMobile ? (
               <div className="settings-notification-remove-confirm">
@@ -725,7 +758,7 @@ function NotificationChannelsCard({
               </Button>
             </div>
           ) : (
-            <Space wrap>
+            <Space wrap className="settings-notification-actions">
               <Button type="primary" htmlType="submit" loading={loading} disabled={testing}>
                 保存
               </Button>
@@ -853,12 +886,7 @@ export default function Settings() {
         <Page title="系统设置">
           <MobilePullToRefresh onRefresh={refresh}>
             <div className="settings-grid">
-              <Alert
-                className="settings-grid-alert"
-                type="info"
-                showIcon
-                title="单管理员模式：本系统不提供通用账号体系，仅有 admin 一个账户。"
-              />
+              <div className="settings-grid-skins"><SkinManager /></div>
               <div className="settings-grid-password">
                 <PasswordCard />
               </div>

@@ -1,0 +1,65 @@
+import { forwardRef, useContext, type ComponentType, type RefAttributes } from 'react';
+import * as Original from '@ant-design/icons';
+import type { AntdIconProps } from '@ant-design/icons/lib/components/AntdIcon';
+import { SkinAssetsContext } from './SkinAssets';
+
+function skinIcon(name: string, Icon: ComponentType<AntdIconProps & RefAttributes<HTMLSpanElement>>) {
+  return forwardRef<HTMLSpanElement, AntdIconProps>((props, ref) => {
+    const appearance = useContext(SkinAssetsContext);
+    const asset = appearance?.skin.manifest.variants[appearance.variant].icons[name];
+    if (!asset || !appearance) return <Icon {...props} ref={ref} data-skin-icon={name} />;
+    const { spin, rotate, twoToneColor: _twoToneColor, ...rest } = props;
+    return <span {...rest} ref={ref} data-skin-icon={name} className={['anticon', 'skin-icon', spin ? 'anticon-spin' : '', props.className].filter(Boolean).join(' ')} style={{ ...props.style, ...(rotate ? { transform: 'rotate(' + rotate + 'deg)' } : {}) }}><img src={appearance.skin.baseUrl + asset} alt="" aria-hidden="true" /></span>;
+  });
+}
+
+export const ApiOutlined = skinIcon('ApiOutlined', Original.ApiOutlined);
+export const AppstoreOutlined = skinIcon('AppstoreOutlined', Original.AppstoreOutlined);
+export const BankOutlined = skinIcon('BankOutlined', Original.BankOutlined);
+export const BellOutlined = skinIcon('BellOutlined', Original.BellOutlined);
+export const CalendarOutlined = skinIcon('CalendarOutlined', Original.CalendarOutlined);
+export const CheckCircleOutlined = skinIcon('CheckCircleOutlined', Original.CheckCircleOutlined);
+export const CheckOutlined = skinIcon('CheckOutlined', Original.CheckOutlined);
+export const ClockCircleOutlined = skinIcon('ClockCircleOutlined', Original.ClockCircleOutlined);
+export const CloudDownloadOutlined = skinIcon('CloudDownloadOutlined', Original.CloudDownloadOutlined);
+export const CreditCardOutlined = skinIcon('CreditCardOutlined', Original.CreditCardOutlined);
+export const DashboardOutlined = skinIcon('DashboardOutlined', Original.DashboardOutlined);
+export const DeleteOutlined = skinIcon('DeleteOutlined', Original.DeleteOutlined);
+export const DownOutlined = skinIcon('DownOutlined', Original.DownOutlined);
+export const DownloadOutlined = skinIcon('DownloadOutlined', Original.DownloadOutlined);
+export const EditOutlined = skinIcon('EditOutlined', Original.EditOutlined);
+export const ExclamationCircleFilled = skinIcon('ExclamationCircleFilled', Original.ExclamationCircleFilled);
+export const ExperimentOutlined = skinIcon('ExperimentOutlined', Original.ExperimentOutlined);
+export const EyeInvisibleOutlined = skinIcon('EyeInvisibleOutlined', Original.EyeInvisibleOutlined);
+export const EyeOutlined = skinIcon('EyeOutlined', Original.EyeOutlined);
+export const FileTextOutlined = skinIcon('FileTextOutlined', Original.FileTextOutlined);
+export const FilterOutlined = skinIcon('FilterOutlined', Original.FilterOutlined);
+export const HistoryOutlined = skinIcon('HistoryOutlined', Original.HistoryOutlined);
+export const InfoCircleOutlined = skinIcon('InfoCircleOutlined', Original.InfoCircleOutlined);
+export const LeftOutlined = skinIcon('LeftOutlined', Original.LeftOutlined);
+export const LoadingOutlined = skinIcon('LoadingOutlined', Original.LoadingOutlined);
+export const LockOutlined = skinIcon('LockOutlined', Original.LockOutlined);
+export const LogoutOutlined = skinIcon('LogoutOutlined', Original.LogoutOutlined);
+export const MailOutlined = skinIcon('MailOutlined', Original.MailOutlined);
+export const MinusCircleOutlined = skinIcon('MinusCircleOutlined', Original.MinusCircleOutlined);
+export const MoreOutlined = skinIcon('MoreOutlined', Original.MoreOutlined);
+export const PauseCircleOutlined = skinIcon('PauseCircleOutlined', Original.PauseCircleOutlined);
+export const PayCircleOutlined = skinIcon('PayCircleOutlined', Original.PayCircleOutlined);
+export const PlayCircleOutlined = skinIcon('PlayCircleOutlined', Original.PlayCircleOutlined);
+export const PlusOutlined = skinIcon('PlusOutlined', Original.PlusOutlined);
+export const ProfileOutlined = skinIcon('ProfileOutlined', Original.ProfileOutlined);
+export const ReloadOutlined = skinIcon('ReloadOutlined', Original.ReloadOutlined);
+export const RightOutlined = skinIcon('RightOutlined', Original.RightOutlined);
+export const SafetyOutlined = skinIcon('SafetyOutlined', Original.SafetyOutlined);
+export const SearchOutlined = skinIcon('SearchOutlined', Original.SearchOutlined);
+export const SendOutlined = skinIcon('SendOutlined', Original.SendOutlined);
+export const SettingOutlined = skinIcon('SettingOutlined', Original.SettingOutlined);
+export const SortAscendingOutlined = skinIcon('SortAscendingOutlined', Original.SortAscendingOutlined);
+export const StarOutlined = skinIcon('StarOutlined', Original.StarOutlined);
+export const SyncOutlined = skinIcon('SyncOutlined', Original.SyncOutlined);
+export const ThunderboltOutlined = skinIcon('ThunderboltOutlined', Original.ThunderboltOutlined);
+export const UndoOutlined = skinIcon('UndoOutlined', Original.UndoOutlined);
+export const UpOutlined = skinIcon('UpOutlined', Original.UpOutlined);
+export const UserOutlined = skinIcon('UserOutlined', Original.UserOutlined);
+export const WalletOutlined = skinIcon('WalletOutlined', Original.WalletOutlined);
+export const WarningOutlined = skinIcon('WarningOutlined', Original.WarningOutlined);

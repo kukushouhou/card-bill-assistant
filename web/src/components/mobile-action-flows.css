@@ -5,9 +5,9 @@
   gap: 12px;
   min-height: 72px;
   padding: 14px 16px;
-  background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
-  border: 1px solid #e6e9f2;
-  border-radius: 18px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-action-identity-icon {
@@ -16,10 +16,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #3156d8;
+  color: var(--primary);
   font-size: 21px;
-  background: #e9efff;
-  border-radius: 14px;
+  background: var(--primary-soft);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-action-identity-copy {
@@ -31,7 +31,7 @@
 
 .mobile-action-identity-copy > span {
   overflow: hidden;
-  color: #7c8498;
+  color: var(--text-secondary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -39,7 +39,7 @@
 
 .mobile-action-identity-copy > strong {
   overflow: hidden;
-  color: #182036;
+  color: var(--primary);
   font-size: 16px;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -67,30 +67,30 @@
 }
 
 .mobile-action-section-heading strong {
-  color: #20283a;
+  color: var(--text);
   font-size: 16px;
   line-height: 1.4;
 }
 
 .mobile-action-section-heading span {
-  color: #8a92a6;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .mobile-action-surface {
   padding: 16px;
-  background: #fff;
-  border: 1px solid #e7eaf1;
-  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-status-action-list.adm-list-card,
 .mobile-payment-action-list.adm-list-card {
   margin: 0;
   overflow: hidden;
-  border: 1px solid #e7eaf1;
-  border-radius: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 
@@ -98,7 +98,7 @@
 .mobile-payment-action-list .adm-list-item {
   min-height: 74px;
   padding-left: 14px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .mobile-status-action-list .adm-list-item-content,
@@ -110,7 +110,7 @@
 .mobile-status-action-list .adm-list-item-content-main,
 .mobile-payment-action-list .adm-list-item-content-main {
   padding: 14px 0;
-  color: #1c2438;
+  color: var(--text);
   font-size: 15px;
   font-weight: 650;
 }
@@ -118,7 +118,7 @@
 .mobile-status-action-list .adm-list-item-description,
 .mobile-payment-action-list .adm-list-item-description {
   margin-top: 4px;
-  color: #8a92a6;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 400;
 }
@@ -129,24 +129,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #d97706;
+  color: var(--warning);
   font-size: 19px;
-  background: #fff7e6;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
   border-radius: 13px;
 }
 
 .mobile-status-action-icon.is-active {
-  color: #138a52;
-  background: #e9f8f0;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
 }
 
 .mobile-status-action-icon.is-closed {
-  color: #cf3d4d;
-  background: #fff0f1;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
 }
 
 .mobile-status-danger-text {
-  color: #c93343;
+  color: var(--danger);
 }
 
 .mobile-status-action-title,
@@ -170,32 +170,32 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #3156d8;
+  color: var(--primary);
   font-size: 19px;
-  background: #eaf0ff;
+  background: var(--primary-soft);
   border-radius: 13px;
 }
 
 .mobile-payment-action-icon.is-full {
-  color: #138a52;
-  background: #e9f8f0;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
 }
 
 .mobile-payment-action-icon.is-unpaid,
 .mobile-payment-action-icon.is-none {
-  color: #687287;
-  background: #f0f2f6;
+  color: var(--text-secondary);
+  background: var(--background);
 }
 
 .mobile-status-terminal {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #6e768b;
+  color: var(--text-secondary);
 }
 
 .mobile-status-terminal > .anticon {
-  color: #138a52;
+  color: var(--success);
   font-size: 22px;
 }
 
@@ -206,7 +206,7 @@
 }
 
 .mobile-status-terminal strong {
-  color: #242c3e;
+  color: var(--text);
 }
 
 .mobile-status-terminal span {
@@ -220,9 +220,9 @@
   margin-top: 22px;
   padding: 26px 20px 22px;
   text-align: center;
-  background: #fff;
-  border: 1px solid #e7eaf1;
-  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-status-confirm-icon {
@@ -231,20 +231,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #d97706;
+  color: var(--warning);
   font-size: 26px;
-  background: #fff7e6;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
   border-radius: 19px;
 }
 
 .mobile-status-confirm.is-active .mobile-status-confirm-icon {
-  color: #138a52;
-  background: #e9f8f0;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
 }
 
 .mobile-status-confirm.is-closed .mobile-status-confirm-icon {
-  color: #cf3d4d;
-  background: #fff0f1;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
 }
 
 .mobile-status-confirm .ant-typography {
@@ -260,7 +260,7 @@
 .mobile-status-confirm > .ant-typography:last-of-type {
   max-width: 300px;
   margin-top: 0;
-  color: #70798d;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -271,10 +271,10 @@
   gap: 10px;
   margin-top: 10px;
   padding-top: 16px;
-  color: #4e586d;
+  color: var(--text-secondary);
   font-size: 13px;
   text-align: left;
-  border-top: 1px solid #edf0f5;
+  border-top: 1px solid var(--border);
 }
 
 .mobile-status-impact-list > div {
@@ -286,7 +286,7 @@
 
 .mobile-status-impact-list .anticon {
   margin-top: 2px;
-  color: #6c78a1;
+  color: var(--text-secondary);
 }
 
 .mobile-payment-summary {
@@ -295,9 +295,9 @@
   gap: 1px;
   margin-top: 12px;
   overflow: hidden;
-  background: #e7eaf1;
-  border: 1px solid #e7eaf1;
-  border-radius: 16px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-payment-summary > div {
@@ -306,18 +306,18 @@
   flex-direction: column;
   gap: 5px;
   padding: 14px 15px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .mobile-payment-summary span,
 .mobile-payment-preview span {
-  color: #858da0;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .mobile-payment-summary strong {
   overflow: hidden;
-  color: #20283a;
+  color: var(--text);
   font-size: 16px;
   text-overflow: ellipsis;
 }
@@ -334,14 +334,14 @@
 .mobile-payment-entry > label {
   display: block;
   margin: 15px 0 7px;
-  color: #343c50;
+  color: var(--text);
   font-size: 13px;
   font-weight: 600;
 }
 
 .mobile-payment-entry .ant-input-number {
   width: 100%;
-  border-radius: 12px;
+  border-radius: var(--radius);
 }
 
 .mobile-payment-quick-actions {
@@ -366,7 +366,7 @@
   gap: 12px;
   margin-top: 12px;
   padding: 14px 16px;
-  background: #eef3ff;
+  background: var(--surface-hover);
   border-radius: 15px;
 }
 
@@ -378,7 +378,7 @@
 }
 
 .mobile-payment-preview strong {
-  color: #2349c6;
+  color: var(--primary);
   font-size: 18px;
 }
 
@@ -388,7 +388,7 @@
 
 .mobile-payment-clear {
   margin-top: 8px;
-  color: #7b8395;
+  color: var(--text-secondary);
 }
 
 .mobile-payment-no-bill {
@@ -406,11 +406,11 @@
 }
 
 .mobile-payment-no-bill strong {
-  color: #242c3e;
+  color: var(--text);
 }
 
 .mobile-payment-no-bill span {
-  color: #858da0;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -421,9 +421,9 @@
   margin-top: 22px;
   padding: 30px 22px;
   text-align: center;
-  background: #fff;
-  border: 1px solid #e7eaf1;
-  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .mobile-payment-confirm-icon {
@@ -432,16 +432,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #138a52;
+  color: var(--success);
   font-size: 27px;
-  background: #e9f8f0;
-  border-radius: 20px;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  border-radius: var(--radius-lg);
 }
 
 .mobile-payment-confirm.is-unpaid .mobile-payment-confirm-icon,
 .mobile-payment-confirm.is-none .mobile-payment-confirm-icon {
-  color: #687287;
-  background: #f0f2f6;
+  color: var(--text-secondary);
+  background: var(--background);
 }
 
 .mobile-payment-confirm .ant-typography {
@@ -452,7 +452,7 @@
 .mobile-payment-confirm > .ant-typography:last-child {
   max-width: 300px;
   margin-top: 0;
-  color: #737c90;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }

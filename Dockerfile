@@ -1,15 +1,16 @@
 # ===== 阶段 1：构建前端 =====
 FROM node:24-alpine AS web-build
-WORKDIR /build
+WORKDIR /build/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
+COPY server/skins/modern/1.0.0/skin.json /build/server/skins/modern/1.0.0/skin.json
 RUN npm run build
 
 # ===== 阶段 2：服务端 + 前端产物 =====
 FROM node:24-alpine
 WORKDIR /app
-ENV NODE_ENV=production TZ=Asia/Shanghai WEB_DIST_DIR=/app/web/dist
+ENV NODE_ENV=production TZ=Asia/Shanghai WEB_DIST_DIR=/app/web/dist SKIN_STORAGE_DIR=/app/data/skins
 
 # 先装依赖（利用层缓存）
 COPY server/package.json server/package-lock.json ./
@@ -21,7 +22,9 @@ COPY server/ ./
 RUN DATABASE_URL=mysql://build:build@127.0.0.1:3306/build ./node_modules/.bin/prisma generate
 
 # 前端产物
-COPY --from=web-build /build/dist /app/web/dist
+COPY --from=web-build /build/web/dist /app/web/dist
+
+RUN mkdir -p /app/data/skins && chown -R node:node /app/data
 
 EXPOSE 3000
 # 启动前自动执行数据库迁移

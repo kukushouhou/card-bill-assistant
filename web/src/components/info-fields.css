@@ -1,0 +1,30 @@
+.info-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; margin: 0; padding: 0; min-width: 0; }
+.info-field { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; min-width: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.info-field dt { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.info-field dd { margin: 0 0 0 auto; color: var(--text); font-weight: 600; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.info-field-warning dd { color: var(--warning); }
+.info-field-danger dd { color: var(--danger); }
+.info-field-success dd { color: var(--success); }
+.info-fields-plain .info-field { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.info-field-unit { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.info-field-unit strong { font-size: 20px; line-height: 1.2; }
+.info-field-unit > span { font-size: 12px; font-weight: 400; }
+
+/* 表单按业务分区；分区本身不创建新的表单或改变输入状态。 */
+.presentation-form-section { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.presentation-form-section h3 { margin: 0 0 20px; font-size: 15px; line-height: 1.5; }
+.presentation-form-section > .ant-form-item:last-child { margin-bottom: 0; }
+.payment-choice-heading { margin: 20px 0 12px; font-weight: 600; }
+.payment-modal .choice-card-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.payment-modal .choice-card-group .ant-radio-button-wrapper { min-height: 100px; margin: 0; }
+.payment-modal .choice-card-group .ant-radio-button-wrapper > span:last-child { display: grid; align-content: center; gap: 6px; }
+.payment-input-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.payment-input-field { margin-bottom: 0; }
+.payment-input-field > .ant-form-item-row { flex-direction: column; }
+.payment-input-field .ant-form-item-label { padding-bottom: 8px; text-align: left; }
+.payment-input-after-choice { margin-top: 20px; }
+@media(max-width:1023px) {
+  .info-fields { grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr)); gap: 10px; }
+  .info-field { padding: 12px; }
+  .presentation-form-section { padding: 16px; }
+}

@@ -110,7 +110,8 @@ describe('仪表盘当前待还标题', () => {
     expect(await screen.findByText('当前待还')).toBeTruthy();
     expect(screen.queryByText('本期待还')).toBeNull();
     expect(screen.queryByText('2026-09 期未还')).toBeNull();
-    expect(screen.getByText('笔待还')).toBeTruthy();
+    const statistic = screen.getByText('当前待还').closest('.ant-statistic')!;
+    expect(statistic.textContent).toContain('3笔');
   });
 
   it('移动端标题固定为当前待还', async () => {
@@ -118,6 +119,7 @@ describe('仪表盘当前待还标题', () => {
     renderDashboard();
     expect(await screen.findByText('当前待还')).toBeTruthy();
     expect(screen.queryByText('本期待还')).toBeNull();
-    expect(await screen.findByText('3 笔')).toBeTruthy();
+    const statistic = screen.getByText('当前待还').closest('.mobile-dashboard-key-stat')!;
+    expect(statistic.querySelector('.dashboard-count')?.textContent).toBe('3笔');
   });
 });

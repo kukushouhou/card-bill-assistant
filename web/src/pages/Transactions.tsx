@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, DatePicker, Empty, Input, Select, Space, Spin, Table, Tag, Typography } from 'antd';
-import { FilterOutlined } from '@ant-design/icons';
+import { useMemo, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router';
+import { Alert, Button, Card, DatePicker, Empty, Input, Segmented, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { FilterOutlined } from '../skins/icons';
 import { Popup } from 'antd-mobile';
 import dayjs, { type Dayjs } from 'dayjs';
-import { api } from '../api/client';
+import { useResource } from '../lib/useResource';
+import { displayDate, displayPeriod } from '../lib/displayDate';
+import { useSourceReturn } from '../lib/billNavigation';
 import type { CardRow, PagedTransactions, TransactionRow } from '../api/types';
 import { Page } from '../components/Layout';
 import { formatMoney } from '../lib/money';
@@ -14,7 +17,7 @@ const { RangePicker } = DatePicker;
 
 function transactionDate(row: TransactionRow): string {
   if (row.transactionDate) {
-    return dayjs(row.transactionDate).format(row.unbilled ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD');
+    return displayDate(row.transactionDate, { time: row.unbilled });
   }
   return row.date?.trim() || '-';
 }
@@ -51,57 +54,58 @@ function transactionAmount(row: TransactionRow) {
 
 export default function Transactions() {
   const { isMobile } = useResponsive();
-  const [cards, setCards] = useState<CardRow[]>([]);
-  const [data, setData] = useState<PagedTransactions>({ total: 0, page: 1, pageSize: 20, items: [] });
-  const [bank, setBank] = useState<string>();
-  const [cardId, setCardId] = useState<number>();
-  const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [keyword, setKeyword] = useState('');
-  const [query, setQuery] = useState('');
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const back = useSourceReturn();
+  const update = (values: Record<string, string | undefined>) => {
+    const next = new URLSearchParams(params);
+    next.delete('page');
+    Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+    setParams(next, { replace: true, state: location.state });
+  };
+  const bank = params.get('bank') ?? undefined;
+  const cardId = params.get('cardId') ? Number(params.get('cardId')) : undefined;
+  const dateFrom = params.get('dateFrom');
+  const dateTo = params.get('dateTo');
+  const dates = useMemo<[Dayjs | null, Dayjs | null] | null>(() => dateFrom || dateTo ? [dateFrom ? dayjs(dateFrom) : null, dateTo ? dayjs(dateTo) : null] : null, [dateFrom, dateTo]);
+  const setBank = (value?: string) => update({ bank: value, cardId: undefined });
+  const setCardId = (value?: number) => update({ cardId: value ? String(value) : undefined });
+  const setDates = (value: [Dayjs | null, Dayjs | null] | null) => update({ dateFrom: value?.[0]?.format('YYYY-MM-DD'), dateTo: value?.[1]?.format('YYYY-MM-DD') });
+  const setQuery = (value: string) => update({ q: value });
+  const page = Number(params.get('page') ?? 1);
+  const setPage = (value: number | ((page: number) => number)) => update({ page: String(typeof value === 'function' ? value(page) : value) });
+  const [keyword, setKeyword] = useState(params.get('q') ?? '');
   const [filterOpen, setFilterOpen] = useState(false);
   const [draftBank, setDraftBank] = useState<string>();
   const [draftCardId, setDraftCardId] = useState<number>();
   const [draftDates, setDraftDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get<CardRow[]>('/api/cards').then(setCards).catch(() => setCards([]));
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams({ page: String(page), pageSize: '20' });
-    if (bank) params.set('bank', bank);
-    if (cardId) params.set('cardId', String(cardId));
-    if (dates?.[0]) params.set('dateFrom', dates[0].format('YYYY-MM-DD'));
-    if (dates?.[1]) params.set('dateTo', dates[1].format('YYYY-MM-DD'));
-    if (query) params.set('q', query);
-    setLoading(true);
-    setError(null);
-    api.get<PagedTransactions>(`/api/transactions?${params}`)
-      .then(setData)
-      .catch((reason) => setError(reason instanceof Error ? reason.message : '账单明细加载失败'))
-      .finally(() => setLoading(false));
-  }, [bank, cardId, dates, page, query]);
-
+  const resource = useResource<PagedTransactions>('/api/transactions?' + params.toString());
+  const data = resource.data ?? { total: 0, page: 1, pageSize: 20, items: [] };
+  const { loading, error } = resource;
+  const cardsResource = useResource<CardRow[]>('/api/cards');
+  const cards = cardsResource.data ?? [];
+  const billId = params.get('billId') ?? params.get('scopeBillId');
+  const history = params.has('scopeBillId');
+  const context = data.context;
+  const scopedIds = context?.cards.map(card => card.id);
+  const noRecords = params.has('q') || params.has('period') || params.has('dateFrom') || params.has('cardId') ? '没有符合筛选条件的明细' : billId && !history ? '该账单暂无明细' : '暂无账单明细';
   const banks = useMemo(() => [...new Set(cards.map((card) => card.bankName))].sort(), [cards]);
   const cardOptions = useMemo(
     () => cards
-      .filter((card) => !bank || card.bankName === bank)
+      .filter((card) => (!bank || card.bankName === bank) && (!billId || scopedIds?.includes(card.id)))
       .map((card) => ({ value: card.id, label: `${card.bankName}（${card.displayLast4}）` })),
-    [bank, cards],
+    [bank, cards, billId, scopedIds],
   );
   const draftCardOptions = useMemo(
     () => cards
-      .filter((card) => !draftBank || card.bankName === draftBank)
+      .filter((card) => (!draftBank || card.bankName === draftBank) && (!billId || scopedIds?.includes(card.id)))
       .map((card) => ({ value: card.id, label: `${card.bankName}（${card.displayLast4}）` })),
-    [cards, draftBank],
+    [cards, draftBank, billId, scopedIds],
   );
   const activeCard = useMemo(() => cards.find((card) => card.id === cardId), [cardId, cards]);
   const activeFilterCount = Number(Boolean(bank)) + Number(Boolean(cardId)) + Number(Boolean(dates?.[0] || dates?.[1]));
 
-  const resetPage = () => setPage(1);
+  const resetPage = () => {};
   const openFilters = () => {
     setDraftBank(bank);
     setDraftCardId(cardId);
@@ -109,15 +113,12 @@ export default function Transactions() {
     setFilterOpen(true);
   };
   const clearStructuredFilters = () => {
-    setBank(undefined);
-    setCardId(undefined);
-    setDates(null);
-    resetPage();
+    update({ bank: undefined, cardId: undefined, dateFrom: undefined, dateTo: undefined });
   };
   const desktopFilters = (
     <div className="transaction-filters">
       <Select allowClear placeholder="全部银行" value={bank} options={banks.map((value) => ({ value, label: value }))}
-        onChange={(value) => { setBank(value); setCardId(undefined); resetPage(); }} />
+        onChange={(value) => { setBank(value); }} />
       <Select allowClear showSearch optionFilterProp="label" placeholder="全部卡片" value={cardId} options={cardOptions}
         onChange={(value) => { setCardId(value); resetPage(); }} />
       <RangePicker value={dates} onChange={(value) => { setDates(value); resetPage(); }} />
@@ -219,10 +220,7 @@ export default function Transactions() {
             <Button
               type="primary"
               onClick={() => {
-                setBank(draftBank);
-                setCardId(draftCardId);
-                setDates(draftDates);
-                resetPage();
+                update({ bank: draftBank, cardId: draftCardId ? String(draftCardId) : undefined, dateFrom: draftDates?.[0]?.format('YYYY-MM-DD'), dateTo: draftDates?.[1]?.format('YYYY-MM-DD') });
                 setFilterOpen(false);
               }}
             >
@@ -236,19 +234,27 @@ export default function Transactions() {
 
   return (
     <Page title="账单明细">
-      {isMobile ? mobileFilters : desktopFilters}
-      {error && <Alert type="error" showIcon title="账单明细加载失败" description={error} />}
-      {isMobile ? (
+      {billId && <section className="transaction-context" data-skin-slot="summary">
+        <div className="transaction-context-heading"><div><h3>{context ? context.bankName + ' · ' + displayPeriod(context.period) : '账单明细'}</h3>{context && <span>卡尾 {context.cards.map(card => card.cardLast4).join(' / ')}</span>}</div><Button onClick={back}>返回来源</Button></div>
+        <div className="transaction-context-controls">
+        <Segmented value={history ? 'history' : 'bill'} options={[{ value: 'bill', label: '本账单' }, { value: 'history', label: '历史明细' }]} onChange={value => setParams({ [value === 'bill' ? 'billId' : 'scopeBillId']: billId }, { replace: true, state: location.state })} />
+        {history && <DatePicker picker="month" aria-label="账期" placeholder="全部账期" value={params.get('period') ? dayjs(params.get('period')) : null} onChange={value => update({ period: value?.format('YYYY-MM') })} />}
+        <Button onClick={() => setParams({}, { replace: true, state: location.state })}>查看全部明细</Button>
+        </div>
+      </section>}
+      {(!billId || history) && (isMobile ? mobileFilters : desktopFilters)}
+      {error && <Alert type="error" showIcon title="账单明细加载失败" description={error} action={<Button onClick={() => void resource.refresh()}>重试</Button>} />}
+      {(!error || resource.data) && (isMobile ? (
         <div className="transaction-mobile-list">
-          {loading && data.items.length === 0 ? <Spin /> : data.items.length === 0 ? <Empty description="暂无账单明细" /> : data.items.map((row) => (
+          {loading && data.items.length === 0 ? <Spin /> : data.items.length === 0 ? <Empty description={noRecords} /> : data.items.map((row) => (
             <Card key={row.id} size="small" className="transaction-mobile-card">
               <div className="transaction-mobile-heading">
                 <strong>{row.bankName}（{row.cardLast4 ?? '----'}）</strong>
-                <Tag color={row.unbilled ? 'gold' : undefined}>{row.period}</Tag>
+                <Tag color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? row.period : displayPeriod(row.period)}</Tag>
               </div>
               <Typography.Paragraph className="transaction-description">{row.description}</Typography.Paragraph>
               <div className="transaction-mobile-meta">
-                <span>{transactionDate(row)}</span>
+                <div className="transaction-mobile-date"><span>交易日</span><span>{transactionDate(row)}</span></div>
                 <div className="transaction-mobile-direction-amount">
                   {transactionDirection(row.amount)}
                   {transactionAmount(row)}
@@ -269,8 +275,8 @@ export default function Transactions() {
           rowKey="id"
           loading={loading}
           dataSource={data.items}
-          locale={{ emptyText: <Empty description="暂无账单明细" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-          pagination={{ current: data.page, pageSize: data.pageSize, total: data.total, showTotal: (total) => `共 ${total} 笔`, onChange: setPage }}
+          locale={{ emptyText: <Empty description={noRecords} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+          pagination={{ current: data.page, pageSize: data.pageSize, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 笔`, onChange: setPage }}
           columns={[
             { title: '交易日', width: 175, render: (_, row) => transactionDate(row) },
             { title: '银行 / 卡尾', width: 190, render: (_, row) => `${row.bankName}（${row.cardLast4 ?? '----'}）` },
@@ -281,11 +287,11 @@ export default function Transactions() {
               title: '账期',
               dataIndex: 'period',
               width: 90,
-              render: (value, row) => <Tag color={row.unbilled ? 'gold' : undefined}>{value}</Tag>,
+              render: (value, row) => <Tag color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? value : displayPeriod(value)}</Tag>,
             },
           ]}
         />
-      )}
+      ))}
     </Page>
   );
 }

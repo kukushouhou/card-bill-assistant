@@ -9,14 +9,14 @@
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  border-color: rgba(20, 34, 66, 0.08);
-  border-radius: 12px;
+  border-color: var(--border);
+  border-radius: var(--radius);
 }
 
 .desktop-reminder-upcoming-card.ant-card {
   overflow: hidden;
-  border-color: rgba(20, 34, 66, 0.08);
-  border-radius: 12px;
+  border-color: var(--border);
+  border-radius: var(--radius);
 }
 
 @media (min-width: 1360px) {
@@ -39,20 +39,20 @@
 .custom-reminder-form-section {
   min-width: 0;
   padding: 18px 18px 16px;
-  border: 1px solid rgba(31, 57, 110, 0.08);
-  border-radius: 14px;
-  background: #fafbfe;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
 }
 
 .custom-reminder-schedule-section {
   background:
     radial-gradient(circle at 100% 0%, rgba(47, 84, 235, 0.07), transparent 38%),
-    #fafbfe;
+    var(--surface-hover);
 }
 
 .custom-reminder-form-section-title {
   margin-bottom: 14px;
-  color: #17233c;
+  color: var(--text);
   font-size: 16px;
   font-weight: 600;
   line-height: 1.5;
@@ -64,7 +64,7 @@
 
 .custom-reminder-form .ant-segmented {
   padding: 3px;
-  background: #eef1f7;
+  background: var(--surface);
 }
 
 .custom-reminder-form .ant-segmented-item-label {
@@ -93,9 +93,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 13px;
-  border: 1px solid #d9dce5;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .custom-reminder-disable-mode {
@@ -110,13 +110,13 @@
   padding: 13px 14px;
   border: 1px solid rgba(47, 84, 235, 0.13);
   border-radius: 11px;
-  background: linear-gradient(120deg, #f4f7ff, #f8faff);
+  background: linear-gradient(120deg, var(--surface), var(--surface));
 }
 
 .custom-reminder-date-preview-icon {
   width: 36px;
   flex: 0 0 36px;
-  color: #2f54eb;
+  color: var(--primary);
   font-size: 22px;
   text-align: center;
 }
@@ -140,15 +140,15 @@
   justify-content: center;
   gap: 5px;
   padding: 7px 8px;
-  border-radius: 8px;
-  color: #2447b8;
-  background: #fff;
+  border-radius: var(--radius);
+  color: var(--primary);
+  background: var(--surface);
   box-shadow: 0 1px 5px rgba(36, 71, 184, 0.07);
   white-space: nowrap;
 }
 
 .custom-reminder-date-chip small {
-  color: #7783a2;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
@@ -164,8 +164,8 @@
 }
 
 .custom-reminder-manager-mobile-card.ant-card {
-  border-color: rgba(20, 34, 66, 0.08);
-  border-radius: 14px;
+  border-color: var(--border);
+  border-radius: var(--radius-lg);
   box-shadow: 0 5px 18px rgba(32, 44, 78, 0.05);
 }
 
@@ -183,7 +183,7 @@
 .custom-reminder-manager-meta,
 .custom-reminder-manager-note {
   margin-top: 8px;
-  color: #727d94;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -244,7 +244,7 @@
 
 .desktop-reminder-list-item {
   padding-block: 8px;
-  border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 
 .desktop-reminder-list-item:last-child {
@@ -266,11 +266,11 @@
 }
 
 .desktop-reminder-icon-danger {
-  color: #cf1322;
+  color: var(--danger);
 }
 
 .desktop-reminder-icon-warning {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .desktop-reminder-content {
@@ -280,13 +280,13 @@
 
 .desktop-reminder-title {
   margin-bottom: 4px;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text);
   font-size: 14px;
   line-height: 1.5715;
 }
 
 .desktop-reminder-description {
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.5715;
 }
@@ -305,15 +305,15 @@
 .mobile-reminders-actions.ant-card,
 .mobile-reminders-section.ant-card {
   overflow: hidden;
-  border: 1px solid rgba(20, 34, 66, 0.07);
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   box-shadow: 0 6px 20px rgba(32, 44, 78, 0.055);
 }
 
 .mobile-reminders-actions.ant-card {
   background:
     radial-gradient(circle at 92% 0%, rgba(47, 84, 235, 0.12), transparent 44%),
-    #fff;
+    var(--surface);
 }
 
 .mobile-reminders-actions > .ant-card-head,
@@ -368,8 +368,8 @@
   justify-content: center;
   padding-inline: 6px;
   border-radius: 999px;
-  color: #44506a;
-  background: #f1f3f8;
+  color: var(--text-secondary);
+  background: var(--surface);
   font-size: 12px;
   line-height: 22px;
 }
@@ -379,8 +379,8 @@
 }
 
 .mobile-reminders-section-danger .mobile-reminders-section-title b {
-  color: #cf1322;
-  background: #fff1f0;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
 }
 
 .mobile-reminders-section-today > .ant-card-head {
@@ -388,8 +388,8 @@
 }
 
 .mobile-reminders-section-today .mobile-reminders-section-title b {
-  color: #ad6800;
-  background: #fffbe6;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
 }
 
 .mobile-reminder-list,
@@ -400,7 +400,7 @@
 .mobile-reminder-list-item {
   display: block;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(20, 34, 66, 0.075);
+  border-bottom: 1px solid var(--border);
 }
 
 .mobile-reminder-list-item-last {
@@ -427,7 +427,7 @@
 .mobile-reminder-title {
   min-width: 0;
   flex: 1;
-  color: #17233c;
+  color: var(--text);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -438,7 +438,7 @@
 
 .mobile-reminder-title-icon {
   margin-right: 7px;
-  color: #d48806;
+  color: var(--warning);
 }
 
 .mobile-reminder-summary-wrap {
@@ -449,7 +449,7 @@
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  color: #4f5d75;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
@@ -457,7 +457,7 @@
 }
 
 .mobile-reminder-summary-secondary {
-  color: #7a8499;
+  color: var(--text-secondary);
 }
 
 .mobile-reminder-summary-expanded {
@@ -497,7 +497,7 @@
   min-width: 0;
   align-items: center;
   gap: 4px;
-  color: #7a8499;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -549,8 +549,8 @@
   flex: 0 0 44px;
   padding: 4px 3px;
   border-radius: 9px;
-  color: #2549bd;
-  background: #eef3ff;
+  color: var(--primary);
+  background: var(--surface-hover);
   text-align: center;
 }
 
@@ -566,7 +566,7 @@
 
 .mobile-reminder-date-lockup span {
   margin-top: 1px;
-  color: #62709a;
+  color: var(--text-secondary);
   font-size: 10px;
   line-height: 1.2;
 }
@@ -578,7 +578,7 @@
 .mobile-reminders .mobile-inline-confirm.ant-card {
   margin-top: 10px;
   border: 0;
-  background: #fff7f6;
+  background: var(--surface);
   box-shadow: none;
 }
 

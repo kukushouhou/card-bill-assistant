@@ -46,8 +46,5 @@ export function businessRelationshipLabel<T extends BusinessCardLike>(cards: rea
 }
 
 export function cardGroupTitle<T extends BusinessCardLike>(bankName: string, cards: readonly T[]): string {
-  const relationship = businessRelationshipLabel(cards);
-  return relationship
-    ? `${bankName} · ${relationship}`
-    : `${bankName} · 同一账期 ${cards.length} 张卡`;
+  return `${bankName} · ${cards.length} 张卡`;
 }

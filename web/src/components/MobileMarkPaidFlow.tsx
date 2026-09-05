@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { displayPeriod } from '../lib/displayDate';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedExit } from '../lib/draftGuard';
 import {
   CheckCircleOutlined,
   EditOutlined,
   MinusCircleOutlined,
   UndoOutlined,
   WalletOutlined,
-} from '@ant-design/icons';
+} from '../skins/icons';
 import { App, Button, InputNumber, Tag, Typography } from 'antd';
 import { List as MobileList } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
@@ -47,17 +49,19 @@ function MobileCustomBillFlow({
   const currency = target.currency ?? 'CNY';
   const [amount, setAmount] = useState<number | null>(target.amount ?? null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const { requestExit, confirmation } = useUnsavedExit(amount !== (target.amount ?? null), onClose, saving);
 
   useEffect(() => setAmount(target.amount ?? null), [target]);
 
   const submit = async () => {
-    if (!target.occurrenceId || saving) return;
+    if (!target.occurrenceId || savingRef.current) return;
     if (target.paidStatus !== 'paid' && target.businessType === 'dynamic_bill'
       && (amount == null || !Number.isFinite(amount) || amount < 0)) {
       message.warning('请输入本期账单金额');
       return;
     }
-    setSaving(true);
+    savingRef.current = true; setSaving(true);
     try {
       await api.put(`/api/reminders/occurrences/${target.occurrenceId}/paid`, target.paidStatus === 'paid'
         ? { action: 'unpaid' }
@@ -68,6 +72,7 @@ function MobileCustomBillFlow({
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : '操作失败');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -75,17 +80,18 @@ function MobileCustomBillFlow({
   return (
     <MobileFlow
       title={target.paidStatus === 'paid' ? '恢复待还' : '还款'}
-      onBack={saving ? () => undefined : onClose}
+      onBack={requestExit}
       className="mobile-payment-flow"
       footer={(
         <div className="mobile-flow-action-row">
-          <Button block disabled={saving} onClick={onClose}>取消</Button>
+          <Button block disabled={saving} onClick={requestExit}>取消</Button>
           <Button type="primary" block loading={saving} onClick={submit}>
             {target.paidStatus === 'paid' ? '确认恢复' : '确认还款'}
           </Button>
         </div>
       )}
     >
+      {confirmation}
       <section className="mobile-action-identity">
         <span className="mobile-action-identity-icon"><WalletOutlined /></span>
         <div className="mobile-action-identity-copy">
@@ -146,6 +152,9 @@ function MobileCardMarkPaidFlow({
   const [totalAmount, setTotalAmount] = useState<number | null>(hasBill ? target.amount ?? null : null);
   const [paidAmount, setPaidAmount] = useState<number | null>(hasBill ? currentPaid(target) : null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const { requestExit, confirmation } = useUnsavedExit(totalAmount !== (hasBill ? target.amount ?? null : null)
+    || paidAmount !== (hasBill ? currentPaid(target) : null), onClose, saving);
 
   useEffect(() => {
     setStep('choose');
@@ -164,11 +173,9 @@ function MobileCardMarkPaidFlow({
     if (step !== 'choose') {
       setStep('choose');
       setAction(null);
-      setTotalAmount(hasBill ? target.amount ?? null : null);
-      setPaidAmount(hasBill ? existingPaid : null);
       return;
     }
-    onClose();
+    requestExit();
   };
 
   const choose = (next: MobilePaymentAction) => {
@@ -207,8 +214,8 @@ function MobileCardMarkPaidFlow({
   };
 
   const submit = async () => {
-    if (!action || saving || !validate()) return;
-    setSaving(true);
+    if (!action || savingRef.current || !validate()) return;
+    savingRef.current = true; setSaving(true);
     try {
       if (hasBill) {
         if (action === 'full') {
@@ -264,6 +271,7 @@ function MobileCardMarkPaidFlow({
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '操作失败');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -314,10 +322,11 @@ function MobileCardMarkPaidFlow({
       className="mobile-payment-flow"
       footer={footer}
     >
+      {confirmation}
       <section className="mobile-action-identity">
         <span className="mobile-action-identity-icon"><WalletOutlined /></span>
         <div className="mobile-action-identity-copy">
-          <span>{target.period}期 · {currency} · 尾号 {target.cardLast4}</span>
+          <span>{displayPeriod(target.period)} · {currency} · 尾号 {target.cardLast4}</span>
           <strong>{target.bankName}</strong>
         </div>
         <Tag color={hasBill ? currentStatus.color : undefined}>
@@ -336,8 +345,7 @@ function MobileCardMarkPaidFlow({
         <section className="mobile-payment-actions" aria-label="选择还款操作">
           <div className="mobile-action-section-heading">
             <div>
-              <strong>{hasBill ? '选择本次要登记的结果' : '这期账单如何处理？'}</strong>
-              <span>每项都会进入独立确认或金额录入</span>
+              <strong>还款情况</strong>
             </div>
           </div>
           <MobileList mode="card" className="mobile-payment-action-list">

@@ -1,3 +1,6 @@
+import { useViewState } from '../lib/viewState';
+import { displayDate } from '../lib/displayDate';
+import { useDraftGuard } from '../lib/draftGuard';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import {
@@ -16,18 +19,18 @@ import {
   Select,
   Space,
   Spin,
-  Switch,
   Table,
   Tabs,
   Tag,
   Typography,
 } from 'antd';
-import { CloudDownloadOutlined, DownloadOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { CloudDownloadOutlined, DownloadOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined } from '../skins/icons';
 import { Virtuoso } from 'react-virtuoso';
 import { api, ApiError } from '../api/client';
 import type { EmailAccount, HistorySyncState, MailLogRow, PagedMailLogs, SyncSummary } from '../api/types';
 import { Page } from '../components/Layout';
+import InfoFields from '../components/InfoFields';
+import SettingSwitch from '../components/SettingSwitch';
 import { useResponsive, useResetOnModeChange } from '../responsive';
 import { useHistoryGate } from '../historyGate';
 import {
@@ -92,14 +95,6 @@ const PRESETS: Array<{ host: string; label: string }> = [
   { host: 'imap.126.com', label: '网易 126（imap.126.com）' },
 ];
 
-/** 同步结果分段文案：图片/错误为零时不显示，出现后才展示；未匹配保持常显 */
-function syncSummaryText(s: { matched: number; unmatched: number; image: number; errors: number }): string {
-  const parts = [`匹配 ${s.matched}`, `未匹配 ${s.unmatched}`];
-  if (s.image > 0) parts.push(`图片 ${s.image}`);
-  if (s.errors > 0) parts.push(`错误 ${s.errors}`);
-  return parts.join('，');
-}
-
 function AccountForm({
   initial,
   onOk,
@@ -155,9 +150,11 @@ function AccountForm({
     }
   };
 
+  useDraftGuard(Boolean(draft?.dirty));
+
   const requestCancel = () => {
     if (confirmLoading || testing || busyRef.current) return;
-    if (isMobile && draft?.dirty) {
+    if (draft?.dirty) {
       setLeaveConfirm(true);
       return;
     }
@@ -180,6 +177,7 @@ function AccountForm({
           onDraftChange({ values, dirty: accountFormChanged(values, baseline) })
         }
       >
+        <div className="email-editor-grid"><section><h3>邮箱连接</h3>
         <Form.Item
           name="email"
           label="邮箱地址"
@@ -199,9 +197,10 @@ function AccountForm({
             <InputNumber min={1} max={65535} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="tls" label="SSL/TLS" valuePropName="checked">
-            <Switch />
+            <SettingSwitch aria-label="SSL/TLS" />
           </Form.Item>
         </div>
+        </section><section><h3>登录信息</h3>
         <Form.Item name="authUser" label="登录账号" rules={[{ required: true, message: '必填' }]}>
           <Input placeholder="通常为邮箱地址" autoComplete="off" />
         </Form.Item>
@@ -212,6 +211,7 @@ function AccountForm({
         >
           <Input.Password placeholder="IMAP 授权码" autoComplete="new-password" />
         </Form.Item>
+        </section></div>
       </Form>
     </>
   );
@@ -225,7 +225,7 @@ function AccountForm({
           loading={testing}
           disabled={disabled || confirmLoading}
         >
-          测试连接并保存
+          测试连接
         </Button>
       </div>
       <div className="mobile-email-editor-main-row">
@@ -249,7 +249,7 @@ function AccountForm({
         loading={testing}
         disabled={disabled || confirmLoading}
       >
-        测试连接并保存
+        测试连接
       </Button>
       <Button
         type="primary"
@@ -286,7 +286,8 @@ function AccountForm({
   }
 
   return (
-    <Modal title={title} open onCancel={requestCancel} destroyOnHidden footer={footer}>
+    <Modal title={title} open width="min(1000px, 94vw)" onCancel={requestCancel} destroyOnHidden footer={footer}>
+      {leaveConfirm && <InlineConfirm title="放弃未保存的修改？" description="退出后本次修改不会保存。" confirmText="放弃修改" onConfirm={onCancel} onCancel={() => setLeaveConfirm(false)} />}
       {content}
     </Modal>
   );
@@ -299,7 +300,7 @@ export default function Email() {
   const navigate = useNavigate();
   const historyGate = useHistoryGate();
   const accounts = historyGate.accounts;
-  const [activeTab, setActiveTab] = useState('accounts');
+  const [activeTab, setActiveTab] = useViewState('email:tab', 'accounts');
   const [editing, setEditing] = useState<EmailAccount | null | undefined>(undefined);
   const [accountDraft, setAccountDraft] = useState<AccountFormDraft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -308,10 +309,12 @@ export default function Email() {
   const [removing, setRemoving] = useState<number | null>(null);
   const [toggling, setToggling] = useState<number | null>(null);
   const [logs, setLogs] = useState<PagedMailLogs>({ total: 0, page: 1, pageSize: 20, items: [] });
-  const [logFilter, setLogFilter] = useState<{ accountId?: number; status?: string }>({});
+  const [logFilter, setLogFilter] = useViewState<{ accountId?: number; status?: string }>('email:log-filter', {});
+  const [syncResult, setSyncResult] = useState<{ accountId: number; summary: SyncSummary } | null>(null);
+  const accountsScroll = useRef(0);
   // 默认隐藏未匹配（营销/通知类邮件），勾选后才显示
   const [showUnmatched, setShowUnmatched] = useState(false);
-  const [logPage, setLogPage] = useState(1);
+  const [logPage, setLogPage] = useViewState('email:log-page', 1);
   const [logLoading, setLogLoading] = useState(false);
   const [logLoadingMore, setLogLoadingMore] = useState(false);
   const [logLoadFailure, setLogLoadFailure] = useState<{ page: number; message: string } | null>(null);
@@ -492,12 +495,12 @@ export default function Email() {
     if (accountBusyRef.current || !guardRestricted()) return;
     accountBusyRef.current = true;
     setSaving(true);
-    let stage: 'testing' | 'saving' = test ? 'testing' : 'saving';
+    const stage: 'testing' | 'saving' = test ? 'testing' : 'saving';
     try {
       if (test) {
         const r = await api.post<{ mailboxCount: number }>('/api/email/accounts/test', values);
         message.success(`连接成功，收件箱共 ${r.mailboxCount} 封邮件`);
-        stage = 'saving';
+        return;
       }
       if (editing) {
         const { authPassword, ...rest } = values;
@@ -524,7 +527,8 @@ export default function Email() {
     setSyncing(id);
     try {
       const s = await api.post<SyncSummary>(`/api/email/accounts/${id}/sync`);
-      message.success(`同步完成：新增 ${s.synced}，${syncSummaryText(s)}`);
+      message.success('同步完成');
+      setSyncResult({ accountId: id, summary: s });
       await Promise.allSettled([
         refreshAccounts({ freshAfterInFlight: true }),
         refreshLogs({ freshAfterInFlight: true }),
@@ -543,7 +547,8 @@ export default function Email() {
     setResyncing(id);
     try {
       const s = await api.post<SyncSummary>(`/api/email/accounts/${id}/resync`);
-      message.success(`重新同步完成：新增 ${s.synced}，${syncSummaryText(s)}`);
+      message.success('重新同步完成');
+      setSyncResult({ accountId: id, summary: s });
       await Promise.allSettled([
         refreshAccounts({ freshAfterInFlight: true }),
         refreshLogs({ freshAfterInFlight: true }),
@@ -559,7 +564,7 @@ export default function Email() {
   const startHistory = async (account: EmailAccount) => {
     if (!guardRestricted()) return;
     setPendingHistoryAccount(account);
-    if (isMobile) setHistoryView(true);
+    setHistoryView(true);
     try {
       await historyGate.startHistory(account);
     } catch (err) {
@@ -611,6 +616,22 @@ export default function Email() {
     }
   };
 
+  const showLogs = (accountId: number) => {
+    accountsScroll.current = document.getElementById('root')?.scrollTop || window.scrollY;
+    setLogFilter({ accountId }); setLogPage(1); setActiveTab('logs');
+  };
+  const returnAccounts = () => {
+    setActiveTab('accounts');
+    requestAnimationFrame(() => { if (isMobile) document.getElementById('root')?.scrollTo(0, accountsScroll.current); else window.scrollTo(0, accountsScroll.current); });
+  };
+  const syncFeedback = activeTab === 'accounts' && syncResult ? <Alert className="email-sync-feedback" type="success" showIcon title={'同步完成 · ' + (accounts.find(account => account.id === syncResult.accountId)?.email ?? '邮箱')} description={<InfoFields label="同步结果" items={[
+    { label: '新增', value: syncResult.summary.synced },
+    { label: '匹配账单', value: syncResult.summary.matched },
+    { label: '未匹配', value: syncResult.summary.unmatched },
+    ...(syncResult.summary.image > 0 ? [{ label: '图片账单', value: syncResult.summary.image }] : []),
+    ...(syncResult.summary.errors > 0 ? [{ label: '解析失败', tone: 'danger' as const, value: syncResult.summary.errors }] : []),
+  ]} />} action={<Button onClick={() => showLogs(syncResult.accountId)}>查看日志</Button>} style={{ marginBottom: 16 }} /> : activeTab === 'logs' && logFilter.accountId ? <Button onClick={returnAccounts} style={{ marginBottom: 16 }}>返回邮箱账户</Button> : null;
+
   const progressTask = historyGate.focusedTask?.state.running
     ? historyGate.focusedTask
     : historyGate.runningTasks[0] ?? historyGate.focusedTask ?? null;
@@ -660,20 +681,22 @@ export default function Email() {
       <Spin description="正在启动历史拉取…"><div style={{ width: 180, height: 60 }} /></Spin>
     </div>
   ) : historyState ? (
-    <div>
+    <div className="email-history-progress">
+      <div className="email-progress-heading">
+        <div><span>处理进度</span><strong>{(historyState.total > 0 ? historyState.processed / historyState.total * 100 : 0).toFixed(1)}%</strong></div>
+        <span className="email-progress-count">已处理 <strong>{historyState.processed}</strong> / {historyState.total} 封</span>
+      </div>
       <Progress
         percent={historyState.total > 0 ? (historyState.processed / historyState.total) * 100 : 0}
         status={historyState.running ? 'active' : historyState.error ? 'exception' : 'success'}
-        format={(percent) => `${(percent ?? 0).toFixed(1)}%（${historyState.processed}/${historyState.total}）`}
+        showInfo={false}
       />
-      <Typography.Paragraph style={{ marginTop: 12 }}>
-        {[
-          `匹配账单：${historyState.matched}`,
-          `未匹配：${historyState.unmatched}`,
-          ...(historyState.image > 0 ? [`图片账单：${historyState.image}`] : []),
-          ...(historyState.errors > 0 ? [`错误：${historyState.errors}`] : []),
-        ].join(' ｜ ')}
-      </Typography.Paragraph>
+      <InfoFields label="拉取结果" items={[
+        { label: '匹配账单', value: <span className="info-field-unit"><strong>{historyState.matched}</strong><span>封</span></span> },
+        { label: '未匹配', value: <span className="info-field-unit"><strong>{historyState.unmatched}</strong><span>封</span></span> },
+        ...(historyState.image > 0 ? [{ label: '图片账单', value: <span className="info-field-unit"><strong>{historyState.image}</strong><span>封</span></span> }] : []),
+        ...(historyState.errors > 0 ? [{ label: '解析失败', tone: 'danger' as const, value: <span className="info-field-unit"><strong>{historyState.errors}</strong><span>封</span></span> }] : []),
+      ]} />
       {historyGate.runningTasks.length > 1 && (
         <Alert
           type="info"
@@ -724,7 +747,7 @@ export default function Email() {
         : kind === 'resync'
           ? {
               title: `重新同步 ${account.email}？`,
-              description: '将清除该账户已有同步日志、重置同步游标，并按同步天数范围重新拉取邮件。',
+              description: '将清除该邮箱的同步日志，并重新读取所选天数内的邮件。',
               confirmText: '重新同步',
               action: () => resync(account.id),
               danger: true,
@@ -794,7 +817,7 @@ export default function Email() {
                     {account.imapHost}:{account.imapPort}{account.tls ? ' · SSL' : ''}
                   </Typography.Text>
                 </div>
-                <Switch
+                <SettingSwitch
                   className="mobile-email-switch"
                   checked={account.enabled}
                   aria-label={`${account.email} 邮箱同步${account.enabled ? '已启用' : '已停用'}`}
@@ -803,9 +826,7 @@ export default function Email() {
                   onChange={(enabled) => void toggleEnabled(account, enabled)}
                 />
               </div>
-              <Typography.Text type="secondary">
-                上次同步：{account.lastSyncAt ? dayjs(account.lastSyncAt).format('YYYY-MM-DD HH:mm') : '从未'}
-              </Typography.Text>
+              <InfoFields plain className="email-account-facts" items={[{ label: '上次同步', value: account.lastSyncAt ? displayDate(account.lastSyncAt, { time: true }) : '从未' }]} />
               <div className="mobile-action-grid">
                 <Button
                   disabled={historyGate.blocked || syncing === account.id || resyncing === account.id}
@@ -938,7 +959,7 @@ export default function Email() {
                     <Tag color={STATUS_TAG[log.status]?.color}>{STATUS_TAG[log.status]?.text ?? log.status}</Tag>
                   </div>
                   <Typography.Text type="secondary">{log.fromAddress}</Typography.Text>
-                  <Typography.Text type="secondary">{dayjs(log.mailDate).format('YYYY-MM-DD HH:mm')}</Typography.Text>
+                  <Typography.Text type="secondary">{displayDate(log.mailDate, { time: true })}</Typography.Text>
                   <Typography.Text>解析器：{log.parserId || '-'}</Typography.Text>
                   {log.error && <Typography.Text type="danger">{log.error}</Typography.Text>}
                 </Card>
@@ -986,6 +1007,7 @@ export default function Email() {
             绑定邮箱
           </Button>
           </div>
+          {syncFeedback}
           <Tabs
             activeKey={activeTab}
             onChange={(key) => {
@@ -1039,6 +1061,7 @@ export default function Email() {
           style={{ marginBottom: 12 }}
         />
       )}
+      {syncFeedback}
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -1059,14 +1082,14 @@ export default function Email() {
                     title: '上次同步',
                     dataIndex: 'lastSyncAt',
                     width: 160,
-                    render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '从未'),
+                    render: (v) => (v ? displayDate(v, { time: true }) : '从未'),
                   },
                   {
                     title: '启用',
                     dataIndex: 'enabled',
                     width: 80,
                     render: (v, r) => (
-                      <Switch
+                      <SettingSwitch
                         checked={v}
                         aria-label={`${r.email} 邮箱同步${v ? '已启用' : '已停用'}`}
                         loading={toggling === r.id}
@@ -1107,7 +1130,7 @@ export default function Email() {
                         </Popconfirm>
                         <Popconfirm
                           title="重新同步该邮箱？"
-                          description="将清除该账户已有同步日志、重置同步游标，并按同步天数范围重新拉取邮件。"
+                          description="将清除该邮箱的同步日志，并重新读取所选天数内的邮件。"
                           onConfirm={() => void resync(r.id)}
                         >
                           <Button
@@ -1204,7 +1227,7 @@ export default function Email() {
                       title: '时间',
                       dataIndex: 'mailDate',
                       width: 150,
-                      render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm'),
+                      render: (v) => displayDate(v, { time: true }),
                     },
                     { title: '发件人', dataIndex: 'fromAddress', width: 200, ellipsis: true },
                     { title: '主题', dataIndex: 'subject', ellipsis: true },
@@ -1242,21 +1265,13 @@ export default function Email() {
         />
       )}
 
-      {historyAccount && (
+      {historyView && historyAccount && (
         <Modal
           title={`历史拉取 - ${historyAccount.email}`}
           open={historyState != null || historyGate.phase === 'starting'}
-          onCancel={() => {
-            if (!historyState?.running) closeHistoryProgress();
-          }}
-          footer={
-            historyState?.running ? null : (
-              <Button type="primary" onClick={closeHistoryProgress}>
-                知道了
-              </Button>
-            )
-          }
-          closable={!historyState?.running}
+          onCancel={closeHistoryProgress}
+          footer={<Button onClick={closeHistoryProgress}>返回邮箱绑定</Button>}
+          closable
           mask={{ closable: false }}
         >
           {historyProgressContent}

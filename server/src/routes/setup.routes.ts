@@ -9,6 +9,8 @@ import { derivePinKey, makePinVerifier, randomBytes } from '../lib/crypto';
 import { getNotificationProvider, listNotificationProviderDefinitions } from '../notify/registry';
 import { sealNotificationConfig } from '../notify/notification-config';
 import { APP_VERSION } from '../version';
+import { APPLIED_SKIN_KEY, BUILTIN_IDS, DEFAULT_SKIN } from '../modules/skins/manifest';
+import { skins } from '../modules/skins/service';
 
 /**
  * 安装向导路由（免认证）：
@@ -46,6 +48,7 @@ router.get(
 );
 
 const installSchema = z.object({
+  skinId: z.string().optional(),
   password: z.string({ error: '请输入密码' }).min(8, '密码长度至少 8 位').max(72, '密码过长'),
   // PIN 可跳过；填写则必须为 6 位数字
   pin: z.union([z.literal(''), z.string().regex(/^\d{6}$/, 'PIN 必须为 6 位数字')]).optional(),
@@ -58,7 +61,9 @@ const installSchema = z.object({
 router.post(
   '/install',
   asyncHandler(async (req, res) => {
-    const { password, pin: rawPin, notifications = [] } = installSchema.parse(req.body ?? {});
+    const { password, pin: rawPin, notifications = [], skinId } = installSchema.parse(req.body ?? {});
+    if (skinId && !BUILTIN_IDS.has(skinId)) throw new ApiError(400, '请选择可用的内置皮肤');
+    if (skinId) await skins.read(skinId, DEFAULT_SKIN.version);
     const pin = rawPin || null;
     const uniqueTypes = new Set<string>();
     const parsedNotifications = notifications.map((item) => {
@@ -93,6 +98,7 @@ router.post(
         data: { key: INSTALLED_AT_KEY, value: new Date().toISOString() },
       });
       await tx.appSetting.create({ data: { key: 'installedVersion', value: APP_VERSION } });
+      if (skinId) await tx.appSetting.create({ data: { key: APPLIED_SKIN_KEY, value: JSON.stringify({ id: skinId, version: DEFAULT_SKIN.version }) } });
       for (const item of parsedNotifications) {
         await tx.notificationChannel.upsert({
           where: { type: item.provider.definition.type },

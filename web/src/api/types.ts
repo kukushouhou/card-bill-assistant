@@ -466,10 +466,66 @@ export interface TransactionRow {
 }
 
 export interface PagedTransactions {
+  context?: TransactionContext;
   total: number;
   page: number;
   pageSize: number;
   items: TransactionRow[];
+}
+
+export interface TransactionContext {
+  billId: number;
+  bankName: string;
+  period: string;
+  currency: string;
+  amount: number | null;
+  mode: 'bill' | 'history';
+  cards: Array<{ id: number; cardLast4: string }>;
+}
+
+export type AgendaKind = 'credit_bill' | 'fixed_bill' | 'dynamic_bill' | 'general' | 'statement' | 'fee' | 'repayment';
+export type AgendaView = 'open' | 'today' | 'upcoming' | 'history';
+export interface AgendaItem {
+  key: string;
+  kind: AgendaKind;
+  title: string;
+  description: string;
+  date: string;
+  period: string;
+  cardId: number | null;
+  cardIds: number[];
+  cardTails: string[];
+  bankName: string | null;
+  occurrenceId: number | null;
+  action: 'pay' | 'complete' | 'none';
+  completed: boolean;
+  daysOverdue: number | null;
+  bill: BillRow | null;
+  notices: Array<{ type: string; title: string; description: string; date: string }>;
+  previewAmount: number | null;
+  previewCurrency: string | null;
+}
+export interface AgendaSummary {
+  missingBillCount?: number;
+  billCount: number;
+  reminderCount: number;
+  unknownAmountCount: number;
+  totalsByCurrency: Array<{ currency: string; amount: number }>;
+}
+export interface AgendaGroup extends AgendaSummary {
+  period: string;
+  count: number;
+}
+export interface AgendaResult {
+  view: AgendaView;
+  grouped: boolean;
+  total: number;
+  recordCount: number;
+  page: number;
+  pageSize: number;
+  summary: AgendaSummary;
+  items: AgendaItem[];
+  groups: AgendaGroup[];
 }
 
 /** 历史拉取进度 */

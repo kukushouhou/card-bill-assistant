@@ -61,7 +61,8 @@ export function MobileFlow({
   className?: string;
 }) {
   const id = useId();
-  const { registerFlow } = useMobileShell();
+  const { registerFlow, flow } = useMobileShell();
+  const screen = useRef<HTMLElement>(null);
   const onBackRef = useRef(onBack);
   const returnOrigin = useRef<{ pathname: string; location: string; scrollTop: number } | null>(null);
   if (returnOrigin.current == null && typeof window !== 'undefined') {
@@ -83,8 +84,27 @@ export function MobileFlow({
     returnScrollTop: returnOrigin.current?.scrollTop ?? 0,
   }), [id, registerFlow, stableBack, title]);
 
+  useLayoutEffect(() => {
+    if (flow?.id !== id || !screen.current) return;
+    const boundary = screen.current.closest('.route-outlet');
+    if (!boundary) return;
+    const hidden: Array<{ element: HTMLElement; inert: boolean; aria: string | null }> = [];
+    let node: Element | null = screen.current;
+    // 全屏流程保留来源 DOM 状态，同时让背景和下层流程退出触控、键盘与读屏范围。
+    while (node?.parentElement && node !== boundary) {
+      for (const sibling of node.parentElement.children) {
+        if (sibling !== node && sibling instanceof HTMLElement) {
+          hidden.push({ element: sibling, inert: sibling.inert, aria: sibling.getAttribute('aria-hidden') });
+          sibling.inert = true; sibling.setAttribute('aria-hidden', 'true');
+        }
+      }
+      node = node.parentElement;
+    }
+    return () => hidden.forEach(({ element, inert, aria }) => { element.inert = inert; if (aria == null) element.removeAttribute('aria-hidden'); else element.setAttribute('aria-hidden', aria); });
+  }, [flow?.id, id]);
+
   return (
-    <section className={`mobile-flow-screen ${className ?? ''}`.trim()} aria-label={title}>
+    <section ref={screen} className={`mobile-flow-screen ${className ?? ''}`.trim()} aria-label={title}>
       <div className="mobile-flow-body">{children}</div>
       {footer && <div className="mobile-flow-footer">{footer}</div>}
     </section>
