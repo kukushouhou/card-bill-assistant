@@ -4,6 +4,12 @@ import fs from 'node:fs/promises';
 async function expectSummaryLayout(summary: Locator, mobile: boolean, count = 2) {
   const values = summary.locator('.agenda-summary-value');
   await expect(values).toHaveCount(count);
+  const primary = summary.locator('.agenda-summary-primary');
+  if ((await primary.locator('.agenda-summary-readable').textContent())?.startsWith('¥')) {
+    await expect(primary.locator('.agenda-summary-currency-name')).toHaveCount(0);
+    await expect(summary).not.toContainText('人民币');
+    await expect(summary).not.toContainText('CNY');
+  }
   // 弹窗的入场缩放结束后再检验实际间距，不将动画过程中的缩放尺寸当作最终布局。
   await summary.evaluate(async element => {
     const animations: Animation[] = [];
@@ -24,6 +30,8 @@ async function expectSummaryLayout(summary: Locator, mobile: boolean, count = 2)
     });
     return {
       numbers, bounds: element.getBoundingClientRect().toJSON(),
+      overview: element.querySelector('.agenda-summary-overview')!.getBoundingClientRect().toJSON(),
+      records: element.querySelector('.agenda-summary-records')?.getBoundingClientRect().toJSON(),
       sizes: [...element.querySelectorAll('.agenda-summary-value')].map(value => parseFloat(getComputedStyle(value).fontSize)),
       primary: element.querySelector('.agenda-summary-primary')?.getBoundingClientRect().toJSON(),
       other: element.querySelector('.agenda-summary-other')?.getBoundingClientRect().toJSON(),
@@ -43,23 +51,34 @@ async function expectSummaryLayout(summary: Locator, mobile: boolean, count = 2)
     expect(layout.sizes[0]).toBeGreaterThanOrEqual(layout.sizes[1] * 1.3);
     await expect(summary.locator('.agenda-summary-currency-code')).toHaveCount(count - 1);
     if (mobile) expect(layout.other.y).toBeGreaterThanOrEqual(layout.primary.bottom);
-    else expect(layout.other.x).toBeGreaterThanOrEqual(layout.primary.right);
+    else expect(layout.other.x >= layout.primary.right || layout.other.y >= layout.primary.bottom).toBe(true);
   }
   const notices = summary.locator('.agenda-summary-notices');
   if (layout.notices) {
-    expect(layout.notices.y).toBeGreaterThanOrEqual(Math.max(...layout.numbers.map(item => item.bottom)));
     await expect(notices).toContainText('待补充');
-    if (mobile) expect(layout.notes[0].bounds.y - layout.noticeHeading.bottom).toBeGreaterThanOrEqual(11);
-    else expect(Math.abs(layout.noticeTitleBaseline! - layout.notes[0].baselines[0])).toBeLessThan(.5);
+    if (mobile) {
+      expect(layout.notices.y).toBeGreaterThanOrEqual(Math.max(...layout.numbers.map(item => item.bottom)));
+      expect(layout.notes[0].bounds.y - layout.noticeHeading.bottom).toBeGreaterThanOrEqual(11);
+    } else {
+      expect(layout.records!.x - layout.overview.right).toBeGreaterThanOrEqual(15);
+      expect(layout.notices.x - layout.records!.right).toBeGreaterThanOrEqual(15);
+      expect(layout.notices.width).toBeLessThanOrEqual(layout.bounds.width * .35);
+      expect(layout.notes[0].bounds.y).toBeGreaterThanOrEqual(layout.noticeHeading.bottom);
+    }
     for (const note of layout.notes) {
-      expect(note.label.x - note.bounds.x).toBeGreaterThan(10);
-      expect(note.bounds.right - note.count.right).toBeGreaterThan(10);
+      if (mobile) {
+        expect(note.label.x - note.bounds.x).toBeGreaterThan(10);
+        expect(note.bounds.right - note.count.right).toBeGreaterThan(10);
+      } else {
+        expect(Math.abs(note.label.x - layout.noticeHeading.x)).toBeLessThan(.5);
+        expect(note.count.right).toBeLessThanOrEqual(layout.notices.right - 16);
+      }
       expect(note.count.x - note.label.right).toBeGreaterThanOrEqual(7);
       expect(Math.max(...note.baselines) - Math.min(...note.baselines)).toBeLessThan(.5);
     }
     if (layout.notes.length === 2) {
       const [a, b] = layout.notes.map(note => note.bounds);
-      expect(b.x - a.right >= 11 || b.y - a.bottom >= 11).toBe(true);
+      expect(b.x - a.right >= 11 || b.y - a.bottom >= (mobile ? 11 : 5)).toBe(true);
       expect(Math.abs(a.height - b.height)).toBeLessThan(.5);
       if (Math.abs(a.y - b.y) < 1) expect(Math.abs(layout.notes[0].baselines[0] - layout.notes[1].baselines[0])).toBeLessThan(.5);
       else expect(Math.abs(a.x - b.x)).toBeLessThan(.5);
@@ -101,11 +120,6 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.screenshot({ path: directory + '/' + skin + '-' + mode + '-' + width + '.png', fullPage: true, animations: 'disabled' });
-      if (width === 390 || width === 1440) {
-        const device = width === 390 ? 'mobile' : 'desktop';
-        await page.screenshot({ path: '../docs/skins/previews/' + skin + '-' + mode + '-' + device + '.png', fullPage: true, animations: 'disabled' });
-        await summary.screenshot({ path: '../docs/skins/previews/' + skin + '-' + mode + '-summary-' + device + '.png', animations: 'disabled' });
-      }
     }
     // 统计和卡片范围复用相同的汇总结构，不能只修正主页面。
     await page.getByRole('button', { name: /账单统计/ }).click();
@@ -113,6 +127,59 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
     await page.getByRole('dialog').locator('.ant-modal-close').click();
     await page.goto('/cards'); await page.locator('.bank-card').first().click();
     await expectSummaryLayout(page.getByRole('dialog').locator('.agenda-totals'), false);
+  });
+}
+
+for (const skin of ['modern', 'warm-ledger']) {
+  test('桌面首屏与列宽保持紧凑 ' + skin, async ({ page, request }) => {
+    test.setTimeout(60_000);
+    await request.post('/__fixture', { data: { reset: true, authed: true, installed: true, upgrade: null } });
+    await request.put('/api/skins/active', { data: { id: skin, version: '1.0.0' } });
+    await page.route('**/api/agenda?*', async route => {
+      const response = await route.fetch(); const data = await response.json();
+      data.summary.totalsByCurrency = [{ currency: 'CNY', amount: 48413.45 }];
+      data.summary.billCount = 37;
+      data.summary.missingBillCount = 30; data.summary.unknownAmountCount = 30;
+      await route.fulfill({ json: data });
+    });
+    for (const width of [1024, 1280, 1366, 1920]) {
+      await page.setViewportSize({ width, height: 768 }); await page.goto('/bills');
+      const summary = page.locator('.agenda-totals'); await expect(summary).toContainText('48,413.45');
+      await expect(page.locator('html')).toHaveAttribute('data-skin', skin + '@1.0.0');
+      await page.evaluate(() => document.fonts.ready);
+      await expectSummaryLayout(summary, false, 1);
+      const layout = await page.evaluate(() => {
+        const content = document.querySelector('.app-shell-content')!;
+        const rows = [...document.querySelectorAll('.agenda-table .ant-table-tbody > tr:not(.ant-table-measure-row)')];
+        return {
+          summary: document.querySelector('.agenda-totals')!.getBoundingClientRect().toJSON(),
+          contentWidth: content.clientWidth, contentScrollWidth: content.scrollWidth,
+          completeRows: rows.filter(row => row.getBoundingClientRect().bottom <= innerHeight).length,
+          actionBounds: [...rows[0].querySelectorAll('button')].map(button => button.getBoundingClientRect().toJSON()),
+          right: document.querySelector('.agenda-table')!.getBoundingClientRect().right,
+          dateColumns: rows.map(row => [...row.querySelectorAll('.agenda-date-cell dd')].map(field => field.getBoundingClientRect().x)),
+        };
+      });
+      expect(layout.summary.height).toBeLessThanOrEqual(160);
+      expect(layout.completeRows).toBeGreaterThanOrEqual(4);
+      expect(layout.contentScrollWidth).toBeLessThanOrEqual(layout.contentWidth + 1);
+      for (const action of layout.actionBounds) expect(action.right).toBeLessThanOrEqual(layout.right);
+      for (const dates of layout.dateColumns) if (dates.length > 1) expect(Math.abs(dates[0] - dates[1])).toBeLessThan(.5);
+    }
+    // 历史年份、长卡尾与“调整还款”同样需要留在各自列内。
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/bills?view=history');
+    await page.locator('.agenda-history-heading').filter({ hasText: '2025年12月' }).click();
+    await expect(page.getByRole('button', { name: '调整还款', exact: true }).first()).toBeVisible();
+    const periods = await page.locator('.agenda-period').evaluateAll(elements => elements.map(element => ({ value: element.firstElementChild!.getBoundingClientRect().toJSON(), cell: element.closest('td')!.getBoundingClientRect().toJSON() })));
+    for (const period of periods) expect(period.value.right).toBeLessThanOrEqual(period.cell.right);
+    const historyActions = await page.locator('.agenda-history-group .agenda-record-actions button').evaluateAll(elements => elements.map(element => ({ button: element.getBoundingClientRect().toJSON(), table: element.closest('.agenda-table')!.getBoundingClientRect().toJSON() })));
+    for (const action of historyActions) expect(action.button.right).toBeLessThanOrEqual(action.table.right);
+    const historyDates = await page.locator('.agenda-history-group .agenda-date-cell dd').evaluateAll(elements => elements.map(element => {
+      const range = document.createRange(); range.selectNodeContents(element);
+      return { lines: range.getClientRects().length, right: range.getBoundingClientRect().right, cellRight: element.closest('td')!.getBoundingClientRect().right };
+    }));
+    for (const date of historyDates) { expect(date.lines).toBe(1); expect(date.right).toBeLessThanOrEqual(date.cellRight); }
   });
 }
 
@@ -139,10 +206,19 @@ test('没有人民币或没有已知金额时保持真实币种和空态', async
     data.summary.totalsByCurrency = amounts;
     await route.fulfill({ json: data });
   });
-  await page.goto('/bills'); const summary = page.locator('.agenda-totals');
-  await expect(summary.locator('.agenda-summary-primary')).toContainText('美元');
-  await expect(summary.locator('.agenda-summary-readable')).toHaveText('USD $12.60');
-  await expectSummaryLayout(summary, false, 1);
+  const summary = page.locator('.agenda-totals');
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 }); await page.goto('/bills');
+    await expect(summary.locator('.agenda-summary-primary')).toContainText('USD美元');
+    await expect(summary.locator('.agenda-summary-readable')).toHaveText('USD $12.60');
+    await expectSummaryLayout(summary, width < 1024, 1);
+    const position = await summary.locator('.agenda-summary-primary').evaluate(element => {
+      const label = element.querySelector('.agenda-summary-currency-name')!.getBoundingClientRect();
+      const amount = element.querySelector('.agenda-summary-value')!.getBoundingClientRect();
+      return { before: label.right <= amount.x || label.bottom <= amount.y };
+    });
+    expect(position.before).toBe(true);
+  }
   amounts = []; await page.reload();
   await expect(summary).toContainText('暂无可汇总金额');
   await expect(summary.locator('.agenda-summary-value')).toHaveCount(0);

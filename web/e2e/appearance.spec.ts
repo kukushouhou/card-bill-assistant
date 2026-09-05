@@ -17,8 +17,10 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
       await expect(page.locator('html')).toHaveAttribute('data-skin', skin + '@1.0.0');
       await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
       await expect(page.getByText('页面暂时无法加载', { exact: true })).toHaveCount(0);
+      if (route === '/settings') await expect(page.getByRole('button', { name: '预览克制现代', exact: true })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      expect(await page.locator('.app-shell-content').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       await page.screenshot({ path: directory + '/' + (route.slice(1) || 'home') + '.png', fullPage: true, animations: 'disabled' });
       if (route === '/settings' && width < 1024) {
         await page.locator('.settings-grid-notifications').scrollIntoViewIfNeeded();
@@ -31,6 +33,10 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
     await request.post('/__fixture', { data: { installed: false } });
     await page.goto('/'); await page.getByRole('button', { name: '下一步', exact: true }).click();
     await expect(page.getByLabel('登录密码', { exact: false })).toBeVisible();
+    if (width >= 1024) {
+      const next = (await page.getByRole('button', { name: '下一步', exact: true }).boundingBox())!;
+      expect(next.width).toBeLessThanOrEqual(160);
+    }
     await page.screenshot({ path: directory + '/setup-account.png', fullPage: true });
     expect(errors).toEqual([]);
   });
@@ -41,9 +47,10 @@ for (const width of [360, 768, 1023, 1024]) {
     await request.post('/__fixture', { data: { reset: true, authed: true, installed: true, upgrade: null } });
     await request.put('/api/skins/active', { data: { id: 'modern', version: '1.0.0' } });
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ['/bills', '/cards', '/settings']) {
+    for (const route of ['/', '/bills', '/cards', '/transactions', '/email', '/parsers', '/settings']) {
       await page.goto(route); await expect(page.locator('.page').first()).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      expect(await page.locator('.app-shell-content').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       if (width < 1024 && route === '/bills') {
         const label = page.getByText('今日应提醒', { exact: true });
         expect(await label.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);

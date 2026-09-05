@@ -14,12 +14,15 @@ test('独立皮肤包导入、隔离预览、应用、导出重导入与删除',
   await expect(preview).toBeVisible();
   const frame = page.frameLocator('iframe[title="皮肤效果预览"]');
   await expect(frame.locator('html')).toHaveAttribute('data-skin', 'graphite-notebook@1.0.0');
+  await expect(frame.locator('.agenda-summary-records')).toHaveCount(1);
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'modern@1.0.0');
   await expect(frame.getByRole('button', { name: '还款', exact: true }).first()).toHaveCSS('border-radius', '3px');
   await preview.getByText('手机', { exact: true }).click();
   await preview.locator('.skin-preview-controls').getByText('深色', { exact: true }).click();
   await expect(frame.locator('html')).toHaveAttribute('data-mode', 'dark');
   await expect(frame.locator('.agenda-mobile-row').first()).toBeVisible();
+  await expect(frame.locator('.agenda-summary-records')).toHaveCount(0);
+  await expect(frame.locator('.agenda-summary-header .agenda-summary-metrics')).toHaveCount(1);
   await preview.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'modern@1.0.0');
   const sample = page.locator('.skin-library-item').filter({ hasText: '石墨账本示例' });
