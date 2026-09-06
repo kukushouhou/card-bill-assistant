@@ -14,10 +14,10 @@
   "assets": [
     "assets/paper.svg",
     "assets/ledger.svg",
-    "previews/desktop-light.svg",
-    "previews/desktop-dark.svg",
-    "previews/mobile-light.svg",
-    "previews/mobile-dark.svg"
+    "previews/desktop-light-5904bc6a6e3b.png",
+    "previews/desktop-dark-898e2ac9b728.png",
+    "previews/mobile-light-3a4e6e90618e.png",
+    "previews/mobile-dark-9ae8a56e7d1d.png"
   ],
   "variants": {
     "desktop-light": {
@@ -174,9 +174,9 @@
     }
   },
   "previews": {
-    "desktop-light": "previews/desktop-light.svg",
-    "desktop-dark": "previews/desktop-dark.svg",
-    "mobile-light": "previews/mobile-light.svg",
-    "mobile-dark": "previews/mobile-dark.svg"
+    "desktop-light": "previews/desktop-light-5904bc6a6e3b.png",
+    "desktop-dark": "previews/desktop-dark-898e2ac9b728.png",
+    "mobile-light": "previews/mobile-light-3a4e6e90618e.png",
+    "mobile-dark": "previews/mobile-dark-9ae8a56e7d1d.png"
   }
 }

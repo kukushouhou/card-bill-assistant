@@ -1,5 +1,22 @@
 .skin-manager-toolbar, .skin-preview-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .skin-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 20px; }
+.builtin-skin-picker { margin-top: 24px; }
+.builtin-skin-picker h3 { margin: 0 0 14px; font-size: 15px; }
+.builtin-skin-options.ant-radio-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; width: 100%; }
+/* 独立选项卡不沿用连续单选按钮的负边距，保证预览与标题始终等宽对齐。 */
+.builtin-skin-options.ant-radio-group .builtin-skin-option.ant-radio-button-wrapper { display: block; height: auto; margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); white-space: normal; line-height: 1.5; }
+.builtin-skin-option.ant-radio-button-wrapper::before { display: none; }
+.builtin-skin-options.ant-radio-group .builtin-skin-option.ant-radio-button-wrapper-checked { border-color: var(--primary); background: var(--primary-soft); }
+.builtin-skin-content { display: grid; gap: 14px; }
+.builtin-skin-preview { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; object-position: center; border-radius: var(--radius); background: var(--background); }
+.builtin-skin-caption { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; color: var(--text); }
+.builtin-skin-caption > span { font-size: 12px; color: var(--primary); }
+.builtin-skin-content p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; }
+@media(max-width:1023px) {
+  .builtin-skin-options.ant-radio-group { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .builtin-skin-content { grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 12px; }
+  .builtin-skin-preview { height: 120px; aspect-ratio: auto; }
+}
 .skin-library-item { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .skin-library-preview { border: 0; padding: 0; width: 100%; cursor: pointer; border-radius: var(--radius); overflow: hidden; background: var(--background); }
 .skin-library-preview img { width: 100%; height: 210px; object-fit: contain; display: block; }

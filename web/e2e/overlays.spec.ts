@@ -33,6 +33,7 @@ test('安装选择完整内置皮肤，完成后生效并保留本地明暗', as
   await page.goto('/'); await page.getByRole('button', { name: '下一步', exact: true }).click();
   await page.getByLabel('登录密码', { exact: false }).fill('Ui-fixture-only-123'); await page.getByLabel('确认密码', { exact: false }).fill('Ui-fixture-only-123');
   await page.getByRole('button', { name: '下一步', exact: true }).click();
+  await page.getByRole('button', { name: '下一步', exact: true }).click();
   await page.getByText('温润账本', { exact: true }).click();
   const submitted = page.waitForRequest('**/api/setup/install'); await page.getByRole('button', { name: /完成安装/ }).click();
   expect((await submitted).postDataJSON().skinId).toBe('warm-ledger');

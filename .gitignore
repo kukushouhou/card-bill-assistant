@@ -9,6 +9,7 @@ server/prisma/migrations/*/migration.sql.bak
 # 本地 AI 协作约束（不对外发布）
 /agents.md
 /AGENTS.md
+/.zcode/
 
 # 本地开发计划、研究样本与浏览器调试产物
 /.trae/

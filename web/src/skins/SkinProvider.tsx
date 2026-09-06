@@ -124,9 +124,9 @@ export default function SkinProvider({ children }: { children: ReactNode }) {
   </SkinContext.Provider>;
 }
 
-export function ColorModeSwitch() {
+export function ColorModeSwitch({ disabled = false }: { disabled?: boolean } = {}) {
   const { mode, setMode } = useSkin();
-  return <Segmented aria-label="明暗模式" value={mode} onChange={value => setMode(value as ColorMode)} options={[{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }, { value: 'system', label: '跟随系统' }]} />;
+  return <Segmented aria-label="明暗模式" disabled={disabled} value={mode} onChange={value => setMode(value as ColorMode)} options={[{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }, { value: 'system', label: '跟随系统' }]} />;
 }
 
 export function SkinDecorations({ slot }: { slot: 'background' | 'header' | 'sidebar' | 'content' | 'footer' }) {

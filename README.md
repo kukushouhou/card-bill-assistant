@@ -9,8 +9,8 @@
 
 一个面向个人自托管的信用卡账单与到期提醒工具。自动读取银行账单邮件，将信用卡账单、日常账单和到期提醒集中在「账单中心」，支持还款登记、交易查询、年费提醒及多渠道推送。电脑端与手机端分别设计交互，提供完整皮肤包和浅色、深色模式。
 
-- 当前稳定版本：`v0.4.1`（[查看本版本完整发布说明](./docs/releases/v0.4.1.md)）
-- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.4.1`
+- 当前稳定版本：`v0.4.2`（[查看本版本完整发布说明](./docs/releases/v0.4.2.md)）
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.4.2`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
@@ -149,7 +149,7 @@
 
 ### 首次使用与自托管
 
-- 首次访问通过安装向导设置登录密码、可选 PIN、通知渠道及内置皮肤，后续可在系统设置中调整。
+- 首次访问通过安装向导设置登录密码、可选 PIN 和通知渠道；独立的「外观主题」步骤可选择内置皮肤、浅色／深色或跟随系统，后续可在系统设置中调整。
 - 电脑、手机和平板浏览器访问同一地址即可使用，无需安装原生客户端。
 - 支持官方 Docker 镜像、Docker 源码构建和 Node.js 源码部署，可选择内置 MySQL 或外置 MySQL。
 
@@ -170,6 +170,18 @@
 ### 账单中心（电脑端）
 
 ![账单中心电脑端：独立金额概览、记录状态与统一账单工作区](./docs/images/bill-center-desktop.png)
+
+### 安装向导：外观主题
+
+环境检查 → 账户设置 → 通知渠道 → **外观主题** → 完成。安装前即可选择皮肤和明暗模式，预览图会随设备与明暗选择变化。
+
+<table>
+  <tr><th>电脑端主题设置</th><th>手机端主题设置</th></tr>
+  <tr>
+    <td><img src="./docs/images/setup-theme-desktop.png" width="600" alt="安装向导第四步外观主题：电脑端并排选择皮肤与明暗模式" /></td>
+    <td><img src="./docs/images/setup-theme-mobile.png" width="240" alt="安装向导第四步外观主题：手机端皮肤选择与明暗模式" /></td>
+  </tr>
+</table>
 
 ### 手机端
 
@@ -196,9 +208,17 @@
 </table>
 
 <details>
-  <summary>查看卡片中心与皮肤管理（电脑端）</summary>
+  <summary>查看首页、明细、卡片、邮箱、试解析与皮肤管理（电脑端）</summary>
+  <p>首页</p>
+  <img src="./docs/images/dashboard-desktop.png" alt="电脑端首页：多列统计、紧凑走势与并排待办" />
+  <p>统一明细</p>
+  <img src="./docs/images/transactions-desktop.png" alt="电脑端统一明细：分列筛选、完整账期与右侧金额" />
   <p>卡片中心</p>
   <img src="./docs/images/card-center-desktop.png" alt="新版卡片中心电脑端：套卡、卡片信息与操作入口" />
+  <p>邮箱账户</p>
+  <img src="./docs/images/email-desktop.png" alt="电脑端邮箱账户：连接信息、同步状态与账户操作" />
+  <p>试解析</p>
+  <img src="./docs/images/parser-center-desktop.png" alt="电脑端试解析：横向表单与分组账单结果" />
   <p>皮肤管理</p>
   <img src="./docs/images/skin-manager-desktop.png" alt="完整皮肤管理：导入、预览、应用与导出" />
 </details>
@@ -285,10 +305,10 @@ https://github.com/kukushouhou/card-bill-assistant
 
 使用 [docker-compose.yml](./docker-compose.yml)，点击链接可直接查看或复制完整配置。
 
-先克隆 `v0.4.1` 的部署文件：
+先克隆 `v0.4.2` 的部署文件：
 
 ```bash
-git clone --branch v0.4.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.4.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -338,7 +358,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
-| `APP_VERSION` | 否 | `0.4.1` | GHCR 镜像版本；生产环境建议固定版本 |
+| `APP_VERSION` | 否 | `0.4.2` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
@@ -374,7 +394,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
 ```bash
-git clone --branch v0.4.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.4.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web

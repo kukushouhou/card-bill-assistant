@@ -15,4 +15,4 @@ h1, h2, h3, .page-heading, .agenda-totals > strong { font-family: "Skin Lora", G
 .ant-card-head, .agenda-history-heading { border-bottom: 1px solid var(--border); }
 .ant-btn-primary { background-image: linear-gradient(180deg, #ffffff0a, #00000008); }
 .desktop-app-sider { background-image: url('../assets/paper.svg'); }
-.agenda-amount, .stat-amount { font-family: "Skin Lora", Georgia, "Songti SC", serif; }
+.agenda-amount, .stat-amount { font-family: "Skin Lora", Georgia, "Songti SC", serif; font-variant-numeric: lining-nums tabular-nums; }

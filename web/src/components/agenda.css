@@ -39,7 +39,7 @@
 .agenda-period .agenda-period-link.ant-btn:hover, .agenda-period .agenda-period-link.ant-btn:focus-visible { text-decoration: underline; }
 .agenda-identity { display: grid; gap: 6px; }
 .agenda-identity > span { color: var(--text-secondary); font-size: 13px; }
-.agenda-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.agenda-amount { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
 .agenda-dates { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--text-secondary); font-size: 13px; }
 .agenda-overdue { color: var(--danger); }
 .agenda-notices { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-top: 10px; }

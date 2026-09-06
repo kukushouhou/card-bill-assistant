@@ -11,5 +11,5 @@
 .mobile-bottom-nav, .mobile-app-header { background: var(--surface); }
 [data-skin-decoration="background"] { opacity: .08; background-size: 64px 64px; }
 h1, h2, h3 { letter-spacing: -.025em; }
-.agenda-amount, .stat-amount { font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
+.agenda-amount, .stat-amount { font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.025em; }
 .ant-btn-primary { box-shadow: 0 1px 2px #00000012; }

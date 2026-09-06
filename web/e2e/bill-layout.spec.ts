@@ -33,6 +33,10 @@ async function expectSummaryLayout(summary: Locator, mobile: boolean, count = 2)
       overview: element.querySelector('.agenda-summary-overview')!.getBoundingClientRect().toJSON(),
       records: element.querySelector('.agenda-summary-records')?.getBoundingClientRect().toJSON(),
       sizes: [...element.querySelectorAll('.agenda-summary-value')].map(value => parseFloat(getComputedStyle(value).fontSize)),
+      amountTypography: [...element.querySelectorAll('.agenda-summary-value')].map(value => ({
+        numeric: getComputedStyle(value).fontVariantNumeric,
+        baselineGap: value.querySelector('.agenda-summary-unit') ? Math.abs(baseline(value.querySelector('.agenda-summary-unit')!) - baseline(value.querySelector('.agenda-summary-number')!)) : 0,
+      })),
       primary: element.querySelector('.agenda-summary-primary')?.getBoundingClientRect().toJSON(),
       other: element.querySelector('.agenda-summary-other')?.getBoundingClientRect().toJSON(),
       notices: element.querySelector('.agenda-summary-notices')?.getBoundingClientRect().toJSON(),
@@ -47,6 +51,11 @@ async function expectSummaryLayout(summary: Locator, mobile: boolean, count = 2)
     };
   });
   for (const box of layout.numbers) { expect(box.lines).toBe(1); expect(box.right).toBeLessThanOrEqual(layout.bounds.right); }
+  for (const amount of layout.amountTypography) {
+    expect(amount.numeric).toContain('lining-nums');
+    expect(amount.numeric).toContain('tabular-nums');
+    expect(amount.baselineGap).toBeLessThan(.5);
+  }
   if (count > 1) {
     expect(layout.sizes[0]).toBeGreaterThanOrEqual(layout.sizes[1] * 1.3);
     await expect(summary.locator('.agenda-summary-currency-code')).toHaveCount(count - 1);

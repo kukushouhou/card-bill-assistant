@@ -14,11 +14,11 @@
   "assets": [
     "assets/paper.svg",
     "assets/ledger.svg",
-    "previews/desktop-light.svg",
-    "previews/desktop-dark.svg",
-    "previews/mobile-light.svg",
-    "previews/mobile-dark.svg",
-    "assets/Lora.ttf"
+    "assets/Lora.ttf",
+    "previews/desktop-light-3b87f594f4aa.png",
+    "previews/desktop-dark-f6f9dcb4780e.png",
+    "previews/mobile-light-c833cb85a93a.png",
+    "previews/mobile-dark-b01bb5986a54.png"
   ],
   "variants": {
     "desktop-light": {
@@ -183,10 +183,10 @@
     }
   },
   "previews": {
-    "desktop-light": "previews/desktop-light.svg",
-    "desktop-dark": "previews/desktop-dark.svg",
-    "mobile-light": "previews/mobile-light.svg",
-    "mobile-dark": "previews/mobile-dark.svg"
+    "desktop-light": "previews/desktop-light-3b87f594f4aa.png",
+    "desktop-dark": "previews/desktop-dark-f6f9dcb4780e.png",
+    "mobile-light": "previews/mobile-light-c833cb85a93a.png",
+    "mobile-dark": "previews/mobile-dark-b01bb5986a54.png"
   },
   "licenses": [
     "assets/OFL.txt"

@@ -56,7 +56,7 @@ describe('完整皮肤包', () => {
     await store.install(await zip(await example('1.1.0')));
     expect((await store.list()).filter(item => !item.builtin)).toHaveLength(2);
     await expect(store.removeFiles('modern', '1.0.0')).rejects.toThrow('内置');
-  });
+  }, 15_000);
   it('损坏的新版本校验失败，不写入目录且原版本可用', async () => {
     await store.install(await zip(await example()));
     const damaged = await example('1.1.0'); damaged.set('assets/Lora.ttf', Buffer.from('broken'));

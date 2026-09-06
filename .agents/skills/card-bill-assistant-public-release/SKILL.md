@@ -10,8 +10,15 @@ Only mutate GitHub, tags, Releases, or GHCR after the user has explicitly author
 ## Establish the release
 
 1. Read `RELEASING.md`, `.github/workflows/ci.yml`, `.github/workflows/container-release.yml`, the latest `docs/releases/vX.Y.Z.md`, and the complete diff since the previous stable tag.
-2. Confirm the requested semantic version, previous tag, branch, remote, working tree, and GitHub authentication. Preserve unrelated user changes and never expose credentials.
+2. Confirm the requested semantic version, previous tag, branch, remote, working tree, and GitHub authentication. Never expose credentials.
 3. Treat publication as incomplete until the pushed commit, `main` CI, version tag, GitHub Release, GHCR tags, and dual-platform OCI manifest are all verified.
+
+## Ship the whole working tree (no partial commits)
+
+1. The release commit must include **every** modified, added, renamed, and deleted file present in the working tree at release time. Partial staging, hunk splitting, and excluding changes as "belonging to another effort" are forbidden — a release that ships only part of the working tree is a failed release.
+2. If the ownership or readiness of any working-tree change is unclear, ask the user and wait for the answer before staging anything. Never resolve that question by silently leaving changes out.
+3. Local-only debris is not work product: delete temporary scripts, logs, and debug dumps, and ignore local tool session state via `.gitignore` (following the repository's existing local-AI-artifact conventions). State every such cleanup item in the delivery report.
+4. Before committing, re-run `git status` and reconcile it against the staged file list; after committing, `git status` must be clean of product changes.
 
 ## Write the Chinese release notes
 

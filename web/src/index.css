@@ -245,6 +245,14 @@ select {
 .setup-section-title { display: flex; align-items: center; gap: 8px; }
 .setup-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .setup-actions > .ant-btn { min-width: 104px; }
+.setup-color-mode { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+.setup-color-mode h3 { margin: 0; font-size: 15px; }
+.setup-mobile-progress { display: grid; gap: 12px; margin-bottom: 24px; }
+.setup-mobile-progress > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.setup-mobile-progress > div:first-child > span { color: var(--text-secondary); font-size: 13px; }
+.setup-progress-track { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.setup-progress-track > span { height: 3px; border-radius: 3px; background: var(--border); }
+.setup-progress-track > .is-complete { background: var(--primary); }
 @media(max-width:1023px) { .setup-actions > .ant-btn:last-child { flex: 1; } }
 @media(max-width:1023px) { .setup-card .ant-col-md-12 { flex-basis: 100%; max-width: 100%; } .setup-check > .ant-btn { min-height: 44px; } }
 
@@ -326,7 +334,7 @@ select {
 }
 
 .amount-strong {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
   font-weight: 600;
 }
 
@@ -526,7 +534,7 @@ select {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 3px;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
   opacity: 0.95;
   margin: 6px 0 2px;
 }
@@ -561,7 +569,7 @@ select {
   display: flex;
   justify-content: space-between;
   margin-top: 4px;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .bank-card-secret-value {
@@ -587,7 +595,7 @@ select {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .bank-card-amount {

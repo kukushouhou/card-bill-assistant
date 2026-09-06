@@ -1,5 +1,5 @@
 import BuiltinSkinPicker from '../skins/BuiltinSkinPicker';
-import { useSkin, SkinDecorations } from '../skins/SkinProvider';
+import { useSkin, SkinDecorations, ColorModeSwitch } from '../skins/SkinProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Card, Checkbox, Col, Collapse, Divider, Form, Input, Row, Steps, Tag, Typography } from 'antd';
 import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '../skins/icons';
@@ -28,9 +28,12 @@ interface SetupFormValues extends SetupAccountValues, SetupNotificationValues {
   pinConfirm?: string;
 }
 
+const SETUP_STEPS = ['环境检查', '账户设置', '通知渠道', '外观主题', '完成'];
+const COMPLETE_STEP = SETUP_STEPS.length - 1;
+
 /**
  * 安装向导（全屏独立页，不进 Layout）：
- * ① 环境检查 → ② 管理员账户与可选 PIN → ③ 通知渠道 → ④ 完成
+ * 环境检查 → 账户设置 → 通知渠道 → 外观主题 → 完成
  */
 export default function Setup({ onDone }: { onDone: () => void }) {
   const { message } = App.useApp();
@@ -43,13 +46,14 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
-  useDraftGuard(hasDraft && step < 3);
+  useDraftGuard(hasDraft && step < COMPLETE_STEP);
   const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
   const [expandedNotificationType, setExpandedNotificationType] = useState<string>();
   const [form] = Form.useForm<SetupFormValues>();
   const checkingRef = useRef(false);
   const installingRef = useRef(false);
   const accountValuesRef = useRef<SetupAccountValues | null>(null);
+  const notificationValuesRef = useRef<SetupNotificationValues>({});
 
   const check = useCallback(async () => {
     if (checkingRef.current) return;
@@ -58,7 +62,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     try {
       const s = await api.get<SetupStatus>('/api/setup/status');
       setStatus(s);
-      if (s.installed) setStep(3); // 其它浏览器已完成安装，直接进入完成页
+      if (s.installed) setStep(COMPLETE_STEP); // 其它浏览器已完成安装，直接进入完成页
     } catch (err) {
       setStatus(null);
       message.error(err instanceof ApiError ? err.message : '无法连接服务器，请确认服务已启动');
@@ -72,7 +76,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     void check();
   }, [check]);
 
-  const onInstall = async (values: SetupNotificationValues) => {
+  const onInstall = async () => {
     if (installingRef.current) return;
     const accountValues = accountValuesRef.current;
     if (!accountValues) {
@@ -82,6 +86,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     }
     installingRef.current = true;
     setInstalling(true);
+    const values = notificationValuesRef.current;
     try {
       await api.post('/api/setup/install', {
         skinId,
@@ -96,12 +101,16 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       message.success('安装完成');
       form.resetFields();
       accountValuesRef.current = null;
-      setStep(3);
+      notificationValuesRef.current = {};
+      setHasDraft(false);
+      setStep(COMPLETE_STEP);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         form.resetFields();
         accountValuesRef.current = null;
-        setStep(3); // 已被并发安装
+        notificationValuesRef.current = {};
+        setHasDraft(false);
+        setStep(COMPLETE_STEP); // 已被并发安装
       } else {
         message.error(err instanceof ApiError ? err.message : '安装失败，请重试');
       }
@@ -127,13 +136,16 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     >
       <SkinDecorations slot="background" />
       <Card className="auth-card setup-card" title={`${appName} · 安装向导`}>
-        <Steps
+        {isMobile ? <div className="setup-mobile-progress" aria-label={`步骤 ${step + 1} / ${SETUP_STEPS.length}：${SETUP_STEPS[step]}`}>
+          <div><span>步骤 {step + 1} / {SETUP_STEPS.length}</span><strong>{SETUP_STEPS[step]}</strong></div>
+          <div className="setup-progress-track" aria-hidden="true">{SETUP_STEPS.map((title, index) => <span key={title} className={index <= step ? 'is-complete' : undefined} />)}</div>
+        </div> : <Steps
           size="small"
           current={step}
           responsive
-          items={[{ title: '环境检查' }, { title: '账户设置' }, { title: '通知渠道' }, { title: '完成' }]}
+          items={SETUP_STEPS.map(title => ({ title }))}
           style={{ marginBottom: 24 }}
-        />
+        />}
 
         {step === 0 && (
           <>
@@ -288,7 +300,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 2 && (
-          <Form onValuesChange={() => setHasDraft(true)} form={form} layout="vertical" onFinish={onInstall} initialValues={{ notificationConfigs: {} }}>
+          <Form onValuesChange={() => setHasDraft(true)} form={form} layout="vertical" onFinish={() => {
+            // 切换步骤会卸载字段，单独保存已确认的全部渠道配置。
+            notificationValuesRef.current = { notificationConfigs: form.getFieldValue('notificationConfigs') ?? {} };
+            setStep(3);
+          }} initialValues={{ notificationConfigs: {} }}>
             <div className="setup-notification-heading">
                 <Typography.Title className="setup-section-title" level={5} style={{ margin: 0 }}><BellOutlined /><span>选择通知渠道</span></Typography.Title>
                 <Typography.Text type="secondary">可选择多个渠道同时发送，也可暂不配置，安装后再到系统设置中添加。</Typography.Text>
@@ -349,17 +365,25 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               />
             )}
 
-            <BuiltinSkinPicker value={skinId} onChange={setSkinId} />
             <div className="setup-actions">
               <Button onClick={() => setStep(1)}>上一步</Button>
-              <Button type="primary" htmlType="submit" loading={installing}>
-                完成安装
-              </Button>
+              <Button type="primary" htmlType="submit">下一步</Button>
             </div>
           </Form>
         )}
 
         {step === 3 && (
+          <section className="setup-appearance" aria-label="外观主题">
+            <div className="setup-color-mode"><h3>明暗模式</h3><ColorModeSwitch disabled={installing} /></div>
+            <BuiltinSkinPicker value={skinId} disabled={installing} onChange={value => { setSkinId(value); setHasDraft(true); }} />
+            <div className="setup-actions">
+              <Button disabled={installing} onClick={() => setStep(2)}>上一步</Button>
+              <Button type="primary" loading={installing} onClick={() => void onInstall()}>完成安装</Button>
+            </div>
+          </section>
+        )}
+
+        {step === COMPLETE_STEP && (
           <>
             <Alert type="success" showIcon title="安装完成！" style={{ marginBottom: 24 }} />
             <div className="setup-actions"><Button type="primary" size="large" onClick={onDone}>
