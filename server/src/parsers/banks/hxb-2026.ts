@@ -16,6 +16,7 @@ import { applyTransactionTails, buildBill, mailText, monthlyRuleDate, parseAmoun
 export const hxb2026Parser: BankParser = {
   id: 'hxb2026',
   bankName: '华夏银行',
+  billScope: 'account',
   senderPatterns: ['@creditcardmail.hxb.com.cn'],
   subjectPatterns: [/华夏.*电子账单/],
 

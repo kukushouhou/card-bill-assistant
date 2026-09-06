@@ -210,8 +210,8 @@ export interface BillRow {
   hasDetails: boolean;
   /** 本期年费（正数非退还合计），null=无 */
   annualFeeAmount: number | null;
-  /** 'email'=邮件解析 / 'manual'=手动标记 / 'missing'=未取得占位行 */
-  source: 'email' | 'manual' | 'missing' | 'custom';
+  /** 'email'=邮件解析 / 'manual'=手动标记 / 'auto-none'=户级账单银行自动生成的无需还款零账单 / 'missing'=未取得占位行 */
+  source: 'email' | 'manual' | 'auto-none' | 'missing' | 'custom';
   /** true = 未取得账单占位行（可弹窗标记） */
   missing: boolean;
   /** 已过还款日且未履行最低还款的天数；未逾期为 null */

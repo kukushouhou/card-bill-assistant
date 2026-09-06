@@ -13,6 +13,7 @@ import { amountLine, applyTransactionTails, buildBill, dateLine, mailText, parse
 export const cmbc2026Parser: BankParser = {
   id: 'cmbc2026',
   bankName: '民生银行',
+  billScope: 'account',
   senderPatterns: ['@creditcard.cmbc.com.cn'],
   subjectPatterns: [/民生.*对账单/, /民生信用卡.*账单/],
 

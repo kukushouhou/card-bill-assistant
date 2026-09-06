@@ -13,6 +13,7 @@ import { applyTransactionTails, buildBill, cycleEnd, mailText, parseAmount, pars
 export const cmb2026Parser: BankParser = {
   id: 'cmb2026',
   bankName: '招商银行',
+  billScope: 'account',
   senderPatterns: ['@message.cmbchina.com', '@ccb.cmbchina.com'],
   subjectPatterns: [/招商银行.*电子账单/, /电子账单.*招商银行/],
 

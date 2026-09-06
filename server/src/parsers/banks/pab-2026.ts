@@ -18,6 +18,7 @@ import { applyTransactionTails, buildBill, dateLine, mailText, parseAmount, pars
 export const pab2026Parser: BankParser = {
   id: 'pab2026',
   bankName: '平安银行',
+  billScope: 'account',
   senderPatterns: ['creditcard@service.pingan.com'],
   subjectPatterns: [/平安.*电子账单/],
   businessRelationships: true,

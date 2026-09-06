@@ -18,6 +18,8 @@ import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, month
 export const hxb2020Parser: BankParser = {
   id: 'hxb2020',
   bankName: '华夏银行',
+  billScope: 'account',
+
   priority: 90,
   senderPatterns: ['@creditcardmail.hxb.com.cn'],
   subjectPatterns: [/华夏.*电子账单/],

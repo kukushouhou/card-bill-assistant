@@ -12,6 +12,7 @@ import { daysBetween, dayOf, lastDayOfMonth, monthParts, sameDay, shanghaiMidnig
 import { pickPrimaryId } from '../lib/card-groups';
 import { reconcileUnfinishedPlaceholderCards } from '../lib/card-placeholders';
 import { computeRuleDueDate } from '../modules/bills/ledger';
+import { isAccountBillParser } from './registry';
 
 /** 无卡号占位（现行 ---- 与历史 0000） */
 function isPlaceholderTail(tail: string): boolean {
@@ -119,7 +120,6 @@ async function applyParsedBillInTransaction(
   const statementDate = shanghaiMidnight(bill.statementDate);
   const dueDate = shanghaiMidnight(bill.dueDate);
   const period = bill.period;
-  void parserId;
     // 阶段 1：卡档案确定（空卡号按出账日匹配已有档案 / 真实卡号切归属）
     const business = bill.businessCards;
     const secondaryTails = new Set(business?.secondaryCardLast4s ?? []);
@@ -403,7 +403,7 @@ async function applyParsedBillInTransaction(
     if (previousBill) previousContext.usedIds.add(previousBill.id);
     const existingBill = await tx.bill.findUnique({
       where: { cardId_period_currency: { cardId: billOwnerId, period, currency } },
-      select: { id: true },
+      select: { id: true, source: true },
     });
     const billRow = await tx.bill.upsert({
       where: { cardId_period_currency: { cardId: billOwnerId, period, currency } },
@@ -435,8 +435,13 @@ async function applyParsedBillInTransaction(
         hasDetails: (bill.transactions?.length ?? 0) > 0,
         annualFeeAmount,
         source: 'email',
-        // 历史账单（还款日已过）强制已还；当期账单保留用户手动标记的还款状态
-        ...(autoPaid ? { paidStatus: 'paid' as const, paidAt: dueDate, paidAmount: bill.amount ?? null } : {}),
+        // 历史账单（还款日已过）强制已还；当期账单保留用户手动标记的还款状态；
+        // 自动零账单（auto-none）被真实账单覆盖时回正为未还，避免真账单误挂已还状态
+        ...(autoPaid
+          ? { paidStatus: 'paid' as const, paidAt: dueDate, paidAmount: bill.amount ?? null }
+          : existingBill?.source === 'auto-none'
+            ? { paidStatus: 'unpaid' as const, paidAt: null, paidAmount: null }
+            : {}),
       },
     });
 
@@ -560,7 +565,149 @@ async function applyParsedBillInTransaction(
       }
     }
 
+    // 阶段 6：多卡一户银行（billScope 'account'）——本期账单未覆盖的同户卡确认无账单，
+    // 落「无需还款」零账单；户内规则以最新账单为准传播（复用阶段 2 的 updateMany 模式）。
+    if (isAccountBillParser(parserId)) {
+      const zeroCount = await createSiblingZeroBills(tx, {
+        bankName: bill.bankName,
+        period,
+        statementDate,
+        dueDate,
+        currency,
+        excludeCardIds: cardIds,
+        holderName: ownerCard?.holderName ?? primaryCard.holderName ?? null,
+      });
+      if (zeroCount > 0) {
+        console.log(`[pipeline] 户级零账单: ${bill.bankName} ${period} ${currency} 补 ${zeroCount} 张卡本期无需还款`);
+      }
+    }
+
     return { id: billRow.id, currency, preferredId, cardByTail };
+}
+
+/** 户级零账单落库输入。 */
+export interface AccountZeroBillInput {
+  bankName: string;
+  period: string;
+  statementDate: Date;
+  dueDate: Date;
+  currency: string;
+  /** 本账单已覆盖的卡（卡尾解析 + 业务结构成员），不再生成零账单 */
+  excludeCardIds: number[];
+  /** 账单归属卡的持卡人姓名；为空视为户身份不明，整体跳过 */
+  holderName: string | null;
+}
+
+/**
+ * 多卡一户银行（billScope 'account'）的合账收口：
+ * 1. 规则传播：该类银行不支持按卡设置出账日/还款日，账单实际规则以阶段 2 同款
+ *    updateMany 模式无条件传播到同户全部可见卡（账单变、全户变）；
+ * 2. 零账单：同户活跃卡中未被本账单覆盖、该期也无任何账单（含 BillCard 关联与手动标记）的卡，
+ *    落 0 元已结清的「无需还款」账单（source 'auto-none'），字段口径与手动「本期无需还款」一致。
+ * 户身份：主卡/副卡/独立卡取自身持卡人姓名；附属卡取关联主卡（businessPrimaryId）的姓名。
+ * 任一侧身份缺失或不一致即不判定（错误「无需还款」会掩盖真实待还，宁缺勿错）。
+ * 返回落库的零账单数。
+ */
+export async function createSiblingZeroBills(
+  tx: Prisma.TransactionClient,
+  input: AccountZeroBillInput,
+): Promise<number> {
+  const holder = input.holderName?.trim() ?? '';
+  if (!holder) return 0;
+
+  const candidates = await tx.card.findMany({
+    where: { bankName: input.bankName, hidden: false },
+    select: {
+      id: true,
+      holderName: true,
+      currency: true,
+      status: true,
+      businessRole: true,
+      businessPrimaryId: true,
+      statementDay: true,
+      dueRule: true,
+      dueDay: true,
+      dueOffsetDays: true,
+    },
+  });
+  const primaryIds = Array.from(
+    new Set(candidates.map((card) => card.businessPrimaryId).filter((id): id is number => id != null)),
+  );
+  const primaryNames = new Map<number, string | null>();
+  if (primaryIds.length > 0) {
+    const primaries = await tx.card.findMany({
+      where: { id: { in: primaryIds } },
+      select: { id: true, holderName: true },
+    });
+    for (const primary of primaries) primaryNames.set(primary.id, primary.holderName);
+  }
+  // 附属卡的户身份走关联主卡姓名；其余卡直判
+  const identityOf = (card: (typeof candidates)[number]): string | null => {
+    const name = card.businessRole === 'supplementary' && card.businessPrimaryId != null
+      ? primaryNames.get(card.businessPrimaryId) ?? null
+      : card.holderName;
+    return name?.trim() || null;
+  };
+
+  const household = candidates.filter((card) => identityOf(card) === holder);
+  if (household.length === 0) return 0;
+
+  // 规则传播：以最新账单为准，同户全部可见卡统一账期规则
+  const rule = inferCardRule(input.statementDate, input.dueDate);
+  await tx.card.updateMany({
+    where: { id: { in: household.map((card) => card.id) } },
+    data: {
+      statementDay: rule.statementDay,
+      dueRule: rule.dueRule,
+      dueDay: rule.dueDay,
+      dueOffsetDays: rule.dueOffsetDays,
+    },
+  });
+
+  const excluded = new Set(input.excludeCardIds);
+  const zeroCandidates = household.filter(
+    (card) => card.status === 'active' && !excluded.has(card.id),
+  );
+  if (zeroCandidates.length === 0) return 0;
+
+  // 该期已有账单（自有或关联，含手动标记）的卡不动
+  const candidateIds = zeroCandidates.map((card) => card.id);
+  const [ownBills, linkedBills] = await Promise.all([
+    tx.bill.findMany({ where: { cardId: { in: candidateIds }, period: input.period }, select: { cardId: true } }),
+    tx.billCard.findMany({
+      where: { cardId: { in: candidateIds }, bill: { period: input.period } },
+      select: { cardId: true },
+    }),
+  ]);
+  const billed = new Set<number>([...ownBills, ...linkedBills].map((row) => row.cardId));
+  const targets = zeroCandidates.filter((card) => !billed.has(card.id));
+
+  const statementDate = shanghaiMidnight(input.statementDate);
+  const dueDate = shanghaiMidnight(input.dueDate);
+  for (const card of targets) {
+    await tx.bill.upsert({
+      where: { cardId_period_currency: { cardId: card.id, period: input.period, currency: input.currency } },
+      create: {
+        cardId: card.id,
+        period: input.period,
+        statementDate,
+        dueDate,
+        amount: 0,
+        minAmount: null,
+        currency: input.currency,
+        mailLogId: null,
+        hasDetails: false,
+        annualFeeAmount: null,
+        source: 'auto-none',
+        paidStatus: 'paid',
+        paidAt: new Date(),
+        paidAmount: 0,
+      },
+      // 已有同名期次账单（并发或手动后到）保持原状
+      update: {},
+    });
+  }
+  return targets.length;
 }
 
 /** 按已解析的明细归属更新各卡年费日；多卡账单不再统一挂到账单承接卡。 */

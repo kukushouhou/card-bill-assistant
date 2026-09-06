@@ -1065,6 +1065,10 @@ function BankCardItem({
               </div>
             ) : card.currentCycle.unpaidBillCount > 1 ? (
               <div className="bank-card-value">{card.currentCycle.unpaidBillCount} 笔待还账单</div>
+            ) : card.currentCycle.amount === 0 && card.currentCycle.paidStatus === 'paid' ? (
+              <div className="bank-card-value" style={{ fontWeight: 400, fontSize: 13, opacity: 0.85 }}>
+                无需还款
+              </div>
             ) : card.currentCycle.amount != null ? (
               <div className="bank-card-value">
                 {formatMoney(card.currentCycle.amount, card.currentCycle.currency ?? card.currency)}

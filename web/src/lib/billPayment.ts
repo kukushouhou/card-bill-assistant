@@ -17,6 +17,8 @@ interface PaymentProgressLike {
 
 interface PaymentStatusLike extends PaymentProgressLike {
   daysOverdue: number | null;
+  /** 账单应还金额；为 0 且已结清时状态显示「无需还款」 */
+  amount?: number | null;
 }
 
 /** 已还金额达到最低还款额只代表本期不再逾期，不代表已经结清。 */
@@ -40,10 +42,14 @@ export function remainingAmountOf(row: BillRow): number | null {
 
  /**
  * 还款状态只描述履约进度：结清、已还最低、逾期、部分已还或待还。
- * 「未取得账单」只在金额位展示，不再占用还款状态。
+ * 「无需还款」= 0 元已结清账单；「未取得账单」只在金额位展示，不占用还款状态。
  */
 export function paymentStatusOf(row: PaymentStatusLike): BillPaymentStatusPresentation {
-  if (row.paidStatus === 'paid') return { kind: 'paid', label: '已还清', color: 'green' };
+  if (row.paidStatus === 'paid') {
+    return row.amount === 0
+      ? { kind: 'paid', label: '无需还款', color: 'green' }
+      : { kind: 'paid', label: '已还清', color: 'green' };
+  }
 
   if (hasMetMinimumPayment(row)) {
     return { kind: 'minimum', label: '已还最低', color: 'blue' };

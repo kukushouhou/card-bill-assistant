@@ -8,6 +8,7 @@ import {
   type CardRuleSnapshot,
 } from '../src/parsers/pipeline';
 import type { ParsedBill, ParsedTransaction } from '../src/parsers/types';
+import { isAccountBillParser } from '../src/parsers/registry';
 import { fromYmd } from '../src/lib/dates';
 
 // mock prisma：$transaction 直接把 tx 传给回调，不落真库
@@ -31,7 +32,7 @@ const tx = vi.hoisted(() => ({
     deleteMany: vi.fn(),
     count: vi.fn(),
   },
-  billCard: { count: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), upsert: vi.fn() },
+  billCard: { count: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
   billTransaction: {
     deleteMany: vi.fn(),
     createMany: vi.fn(),
@@ -1291,5 +1292,201 @@ describe('applyParsedBill priority 累加', () => {
     });
     expect(tx.card.update).toHaveBeenCalledWith({ where: { id: 11 }, data: { priority: 80 } });
     expect(tx.card.update).toHaveBeenCalledWith({ where: { id: 12 }, data: { priority: 120 } });
+  });
+});
+
+describe('applyParsedBill 户级零账单（billScope account）', () => {
+  function householdCards(): Array<Record<string, unknown>> {
+    return [
+      { id: 7, holderName: '张三', currency: 'CNY', status: 'active', businessRole: 'standalone', businessPrimaryId: null, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+      { id: 8, holderName: '张三', currency: 'CNY', status: 'active', businessRole: 'standalone', businessPrimaryId: null, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+      { id: 9, holderName: '李四', currency: 'CNY', status: 'active', businessRole: 'standalone', businessPrimaryId: null, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    ];
+  }
+  function ownerCard() {
+    return {
+      id: 7,
+      holderName: '张三',
+      statementDay: 5,
+      dueRule: 'offset',
+      dueDay: null,
+      dueOffsetDays: 18,
+      annualFeeDate: null,
+      annualFeeDateManual: false,
+    };
+  }
+  function makeCmbBill(overrides: Partial<ParsedBill> = {}): ParsedBill {
+    return {
+      bankName: '招商银行',
+      cardLast4: '1234',
+      amount: 500,
+      currency: 'CNY',
+      statementDate: fromYmd('2026-08-05'),
+      dueDate: fromYmd('2026-08-23'),
+      period: '2026-08',
+      ...overrides,
+    };
+  }
+  function upsertCalls() {
+    return tx.bill.upsert.mock.calls.map((call) => call[0] as {
+      where: { cardId_period_currency: { cardId: number; period: string; currency: string } };
+      create?: Record<string, unknown>;
+      update: Record<string, unknown>;
+    });
+  }
+  function zeroUpsert(cardId: number) {
+    return upsertCalls().find((call) => call.where.cardId_period_currency.cardId === cardId && call.create?.source === 'auto-none');
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx.bill.upsert.mockResolvedValue({ id: 601 });
+    tx.bill.findMany.mockResolvedValue([]);
+    tx.bill.findUnique.mockResolvedValue(null);
+    tx.bill.count.mockResolvedValue(0);
+    tx.billCard.count.mockResolvedValue(1);
+    tx.billCard.findMany.mockResolvedValue([]);
+    tx.card.findMany.mockResolvedValue([]);
+    tx.card.findUnique.mockResolvedValue(ownerCard());
+  });
+
+  it('isAccountBillParser 按 billScope 识别', () => {
+    expect(isAccountBillParser('cmb2026')).toBe(true);
+    expect(isAccountBillParser('cmbdaily2026')).toBe(false);
+    expect(isAccountBillParser('citic2023')).toBe(false);
+    expect(isAccountBillParser('不存在')).toBe(false);
+  });
+
+  it('同户未出账卡落无需还款零账单，规则按最新账单全户传播', async () => {
+    tx.card.findMany.mockResolvedValue(householdCards());
+    await applyParsedBill(110, 'cmb2026', makeCmbBill());
+
+    expect(tx.card.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [7, 8] } },
+      data: { statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    });
+    const zero = zeroUpsert(8);
+    expect(zero).toBeDefined();
+    expect(zero!.where.cardId_period_currency).toMatchObject({ cardId: 8, period: '2026-08', currency: 'CNY' });
+    expect(zero!.create).toMatchObject({
+      amount: 0,
+      minAmount: null,
+      paidStatus: 'paid',
+      paidAmount: 0,
+      source: 'auto-none',
+      mailLogId: null,
+      hasDetails: false,
+    });
+    expect(zero!.update).toEqual({});
+    expect(zeroUpsert(9)).toBeUndefined();
+    expect(zeroUpsert(7)).toBeUndefined();
+  });
+
+  it('外人卡不参与同户判定，无传播无零账单', async () => {
+    tx.card.findMany.mockResolvedValue(householdCards().filter((card) => card.id !== 8));
+    await applyParsedBill(111, 'cmb2026', makeCmbBill());
+
+    expect(tx.card.updateMany).toHaveBeenCalledTimes(1);
+    expect((tx.card.updateMany.mock.calls[0]![0] as { where: { id: { in: number[] } } }).where.id.in).toEqual([7]);
+    expect(tx.bill.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('候选卡持卡人姓名缺失时身份不明，不判定', async () => {
+    tx.card.findMany.mockResolvedValue([
+      ...householdCards().filter((card) => card.id === 7),
+      { id: 8, holderName: null, currency: 'CNY', status: 'active', businessRole: 'standalone', businessPrimaryId: null, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    ]);
+    await applyParsedBill(112, 'cmb2026', makeCmbBill());
+
+    expect(zeroUpsert(8)).toBeUndefined();
+  });
+
+  it('附属卡按关联主卡持卡人姓名归户并生成零账单', async () => {
+    tx.card.findMany.mockResolvedValue([
+      ...householdCards().filter((card) => card.id === 7),
+      { id: 11, holderName: '王小花', currency: 'CNY', status: 'active', businessRole: 'supplementary', businessPrimaryId: 7, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    ]);
+    await applyParsedBill(113, 'cmb2026', makeCmbBill());
+
+    const zero = zeroUpsert(11);
+    expect(zero).toBeDefined();
+    expect(zero!.create).toMatchObject({ source: 'auto-none', paidStatus: 'paid' });
+  });
+
+  it('未关联主卡的附属卡身份不明，不生成零账单', async () => {
+    tx.card.findMany.mockResolvedValue([
+      ...householdCards().filter((card) => card.id === 7),
+      { id: 11, holderName: '王小花', currency: 'CNY', status: 'active', businessRole: 'supplementary', businessPrimaryId: null, statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18 },
+    ]);
+    await applyParsedBill(114, 'cmb2026', makeCmbBill());
+
+    expect(zeroUpsert(11)).toBeUndefined();
+    expect(zeroUpsert(8)).toBeUndefined();
+  });
+
+  it('该期已有账单（含手动标记）的同户卡不重复生成', async () => {
+    tx.card.findMany.mockResolvedValue(householdCards());
+    tx.bill.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+      if ('mailLogId' in where) return [];
+      return [{ cardId: 8 }];
+    });
+    await applyParsedBill(115, 'cmb2026', makeCmbBill());
+
+    expect(tx.bill.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('真实账单覆盖 auto-none 零账单时回正为未还', async () => {
+    tx.bill.findUnique.mockResolvedValue({ id: 602, source: 'auto-none' });
+    const statement = new Date();
+    statement.setDate(statement.getDate() - 1);
+    const due = new Date(statement);
+    due.setDate(due.getDate() + 18);
+    const period = `${statement.getFullYear()}-${String(statement.getMonth() + 1).padStart(2, '0')}`;
+    await applyParsedBill(116, 'cmb2026', makeCmbBill({ statementDate: statement, dueDate: due, period }));
+
+    const arg = upsertCalls()[0]!;
+    expect(arg.update).toMatchObject({ paidStatus: 'unpaid', paidAt: null, paidAmount: null });
+  });
+
+  it('历史真实账单覆盖 auto-none 时按账期自动已还', async () => {
+    tx.bill.findUnique.mockResolvedValue({ id: 603, source: 'auto-none' });
+    await applyParsedBill(117, 'cmb2026', makeCmbBill());
+
+    const arg = upsertCalls()[0]!;
+    expect(arg.update).toMatchObject({ paidStatus: 'paid', paidAt: expect.anything(), paidAmount: 500 });
+  });
+
+  it('单卡单户解析器不触发零账单', async () => {
+    tx.card.findUnique.mockResolvedValue({ id: 20, holderName: '张三', statementDay: 5, dueRule: 'offset', dueDay: null, dueOffsetDays: 18, annualFeeDate: null, annualFeeDateManual: false });
+    await applyParsedBill(118, 'citic2023', {
+      bankName: '中信银行',
+      cardLast4: '1234',
+      amount: 100,
+      currency: 'CNY',
+      statementDate: fromYmd('2026-08-05'),
+      dueDate: fromYmd('2026-08-23'),
+      period: '2026-08',
+    });
+
+    expect(tx.card.updateMany).not.toHaveBeenCalled();
+    expect(tx.bill.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('多币种账单同卡同期只补一张零账单', async () => {
+    tx.card.findMany.mockResolvedValue(householdCards());
+    let candidateCalls = 0;
+    tx.bill.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+      if ('mailLogId' in where) return [];
+      candidateCalls += 1;
+      return candidateCalls >= 2 ? [{ cardId: 8 }] : [];
+    });
+    await applyParsedBills(119, 'cmb2026', [
+      makeCmbBill(),
+      makeCmbBill({ currency: 'USD', amount: 80 }),
+    ]);
+
+    expect(zeroUpsert(8)).toBeDefined();
+    expect(upsertCalls().filter((call) => call.where.cardId_period_currency.cardId === 8 && call.create?.source === 'auto-none')).toHaveLength(1);
+    expect(upsertCalls().filter((call) => call.where.cardId_period_currency.cardId === 7 && call.create?.source === 'email')).toHaveLength(2);
   });
 });

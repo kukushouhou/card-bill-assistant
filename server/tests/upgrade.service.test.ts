@@ -22,6 +22,7 @@ const schedulerMocks = vi.hoisted(() => ({ pause: vi.fn(), start: vi.fn() }));
 vi.mock('../src/lib/prisma', () => ({ prisma: db }));
 vi.mock('../src/parsers/registry', () => ({
   listBusinessRelationshipParsers: parserMocks.list,
+  listAccountBillParsers: vi.fn(() => []),
   tryParse: parserMocks.tryParse,
 }));
 vi.mock('../src/parsers/pipeline', () => ({ applyParsedBills: vi.fn() }));

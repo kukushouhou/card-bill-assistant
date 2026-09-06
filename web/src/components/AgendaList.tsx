@@ -48,7 +48,10 @@ function Status({ item }: { item: AgendaItem }) {
   const bill = item.bill;
   if (!bill) return item.completed ? <Tag color="green">已完成</Tag> : <Tag>{item.kind === 'general' ? '待完成' : kinds[item.kind]}</Tag>;
   if (bill.missing) return null;
-  return <Tag color={bill.paidStatus === 'paid' ? 'green' : bill.paidStatus === 'partial' ? 'orange' : undefined}>{bill.missing ? '未取得账单' : bill.paidStatus === 'paid' ? '已还清' : bill.paidStatus === 'partial' ? '部分已还' : '待还'}</Tag>;
+  const label = bill.paidStatus === 'paid'
+    ? (bill.amount === 0 ? '无需还款' : '已还清')
+    : bill.paidStatus === 'partial' ? '部分已还' : '待还';
+  return <Tag color={bill.paidStatus === 'paid' ? 'green' : bill.paidStatus === 'partial' ? 'orange' : undefined}>{label}</Tag>;
 }
 
 function Dates({ item }: { item: AgendaItem }) {

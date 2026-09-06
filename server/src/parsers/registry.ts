@@ -106,6 +106,19 @@ export function listBusinessRelationshipParsers(): BankParser[] {
   );
 }
 
+/** 多卡一户（户级账单）的账单解析器。 */
+export function listAccountBillParsers(): BankParser[] {
+  return registry.filter(
+    (parser): parser is BankParser => parser.kind !== 'current-cycle-transactions' && parser.billScope === 'account',
+  );
+}
+
+/** 该解析器是否为多卡一户（户级账单）模式。 */
+export function isAccountBillParser(parserId: string): boolean {
+  const parser = getParserById(parserId);
+  return parser?.kind !== 'current-cycle-transactions' && parser?.billScope === 'account';
+}
+
 /** 解析器优先级：主解析器默认 100（不填即 100），旧版递减 */
 function priorityOf(p: RegisteredParser): number {
   return p.priority ?? 100;

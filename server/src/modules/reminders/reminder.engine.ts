@@ -169,9 +169,11 @@ export function collectCardEvents(
     const amountText =
       bill == null
         ? '未取得账单'
-        : bill.amount != null
-          ? `应还 ${money(bill.currency, Number(bill.amount))}`
-          : '账单金额未取得';
+        : bill.amount != null && Number(bill.amount) === 0
+          ? '本期无需还款'
+          : bill.amount != null
+            ? `应还 ${money(bill.currency, Number(bill.amount))}`
+            : '账单金额未取得';
     // 部分已还时补充已还/剩余金额（账单未结清，提醒继续）
     const paidAmt = bill?.paidAmount != null ? Number(bill.paidAmount) : null;
     const partialText =

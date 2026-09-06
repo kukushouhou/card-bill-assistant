@@ -1,13 +1,15 @@
 {
   "name": "due-reminder-web",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "screenshots:skins": "node scripts/capture-skin-previews.mjs",
+    "screenshots:readme": "npm run build && npm run screenshots:skins && npm run build && node scripts/capture-readme.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

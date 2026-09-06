@@ -36,7 +36,7 @@ export interface LedgerBillInput {
   paidAmount: number | null;
   hasDetails: boolean;
   annualFeeAmount: number | null;
-  source: string; // 'email' | 'manual'
+  source: string; // 'email' | 'manual' | 'auto-none'
   /** 该账单关联的全部卡 id（含归属主卡） */
   linkedCardIds: number[];
 }
@@ -63,7 +63,7 @@ export interface LedgerRow {
   paidAmount: number | null;
   hasDetails: boolean;
   annualFeeAmount: number | null;
-  source: string; // 'email' | 'manual' | 'missing'
+  source: string; // 'email' | 'manual' | 'auto-none' | 'missing'
   /** true = 未取得账单占位行（可标记还款） */
   missing: boolean;
   /** 已过还款日且未履行最低还款的天数；未逾期为 null */
@@ -296,6 +296,8 @@ export function buildTrend(
   const byPeriod = new Map<string, { total: number; count: number }>();
   for (const b of bills) {
     if (currency && b.currency !== currency) continue;
+    // 「无需还款」零账单不进入走势：金额与笔数都不计，避免空账单虚增笔数
+    if (b.amount != null && b.amount === 0 && b.paidStatus === 'paid') continue;
     const entry = byPeriod.get(b.period) ?? { total: 0, count: 0 };
     if (b.amount != null) entry.total += b.amount;
     entry.count++;

@@ -109,6 +109,12 @@ interface ParserBase {
   requireSender?: boolean;
   /** 该模板可明确产出业务主卡、副卡或附属卡关系，可纳入历史升级自愈。 */
   businessRelationships?: true;
+  /**
+   * 账单归户模式：缺省 'card' 单卡单户；
+   * 'account' 多卡一户——银行每期每户只发一封账单，本期账单未覆盖的同户卡即确认无账单，
+   * 且该类银行不支持按卡设置出账日/还款日，账单实际日期按户传播。
+   */
+  billScope?: 'card' | 'account';
 }
 
 export interface BankParser extends ParserBase {

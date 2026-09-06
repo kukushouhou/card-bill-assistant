@@ -15,6 +15,8 @@ import { dayOfMonthClamped, dayOf, shanghaiMidnight } from '../../lib/dates';
 export const cmb2016Parser: BankParser = {
   id: 'cmb2016',
   bankName: '招商银行',
+  billScope: 'account',
+
   priority: 90,
   senderPatterns: ['@message.cmbchina.com', '@ccb.cmbchina.com'],
   subjectPatterns: [/招商银行.*电子账单/, /电子账单.*招商银行/],
