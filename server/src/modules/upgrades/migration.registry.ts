@@ -65,7 +65,10 @@ export function migrationByKey(key: string): VersionMigration | undefined {
 
 export type UpgradePreflightMode = 'none' | 'silent' | 'optional_wait' | 'required_wait';
 
-/** 必须在任何迁移执行前，基于完整入场结果选定全局升级模式。 */
+/**
+ * 必须完整盘点。required 只允许不迁移就影响整个系统正常运行的情况，历史修复不得强制。
+ * 新增强制迁移前，必须显著告知必要性并获得用户明确同意，不能由实现者自行判断后添加。
+ */
 export function classifyUpgradePreflight(migrations: Array<Pick<VersionMigration, 'mode'>>): UpgradePreflightMode {
   if (migrations.some((migration) => migration.mode === 'required')) return 'required_wait';
   if (migrations.some((migration) => migration.mode === 'optional')) return 'optional_wait';

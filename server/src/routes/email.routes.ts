@@ -15,6 +15,8 @@ import {
   type EmailAccountParams,
 } from '../modules/email/email.service';
 import { listParsers } from '../parsers/registry';
+import { config } from '../config';
+import { decrypt } from '../lib/crypto';
 
 const router = Router();
 router.use(requireAuth);
@@ -26,6 +28,11 @@ const accountSchema = z.object({
   tls: z.boolean().default(true),
   authUser: z.string().trim().min(1, '登录账号不能为空'),
   authPassword: z.string().min(1, '授权码不能为空'),
+});
+// 编辑只处理实际提交的字段。可选字段内的默认值仍会生效，不能直接 partial 后重置旧连接参数。
+const accountUpdateSchema = accountSchema.partial().extend({
+  imapPort: z.number().int().min(1).max(65535).optional(),
+  tls: z.boolean().optional(),
 });
 
 // ===== 邮箱账户 CRUD =====
@@ -77,13 +84,41 @@ router.post(
 );
 
 // 更新（authPassword 可选；syncDaysBack / enabled 可改）
+// 多邮箱设置与单邮箱编辑共用同一字段校验、IMAP 验证和授权码加密；不启动任何迁移。
+router.put('/accounts/configurations', asyncHandler(async (req, res) => {
+  const { accounts } = z.object({ accounts: z.array(accountUpdateSchema.extend({ id: z.number().int().positive() })).min(1)
+    .refine(rows => new Set(rows.map(row => row.id)).size === rows.length, '邮箱配置重复') }).parse(req.body);
+  const existing = await prisma.emailAccount.findMany({ where: { id: { in: accounts.map(row => row.id) } } });
+  if (existing.length !== accounts.length) throw new ApiError(409, '邮箱账户已变化，请刷新后重新设置');
+  const prepared = accounts.map(input => {
+    const account = existing.find(row => row.id === input.id)!;
+    return { id: input.id, params: {
+      email: input.email ?? account.email, imapHost: input.imapHost ?? account.imapHost,
+      imapPort: input.imapPort ?? account.imapPort, tls: input.tls ?? account.tls,
+      authUser: input.authUser ?? account.authUser,
+      authPassword: input.authPassword ?? decrypt(config.encryptionKey, Buffer.from(account.authPasswordEnc)),
+    } };
+  });
+  const tested = await Promise.allSettled(prepared.map(row => testConnection(row.params)));
+  const failed = prepared.filter((_row, i) => tested[i].status === 'rejected');
+  if (failed.length) throw new ApiError(400, `以下邮箱无法连接：${failed.map(row => row.params.email).join('、')}。请检查连接信息及授权码。`);
+  // 所有邮箱均验证通过才原子保存；任一项失败时保留原配置，授权码不返回前端。
+  await prisma.$transaction(async tx => {
+    for (const { id, params } of prepared) {
+      const { authPassword, ...fields } = params;
+      await tx.emailAccount.update({ where: { id }, data: { ...fields, authPasswordEnc: encryptAuthPassword(authPassword) } });
+    }
+  });
+  res.json({ ok: true });
+}));
+
 router.put(
   '/accounts/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const account = await prisma.emailAccount.findUnique({ where: { id } });
     if (!account) throw new ApiError(404, '邮箱账户不存在');
-    const input = accountSchema.partial().parse(req.body);
+    const input = accountUpdateSchema.parse(req.body);
 
     if (input.email && input.email !== account.email) {
       const dup = await prisma.emailAccount.findFirst({ where: { email: input.email } });

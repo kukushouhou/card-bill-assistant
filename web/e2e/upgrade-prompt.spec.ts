@@ -69,7 +69,7 @@ for (const device of ['desktop', 'mobile'] as const) for (const scenario of scen
     await expect(dialog.locator('.upgrade-item')).toHaveCount(scenario.plan.migrations.filter(item => item.mode !== 'silent').length);
     await expect(dialog.getByText(silent.title, { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('自动更新', { exact: true })).toHaveCount(0);
-    if (scenario.plan.hasRequired) await expect(dialog.getByText('编辑、邮件同步和提醒推送已暂停，完成更新后恢复。')).toBeVisible();
+    if (scenario.plan.hasRequired && scenario.plan.status !== 'failed') await expect(dialog.getByText('编辑、邮件同步和日常提醒已暂停，完成更新后恢复。')).toBeVisible();
     const requiredRow = dialog.getByRole('listitem').filter({ has: page.getByText(required.title, { exact: true }) });
     if (scenario.plan.hasRequired && scenario.plan.status !== 'executing') {
       await expect(requiredRow.getByText('必须更新', { exact: true })).toBeVisible();

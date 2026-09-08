@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpgradePlan, UpgradeTask } from '../api/types';
 import UpgradePrompt from './UpgradePrompt';
 
-const apiMocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const apiMocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock('../api/client', () => ({ api: apiMocks }));
 vi.mock('../responsive', () => ({ useResponsive: () => ({ isMobile: false }) }));
 
@@ -132,16 +132,63 @@ describe('整批确认升级选择', () => {
   });
 
   it('确认时已经完成的修复也显示具体结果', async () => {
-    const current = plan([task('repair', '历史账单核对与修复', 'required')]);
+    const current = plan([task('repair', '修复账单金额错误与明细遗漏', 'required')]);
     apiMocks.get.mockResolvedValueOnce(current).mockResolvedValue({ version: '0.5.0', counts: {
       correctedBills: 2, addedBills: 1, addedTransactions: 3, correctedTransactions: 0, removedTransactions: 0,
       restoredRepayments: 1, fallbackMinimumBills: 0, unavailableMails: 0,
     }, incomplete: [] });
     apiMocks.post.mockResolvedValue(null);
     render(<App><UpgradePrompt /></App>);
-    await screen.findByText('历史账单核对与修复');
+    await screen.findByText('修复账单金额错误与明细遗漏');
     await userEvent.click(screen.getByRole('button', { name: '确认并继续' }));
     expect(await screen.findByText('修正账单 2 笔')).toBeTruthy();
     expect(screen.getByText('补建账单 1 笔')).toBeTruthy();
+  });
+
+  function mailboxFailurePlan() {
+    const current = plan([{ ...task('repair', '修复历史账单'), status: 'failed', failed: 2, succeeded: 4 }]);
+    current.status = 'failed';
+    current.runtimeMode = 'failed';
+    current.mailboxFailures = [1, 2].map(id => ({ id, email: `mail${id}@example.test`, imapHost: 'imap.qq.com',
+      imapPort: 993, tls: true, authUser: `mail${id}@example.test` }));
+    return current;
+  }
+
+  it('明确邮箱失败时同时设置多个邮箱，保存只返回原弹窗，用户点重试才继续迁移', async () => {
+    const current = mailboxFailurePlan();
+    apiMocks.get.mockResolvedValue(current);
+    apiMocks.put.mockResolvedValue({ ok: true });
+    apiMocks.post.mockResolvedValue({ ...current, status: 'executing' });
+    const user = userEvent.setup();
+    render(<App><UpgradePrompt /></App>);
+    const settings = await screen.findByRole('dialog', { name: '邮箱设置' });
+    for (const id of [1, 2]) {
+      const account = within(settings).getByRole('region', { name: `mail${id}@example.test` });
+      await user.type(within(account).getByLabelText('授权码（留空则不修改）'), `synthetic-code-${id}`);
+    }
+    await user.click(within(settings).getByRole('button', { name: '完成设置' }));
+    await screen.findByText('修复历史账单');
+    expect(apiMocks.put).toHaveBeenCalledWith('/api/email/accounts/configurations', { accounts: current.mailboxFailures!.map(account => ({
+      ...account, authPassword: `synthetic-code-${account.id}`,
+    })) });
+    expect(apiMocks.post).not.toHaveBeenCalled();
+    expect(screen.queryByText('查看并重试')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    expect(apiMocks.post).toHaveBeenCalledWith('/api/upgrades/decisions', { planId: 8, decisions: [{ key: 'repair', action: 'approve' }] });
+  });
+
+  it('邮箱验证失败保留所有输入，取消返回迁移弹窗后仍能再次设置邮箱', async () => {
+    apiMocks.get.mockResolvedValue(mailboxFailurePlan());
+    apiMocks.put.mockRejectedValue(new Error('mail2@example.test 无法连接'));
+    const user = userEvent.setup();
+    render(<App><UpgradePrompt /></App>);
+    const settings = await screen.findByRole('dialog', { name: '邮箱设置' });
+    await user.click(within(settings).getByRole('button', { name: '完成设置' }));
+    expect(await screen.findByText('mail2@example.test 无法连接')).toBeTruthy();
+    expect(apiMocks.post).not.toHaveBeenCalled();
+    await user.click(within(settings).getByRole('button', { name: /^取\s*消$/ }));
+    await screen.findByText('修复历史账单');
+    await user.click(screen.getByRole('button', { name: '设置邮箱' }));
+    expect(await screen.findByRole('dialog', { name: '邮箱设置' })).toBeTruthy();
   });
 });

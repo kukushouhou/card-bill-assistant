@@ -9,6 +9,7 @@ const db = vi.hoisted(() => ({
   card: { findMany: vi.fn(), delete: vi.fn(), update: vi.fn() },
 }));
 const imap = vi.hoisted(() => ({
+  usable: true, noop: vi.fn(),
   connect: vi.fn(), getMailboxLock: vi.fn(), fetchOne: vi.fn(), logout: vi.fn(), close: vi.fn(), release: vi.fn(),
 }));
 const parser = vi.hoisted(() => ({ tryParse: vi.fn(), applyParsedBills: vi.fn() }));
@@ -45,7 +46,7 @@ describe('历史卡片关系迁移的邮件缺失处理', () => {
     db.mailLog.findMany.mockImplementation(async () => items.map(item => item.payload));
     db.mailLog.findUnique.mockImplementation(async ({ where }) => ({ id: where.accountId_uid.uid }));
     db.upgradeTaskItem.findMany.mockImplementation(async ({ where }) =>
-      items.filter(item => !where.status || where.status.in.includes(item.status)));
+      items.filter(item => (!where.status || where.status.in.includes(item.status)) && (!where.id?.in || where.id.in.includes(item.id))));
     db.upgradeTaskItem.count.mockImplementation(async () => items.length);
     db.upgradeTaskItem.update.mockImplementation(async ({ where, data }) => {
       const item = items.find(row => row.id === where.id)!;
@@ -58,6 +59,8 @@ describe('历史卡片关系迁移的邮件缺失处理', () => {
     });
     db.card.findMany.mockResolvedValue([]);
     imap.connect.mockResolvedValue(undefined);
+    imap.usable = true;
+    imap.noop.mockResolvedValue(undefined);
     imap.getMailboxLock.mockResolvedValue({ release: imap.release });
     imap.logout.mockResolvedValue(undefined);
     imap.fetchOne.mockImplementation(async (uid: number) => ({
@@ -114,11 +117,36 @@ describe('历史卡片关系迁移的邮件缺失处理', () => {
     expect(parser.applyParsedBills).toHaveBeenCalledWith(102, 'pab2026', expect.any(Array));
   });
 
-  it('连接中断不能冒充邮件已删除，保留失败项供重试且不覆盖原账单', async () => {
+  it('确认整箱断连后中断该邮箱并标明配置故障，未完成项保留', async () => {
     imap.fetchOne.mockRejectedValueOnce(new Error('连接中断'));
-    expect(await execute()).toMatchObject({ succeeded: 1, unchanged: 0, failed: 1 });
-    expect(items[0]).toMatchObject({ status: 'failed', error: '连接中断' });
-    expect(parser.applyParsedBills).toHaveBeenCalledTimes(1);
+    imap.noop.mockRejectedValueOnce(new Error('连接已断开'));
+    expect(await execute()).toMatchObject({ succeeded: 0, unchanged: 0, failed: 2 });
+    expect(items[0]).toMatchObject({ status: 'failed', payload: { failureKind: 'mailbox_unavailable', accountId: 1 } });
+    expect(parser.applyParsedBills).not.toHaveBeenCalled();
     expect(db.card.delete).not.toHaveBeenCalled();
+  });
+
+  it('单封内容读取失败但邮箱连接正常时跳过该封，继续其余邮件', async () => {
+    imap.fetchOne.mockRejectedValueOnce(new Error('单封内容异常'));
+    expect(await execute()).toMatchObject({ succeeded: 1, unchanged: 1, failed: 0 });
+    expect(items[0].status).toBe('unchanged');
+    expect(imap.noop).toHaveBeenCalledTimes(1);
+    expect(parser.applyParsedBills).toHaveBeenCalledTimes(1);
+  });
+
+  it('单封解析失败同样直接跳过，不变成需要配置邮箱的任务', async () => {
+    parser.tryParse.mockReturnValueOnce({ matched: false, reason: '模板不匹配' });
+    expect(await execute()).toMatchObject({ succeeded: 1, unchanged: 1, failed: 0 });
+    expect(items[0].payload).not.toHaveProperty('failureKind');
+  });
+
+  it('邮箱认证失败后修好配置再执行，不重做已完成的账单', async () => {
+    items[0].status = 'succeeded';
+    imap.connect.mockRejectedValueOnce(new Error('AUTHENTICATIONFAILED'));
+    expect(await execute()).toMatchObject({ succeeded: 1, unchanged: 0, failed: 1 });
+    expect(items[1]).toMatchObject({ payload: { failureKind: 'mailbox_unavailable' } });
+    expect(await execute()).toMatchObject({ succeeded: 2, unchanged: 0, failed: 0 });
+    expect(parser.applyParsedBills).toHaveBeenCalledTimes(1);
+    expect(parser.applyParsedBills).toHaveBeenCalledWith(102, 'pab2026', expect.any(Array));
   });
 });

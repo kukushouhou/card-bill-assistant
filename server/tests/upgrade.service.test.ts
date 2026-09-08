@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   appSetting: { findUnique: vi.fn(), create: vi.fn(), upsert: vi.fn(), update: vi.fn() },
-  emailAccount: { count: vi.fn() },
+  emailAccount: { count: vi.fn(), findMany: vi.fn() },
   mailLog: { findMany: vi.fn(), findUnique: vi.fn() },
   card: { findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), delete: vi.fn() },
   upgradePlan: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -17,7 +17,7 @@ const db = vi.hoisted(() => ({
 }));
 
 const parserMocks = vi.hoisted(() => ({ list: vi.fn(), tryParse: vi.fn() }));
-const schedulerMocks = vi.hoisted(() => ({ pause: vi.fn(), start: vi.fn() }));
+const schedulerMocks = vi.hoisted(() => ({ wait: vi.fn() }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma: db }));
 vi.mock('../src/parsers/registry', () => ({
@@ -35,14 +35,15 @@ vi.mock('../src/lib/card-groups', async (importOriginal) => {
   return { ...actual, recomputePrimary: vi.fn() };
 });
 vi.mock('../src/jobs/scheduler', () => ({
-  pauseScheduler: schedulerMocks.pause,
-  startScheduler: schedulerMocks.start,
+  waitForScheduledJobs: schedulerMocks.wait,
 }));
 
 import { APP_VERSION } from '../src/version';
 import { getUpgradePlan, initializeUpgradeState, submitUpgradeDecisions } from '../src/modules/upgrades/upgrade.service';
 import { accountZeroBillsMigration } from '../src/modules/upgrades/migrations/backfill-account-zero-bills';
 import { cardBusinessRelationsMigration } from '../src/modules/upgrades/migrations/card-business-relations';
+import { repairStatements050Migration } from '../src/modules/upgrades/migrations/repair-statements-050';
+import { isUpgradeBusinessBlocked } from '../src/modules/upgrades/upgrade.runtime';
 
 function card(overrides: Record<string, unknown>) {
   return {
@@ -67,6 +68,8 @@ describe('版本升级协调器', () => {
     db.upgradePlan.findFirst.mockResolvedValue(null);
     db.upgradeTask.findMany.mockResolvedValue([]);
     db.upgradeTask.findUnique.mockResolvedValue(null);
+    db.upgradeTaskItem.findMany.mockResolvedValue([]);
+    db.emailAccount.findMany.mockResolvedValue([]);
     db.mailLog.findMany.mockResolvedValue([]);
     db.card.findMany.mockResolvedValue([]);
     db.upgradePlan.create.mockResolvedValue({ id: 8 });
@@ -78,7 +81,7 @@ describe('版本升级协调器', () => {
 
   it('同版本启动不执行历史迁移', async () => {
     const result = await initializeUpgradeState(true);
-    expect(result).toEqual({ runtimeMode: 'ready', shouldStartScheduler: true, shouldResumeExecution: false });
+    expect(result).toEqual({ runtimeMode: 'ready', shouldResumeExecution: false });
     expect(db.mailLog.findMany).not.toHaveBeenCalled();
     expect(db.card.findMany).not.toHaveBeenCalled();
   });
@@ -195,6 +198,51 @@ describe('版本升级协调器', () => {
     expect(db.upgradeTask.update).not.toHaveBeenCalled();
     expect(db.upgradePlan.update).not.toHaveBeenCalled();
     expect(db.mailLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('0.5.0 已完成后升级程序不再盘点历史修复，也不创建重复迁移', async () => {
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.5.0' });
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
+    expect(repairStatements050Migration.targetVersion).toBe('0.5.0');
+    expect(repairStatements050Migration.mode).toBe('optional');
+    expect(db.mailLog.findMany).not.toHaveBeenCalled();
+    expect(db.upgradePlan.create).not.toHaveBeenCalled();
+    expect(db.upgradeTask.create).not.toHaveBeenCalled();
+  });
+
+  it('已生成的 0.5 必选历史修复计划改回可选，保留执行窗口与用户决定', async () => {
+    const stored = storedPlan();
+    stored.hasRequired = true;
+    stored.tasks = [{ ...stored.tasks[0], key: repairStatements050Migration.key, toVersion: '0.5.0', mode: 'required' }];
+    stored.manifest = stored.tasks.map(task => ({ ...task, targetVersion: task.toVersion, order: task.migrationOrder, summary: null }));
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.4.2' });
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
+    expect(isUpgradeBusinessBlocked()).toBe(false);
+    expect(db.upgradeTask.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { mode: 'optional', ignoreLabel: '忽略更新' } });
+    expect(db.upgradePlan.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ hasRequired: false }) }));
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
+    expect(db.mailLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('重启恢复邮箱失败状态时业务仍可用，仅列出明确失败的邮箱且不返回授权码', async () => {
+    const stored = storedPlan();
+    stored.status = 'failed';
+    stored.tasks[0].status = 'failed';
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    db.upgradePlan.findUnique.mockResolvedValue(stored);
+    db.upgradeTaskItem.findMany.mockResolvedValue([
+      { payload: { accountId: 1, failureKind: 'mailbox_unavailable' } },
+      { payload: { accountId: 1, failureKind: 'mailbox_unavailable' } },
+      { payload: { accountId: 2, failureKind: 'mailbox_unavailable' } },
+      { payload: { accountId: 3 } },
+    ]);
+    db.emailAccount.findMany.mockResolvedValue([{ id: 1, email: 'one@example.test' }, { id: 2, email: 'two@example.test' }]);
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('failed');
+    expect(isUpgradeBusinessBlocked()).toBe(false);
+    expect((await getUpgradePlan())?.mailboxFailures).toHaveLength(2);
+    expect(db.emailAccount.findMany).toHaveBeenCalledWith({ where: { id: { in: [1, 2] } }, orderBy: { id: 'asc' },
+      select: { id: true, email: true, imapHost: true, imapPort: true, tls: true, authUser: true } });
   });
 
   it('一次保存所有选择后才启动整个计划', async () => {

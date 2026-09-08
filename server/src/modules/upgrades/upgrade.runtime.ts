@@ -20,6 +20,11 @@ export function setUpgradeRuntimeState(next: UpgradeRuntimeState): void {
   runtimeState = { ...next };
 }
 
+/** 必选等待/实际执行才阻止业务；邮箱故障须允许在迁移内重新配置，不锁住邮箱设置。 */
+export function isUpgradeBusinessBlocked(): boolean {
+  return ['required_wait', 'executing'].includes(runtimeState.mode);
+}
+
 function releaseBusinessWrite(): void {
   activeBusinessWrites = Math.max(0, activeBusinessWrites - 1);
   if (activeBusinessWrites === 0) {
@@ -42,8 +47,7 @@ const IMPLICIT_WRITE_GET_PREFIXES = ['/bills', '/dashboard', '/reminders'];
 export function upgradeBusinessGate(req: Request, res: Response, next: NextFunction): void {
   const writeLike = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
     || IMPLICIT_WRITE_GET_PREFIXES.some((prefix) => req.path.startsWith(prefix));
-  const blocked = ['required_wait', 'executing', 'failed'].includes(runtimeState.mode);
-  if (blocked && writeLike) {
+  if (isUpgradeBusinessBlocked() && writeLike) {
     res.status(503).json({ error: '系统正在处理版本升级，完成后即可继续操作' });
     return;
   }

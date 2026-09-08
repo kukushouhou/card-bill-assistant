@@ -6,17 +6,18 @@ import { today } from '../lib/dates';
 import { collectTodayEvents } from '../modules/reminders/reminder.engine';
 import { syncAllEnabledAccounts } from '../modules/email/email.service';
 import { resolveNotificationChannels, sendNotificationChannelBatch } from '../notify/notification.service';
+import { getUpgradeRuntimeState, isUpgradeBusinessBlocked } from '../modules/upgrades/upgrade.runtime';
+import { runUpgradeReminderCheck } from '../modules/upgrades/upgrade-reminder';
 
 /** pending 发送预占的租约；进程中断后超过该时长可由下一次任务原子接管。 */
 const NOTIFY_PENDING_LEASE_MS = 15 * 60 * 1000;
-const scheduledTasks: ScheduledTask[] = [];
+let scheduledTask: ScheduledTask | null = null;
 const activeScheduledRuns = new Set<Promise<unknown>>();
-let schedulerStarted = false;
 
 function trackScheduledRun(run: () => Promise<unknown>): void {
   const promise = run();
   activeScheduledRuns.add(promise);
-  void promise.finally(() => activeScheduledRuns.delete(promise));
+  void promise.then(() => activeScheduledRuns.delete(promise), () => activeScheduledRuns.delete(promise));
 }
 
 function isUniqueConstraintError(error: unknown): error is { code: 'P2002' } {
@@ -30,9 +31,11 @@ function isUniqueConstraintError(error: unknown): error is { code: 'P2002' } {
  * 3. 对每个已启用通知渠道，按 NotifyLog(type, refId, fireDate, channel) 独立去重并发送
  */
 export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: number; failed: number }> {
+  if (isUpgradeBusinessBlocked()) return { pushed: 0, skipped: 0, failed: 0 };
   await syncAllEnabledAccounts().catch((err) => {
     console.error('[job] 提醒前邮箱同步失败（继续用已有数据计算提醒）:', err);
   });
+  if (isUpgradeBusinessBlocked()) return { pushed: 0, skipped: 0, failed: 0 };
 
   const { now, cardEvents, customEvents } = await collectTodayEvents();
   const all = [
@@ -137,38 +140,46 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
   return result;
 }
 
-/** 注册定时任务 */
-export function startScheduler(): void {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  const hour = config.reminderHour;
+/** 统一调度入口：定时器一直运行，升级分支处理完即返回，不进入日常业务。 */
+export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
+  const { mode } = getUpgradeRuntimeState();
+  if (isUpgradeBusinessBlocked()) {
+    if (mode === 'required_wait') await runUpgradeReminderCheck();
+    return;
+  }
 
-  // 每日提醒：每天 REMINDER_HOUR 点整
-  scheduledTasks.push(cron.schedule(`0 ${hour} * * *`, () => {
-    console.log(`[cron] 触发每日提醒任务 (${hour}:00)`);
-    trackScheduledRun(() => runDailyReminderJob().catch((err) => console.error('[cron] 每日提醒任务异常:', err)));
-  }));
-
-  // 邮箱增量同步：每 2 小时（除每日提醒任务的整点外也照常跑，增量拉取开销小）
-  scheduledTasks.push(cron.schedule('30 */2 * * *', () => {
-    console.log('[cron] 触发邮箱定时同步');
-    trackScheduledRun(() => syncAllEnabledAccounts().catch((err) => console.error('[cron] 邮箱同步异常:', err)));
-  }));
-
-  console.log(`[cron] 调度器已启动：每日 ${hour}:00 提醒推送，每 2 小时邮箱同步`);
+  // 保持原有服务器时区及触发时刻：每日整点提醒、每两小时的半点同步。
+  if (now.getMinutes() === 0 && now.getHours() === config.reminderHour) {
+    await runDailyReminderJob();
+  } else if (now.getMinutes() === 30 && now.getHours() % 2 === 0) {
+    await syncAllEnabledAccounts();
+  }
 }
 
-/** 迁移执行前停止新调度，并等待已进入的同步/推送收尾。 */
-export async function pauseScheduler(): Promise<void> {
-  if (schedulerStarted) {
-    for (const task of scheduledTasks.splice(0)) task.stop();
-    schedulerStarted = false;
-  }
+/** 每分钟进入同一调度器；是否执行由运行状态和原有业务时刻共同决定。 */
+export function startScheduler(): void {
+  if (scheduledTask) return;
+  scheduledTask = cron.schedule('* * * * *', () => {
+    if (activeScheduledRuns.size > 0) return;
+    trackScheduledRun(() => runSchedulerTick().catch(() => console.error('[cron] 调度检查失败，将在后续调度中重试')));
+  });
+  console.log(`[cron] 调度器已启动：每日 ${config.reminderHour}:00 提醒推送，每 2 小时邮箱同步，升级等待每分钟检查`);
+}
+
+/** 先切换升级状态阻止新业务，再等待已进入的同步/推送收尾，保留定时器运行。 */
+export async function waitForScheduledJobs(): Promise<void> {
   if (activeScheduledRuns.size > 0) await Promise.allSettled([...activeScheduledRuns]);
 }
 
+/** 仅在进程退出时释放定时器。 */
+export async function stopScheduler(): Promise<void> {
+  if (scheduledTask) await scheduledTask.destroy();
+  scheduledTask = null;
+  await waitForScheduledJobs();
+}
+
 export function isSchedulerStarted(): boolean {
-  return schedulerStarted;
+  return scheduledTask !== null;
 }
 
 /** 手动触发一次今日提醒（管理接口用，幂等） */

@@ -1,7 +1,7 @@
 import type { Prisma } from '../../generated/prisma/client';
 import { ApiError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { pauseScheduler, startScheduler } from '../../jobs/scheduler';
+import { waitForScheduledJobs } from '../../jobs/scheduler';
 import { APP_VERSION } from '../../version';
 import {
   applicableMigrations,
@@ -74,11 +74,11 @@ export interface UpgradePlanView {
   error: string | null;
   migrations: ManifestEntry[];
   tasks: UpgradeTaskView[];
+  mailboxFailures: Array<{ id: number; email: string; imapHost: string; imapPort: number; tls: boolean; authUser: string }>;
 }
 
 export interface UpgradeInitialization {
   runtimeMode: UpgradeRuntimeMode;
-  shouldStartScheduler: boolean;
   shouldResumeExecution: boolean;
 }
 
@@ -169,6 +169,7 @@ async function planView(planId: number): Promise<UpgradePlanView | null> {
       summary: task ? migration?.describeImpact?.({ total: task.total, payload: task.payload }) ?? entry.summary : entry.summary,
     };
   });
+  const mailboxFailures = await failedMailboxes(plan);
   return {
     id: plan.id,
     fromVersion: plan.fromVersion,
@@ -179,7 +180,40 @@ async function planView(planId: number): Promise<UpgradePlanView | null> {
     error: plan.error,
     migrations,
     tasks,
+    mailboxFailures,
   };
+}
+
+/** 明确邮箱失败才展示原邮箱配置；不返回授权码，不按一条普通邮件错误猜测邮箱故障。 */
+async function failedMailboxes(plan: { status: string; tasks: Array<{ id: number; status: string }> }) {
+  if (plan.status !== 'failed') return [];
+  const rows = await prisma.upgradeTaskItem.findMany({
+    where: { taskId: { in: plan.tasks.filter(task => task.status === 'failed').map(task => task.id) }, status: 'failed' },
+    select: { payload: true },
+  });
+  const ids = [...new Set(rows.flatMap(row => {
+    const payload = row.payload as { accountId?: number; failureKind?: string } | null;
+    return payload?.failureKind === 'mailbox_unavailable' && Number.isSafeInteger(payload.accountId) ? [payload.accountId!] : [];
+  }))];
+  if (!ids.length) return [];
+  return prisma.emailAccount.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' },
+    select: { id: true, email: true, imapHost: true, imapPort: true, tls: true, authUser: true } });
+}
+
+/** 历史修复改回可选时，同步旧计划的策略元数据；不执行修复，不更改用户决定或版本游标。 */
+async function reconcilePlanModes(plan: NonNullable<Awaited<ReturnType<typeof activePlan>>>) {
+  const downgraded = plan.tasks.filter(task => task.mode === 'required' && migrationByKey(task.key)?.mode === 'optional');
+  if (!downgraded.length) return plan;
+  const keys = new Set(downgraded.map(task => task.key));
+  const hasRequired = plan.tasks.some(task => task.mode === 'required' && !keys.has(task.key));
+  const manifest = parseManifest(plan.manifest).map(entry => keys.has(entry.key) ? { ...entry, mode: 'optional' as const } : entry);
+  await prisma.$transaction(async tx => {
+    for (const task of downgraded) await tx.upgradeTask.update({ where: { id: task.id },
+      data: { mode: 'optional', ignoreLabel: migrationByKey(task.key)?.ignoreLabel ?? '忽略更新' } });
+    await tx.upgradePlan.update({ where: { id: plan.id }, data: { hasRequired, manifest: asJson(manifest) } });
+  });
+  return { ...plan, hasRequired, manifest: manifest as unknown as Prisma.JsonValue, tasks: plan.tasks.map(task => keys.has(task.key)
+    ? { ...task, mode: 'optional', ignoreLabel: migrationByKey(task.key)?.ignoreLabel ?? '忽略更新' } : task) };
 }
 
 async function activePlan() {
@@ -273,7 +307,7 @@ export async function initializeUpgradeState(installed: boolean): Promise<Upgrad
   validateMigrationRegistry();
   if (!installed) {
     setUpgradeRuntimeState({ mode: 'ready', planId: null, message: null });
-    return { runtimeMode: 'ready', shouldStartScheduler: true, shouldResumeExecution: false };
+    return { runtimeMode: 'ready', shouldResumeExecution: false };
   }
 
   await restoreInterruptedTasks();
@@ -292,29 +326,30 @@ export async function initializeUpgradeState(installed: boolean): Promise<Upgrad
   }
   await ignoreTasksPastCursor(cursor);
 
-  const existingPlan = await activePlan();
+  let existingPlan = await activePlan();
   if (existingPlan) {
+    existingPlan = await reconcilePlanModes(existingPlan);
     const taskStates = existingPlan.tasks.map((task) => task.status);
     if (existingPlan.status === 'failed' || taskStates.includes('failed')) {
       setUpgradeRuntimeState({ mode: 'failed', planId: existingPlan.id, message: existingPlan.error });
-      return { runtimeMode: 'failed', shouldStartScheduler: false, shouldResumeExecution: false };
+      return { runtimeMode: 'failed', shouldResumeExecution: false };
     }
     if (decisionsComplete(existingPlan.tasks)) {
       setUpgradeRuntimeState({ mode: 'executing', planId: existingPlan.id, message: null });
-      return { runtimeMode: 'executing', shouldStartScheduler: false, shouldResumeExecution: true };
+      return { runtimeMode: 'executing', shouldResumeExecution: true };
     }
     const mode = waitingMode(existingPlan);
     setUpgradeRuntimeState({ mode, planId: existingPlan.id, message: null });
-    return { runtimeMode: mode, shouldStartScheduler: mode === 'optional_wait', shouldResumeExecution: false };
+    return { runtimeMode: mode, shouldResumeExecution: false };
   }
 
   if (compareVersions(cursor, APP_VERSION) === 0) {
     setUpgradeRuntimeState({ mode: 'ready', planId: null, message: null });
-    return { runtimeMode: 'ready', shouldStartScheduler: true, shouldResumeExecution: false };
+    return { runtimeMode: 'ready', shouldResumeExecution: false };
   }
 
   let initialization: UpgradeInitialization = {
-    runtimeMode: 'ready', shouldStartScheduler: true, shouldResumeExecution: false,
+    runtimeMode: 'ready', shouldResumeExecution: false,
   };
   await prisma.$transaction(async (tx) => {
     await tx.$queryRawUnsafe("SELECT `key` FROM `AppSetting` WHERE `key` = 'installedAt' FOR UPDATE");
@@ -367,7 +402,7 @@ export async function initializeUpgradeState(installed: boolean): Promise<Upgrad
     if (interactive.length > 0) {
       const mode: UpgradeRuntimeMode = preflightMode === 'required_wait' ? 'required_wait' : 'optional_wait';
       setUpgradeRuntimeState({ mode, planId: plan.id, message: null });
-      initialization = { runtimeMode: mode, shouldStartScheduler: mode === 'optional_wait', shouldResumeExecution: false };
+      initialization = { runtimeMode: mode, shouldResumeExecution: false };
       return;
     }
 
@@ -512,8 +547,18 @@ async function executeInteractiveTask(task: NonNullable<Awaited<ReturnType<typeo
     where: { id: task.id },
     data: { status: 'running', error: null, startedAt: task.startedAt ?? new Date(), finishedAt: null },
   });
-  await migration.prepareTask(task.id);
-  const result = await migration.executeTask(task.id);
+  let result;
+  try {
+    await migration.prepareTask(task.id);
+    result = await migration.executeTask(task.id);
+  } catch (error) {
+    // 预处理或执行器整体异常也要留下可重试状态，不能把任务一直留在 running。
+    await prisma.upgradeTask.update({ where: { id: task.id }, data: {
+      status: 'failed', error: error instanceof Error ? error.message.slice(0, 512) : '更新执行失败，请重试',
+      finishedAt: new Date(),
+    } });
+    return false;
+  }
   const status = result.failed > 0 ? 'failed' : 'completed';
   await prisma.upgradeTask.update({
     where: { id: task.id },
@@ -531,8 +576,8 @@ async function executeInteractiveTask(task: NonNullable<Awaited<ReturnType<typeo
 }
 
 async function runUpgradePlan(planId: number): Promise<void> {
-  await pauseScheduler();
   setUpgradeRuntimeState({ mode: 'executing', planId, message: null });
+  await waitForScheduledJobs();
   await waitForBusinessWrites();
   const plan = await prisma.upgradePlan.findUnique({ where: { id: planId }, include: { tasks: true } });
   if (!plan) throw new Error('升级计划不存在');
@@ -591,7 +636,6 @@ async function runUpgradePlan(planId: number): Promise<void> {
     data: { status: 'completed', error: null, finishedAt: new Date() },
   });
   setUpgradeRuntimeState({ mode: 'ready', planId: null, message: null });
-  startScheduler();
 }
 
 export async function resumeUpgradeExecution(): Promise<void> {

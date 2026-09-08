@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api } from '../api/client';
 import type { UpgradePlan, UpgradeTask, StatementRepairResult } from '../api/types';
 import UpgradeResultSummary from './UpgradeResultSummary';
+import UpgradeMailboxSettings from './UpgradeMailboxSettings';
 import { ExclamationCircleFilled, LockOutlined } from '../skins/icons';
 import './upgrade-prompt.css';
 
@@ -23,6 +24,7 @@ export default function UpgradePrompt() {
   const [result, setResult] = useState<StatementRepairResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [choices, setChoices] = useState<Record<string, 'approve' | 'ignore'>>({});
+  const [mailboxSettingsOpen, setMailboxSettingsOpen] = useState(false);
   const hadExecution = useRef(false);
 
   const showResult = async () => {
@@ -53,11 +55,19 @@ export default function UpgradePrompt() {
     return () => window.clearInterval(timer);
   }, [plan?.status]);
 
+  // 明确邮箱不可用时直接在原迁移流程内修复；取消只返回迁移选择，不另设常驻重试入口。
+  useEffect(() => {
+    if (plan?.status === 'failed' && plan.mailboxFailures?.length) {
+      setMailboxSettingsOpen(true);
+    }
+  }, [plan]);
+
   // 静默项目只参与后台协调，不展示项目、进度弹窗或完成提示。
   const visibleMigrations = plan?.migrations.filter((migration) => migration.mode !== 'silent') ?? [];
   if (!plan || visibleMigrations.length === 0) return result ? <Modal key="upgrade-result" open title="系统升级结果" onCancel={() => setResult(null)}
     footer={<Button type="primary" onClick={() => setResult(null)}>完成</Button>}><UpgradeResultSummary result={result} /></Modal> : null;
   const executing = plan.status === 'executing';
+  const failed = plan.status === 'failed';
   const pendingTasks = plan.tasks.filter((task) => ['awaiting_decision', 'failed'].includes(task.status));
   const hasIgnoredChoices = pendingTasks.some((task) => task.mode === 'optional' && choices[task.key] === 'ignore');
   const activeTask = plan.tasks.find((task) => task.status === 'running');
@@ -87,22 +97,26 @@ export default function UpgradePrompt() {
     }
   };
 
+  if (mailboxSettingsOpen && plan.mailboxFailures?.length) return <UpgradeMailboxSettings key={plan.id}
+    accounts={plan.mailboxFailures} onClose={() => setMailboxSettingsOpen(false)} />;
+
   return (
     <Modal key="upgrade-plan" open width={isMobile ? '100vw' : 'min(860px, 94vw)'}
       className={`upgrade-flow${isMobile ? ' mobile-upgrade-flow' : ''}`}
       style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : { top: 64 }}
       title={<div className="upgrade-heading"><span>系统升级</span><span className="upgrade-version">{plan.fromVersion ?? '旧版本'} → {plan.toVersion}</span></div>}
       closable={false} maskClosable={false} keyboard={false}
-      footer={!executing && pendingTasks.length > 0 ? (
+      footer={!executing && pendingTasks.length > 0 ? (<>
+        {failed && !!plan.mailboxFailures?.length && <Button disabled={submitting} onClick={() => setMailboxSettingsOpen(true)}>设置邮箱</Button>}
         <Button type="primary" block={isMobile} loading={submitting} onClick={() => void confirm()}>
-          {plan.status === 'failed' && !hasIgnoredChoices ? '重试' : '确认并继续'}
+          {failed && !hasIgnoredChoices ? '重试' : '确认并继续'}
         </Button>
-      ) : null}>
+      </>) : null}>
       <div className="upgrade-plan">
-        {plan.hasRequired && (
+        {plan.hasRequired && !failed && (
           <div className="upgrade-gate-notice" role="status">
             <LockOutlined aria-hidden />
-            <span>编辑、邮件同步和提醒推送已暂停，完成更新后恢复。</span>
+            <span>编辑、邮件同步和日常提醒已暂停，完成更新后恢复。</span>
           </div>
         )}
         {standaloneError && <div className="upgrade-error" role="alert"><ExclamationCircleFilled aria-hidden /><span>{plan.error}</span></div>}
@@ -121,11 +135,11 @@ export default function UpgradePrompt() {
           return (
             <section key={migration.key} className="upgrade-item" role="listitem" aria-labelledby={`upgrade-title-${migration.key}`}>
               <h3 className="upgrade-item-title" id={`upgrade-title-${migration.key}`}>{migration.title}</h3>
+              <p className="upgrade-item-description">{migration.description}</p>
               <div className="upgrade-item-scope">
                 {migration.mode === 'optional' && <span className="upgrade-optional">可选更新</span>}
                 {migration.summary && <span>{migration.summary}</span>}
               </div>
-              <p className="upgrade-item-description">{migration.description}</p>
               <div className="upgrade-item-action">
               {actionable && task.mode === 'optional' && (
                 <Segmented<'approve' | 'ignore'> block motionName=""

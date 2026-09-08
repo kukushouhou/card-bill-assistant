@@ -14,6 +14,7 @@ import { isBlacklisted } from '../../parsers/blacklist';
 import { recomputePrimary } from '../../lib/card-groups';
 import { MICROSOFT_YAHEI_GLYPH_MAP } from '../../parsers/assets/microsoft-yahei-glyph-map';
 import { MailSourceLimitError, readMailSource } from './mail-source';
+import { MailboxUnavailableError } from './mail-reader-error';
 
 export interface EmailAccountParams {
   email: string;
@@ -733,7 +734,18 @@ export async function openAccountMailReader(accountId: number): Promise<{
     const lock = await client.getMailboxLock('INBOX');
     let closed = false;
     return {
-      fetch: (uid) => fetchMailBodyFromClient(client, uid),
+      fetch: async (uid) => {
+        try { return await fetchMailBodyFromClient(client, uid); }
+        catch (error) {
+          // 单封邮件不存在、内容异常或超限不代表邮箱坏了；不要据此让用户改授权码。
+          if (error instanceof ApiError || error instanceof MailSourceLimitError) throw error;
+          try {
+            if (!client.usable) throw new Error('连接不可用');
+            await client.noop();
+          } catch { throw new MailboxUnavailableError(); }
+          throw error;
+        }
+      },
       close: async () => {
         if (closed) return;
         closed = true;
@@ -743,7 +755,7 @@ export async function openAccountMailReader(accountId: number): Promise<{
     };
   } catch (error) {
     await client.logout().catch(() => client.close());
-    throw error;
+    throw new MailboxUnavailableError();
   }
 }
 

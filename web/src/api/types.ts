@@ -53,6 +53,7 @@ export interface UpgradePlan {
   error: string | null;
   migrations: UpgradeMigrationSummary[];
   tasks: UpgradeTask[];
+  mailboxFailures?: Array<Pick<EmailAccount, 'id' | 'email' | 'imapHost' | 'imapPort' | 'tls' | 'authUser'>>;
 }
 
 export interface SetupStatus {

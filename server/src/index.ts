@@ -10,7 +10,7 @@ import { config } from './config';
 import { ApiError, formatValidationIssues } from './lib/errors';
 import { prisma } from './lib/prisma';
 import { recomputePrimary } from './lib/card-groups';
-import { startScheduler } from './jobs/scheduler';
+import { startScheduler, stopScheduler } from './jobs/scheduler';
 import { materializeCustomReminderOccurrences } from './modules/reminders/custom-occurrences';
 import setupRoutes from './routes/setup.routes';
 import authRoutes from './routes/auth.routes';
@@ -27,7 +27,7 @@ import skinsRoutes from './routes/skins.routes';
 import { activeSkin } from './modules/skins/service';
 import upgradesRoutes from './routes/upgrades.routes';
 import { initializeUpgradeState, resumeUpgradeExecution } from './modules/upgrades/upgrade.service';
-import { getUpgradeRuntimeState, upgradeBusinessGate } from './modules/upgrades/upgrade.runtime';
+import { getUpgradeRuntimeState, isUpgradeBusinessBlocked, upgradeBusinessGate } from './modules/upgrades/upgrade.runtime';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     const upgrade = getUpgradeRuntimeState();
     res.json({
       ok: true,
-      ready: ['ready', 'optional_wait'].includes(upgrade.mode),
+      ready: !isUpgradeBusinessBlocked(),
       upgradeMode: upgrade.mode,
       time: new Date().toISOString(),
     });
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     .then((r) => r?.value ?? null)
     .catch(() => null);
   let upgrade = await initializeUpgradeState(!!installedAt);
-  if (installedAt && ['ready', 'optional_wait'].includes(upgrade.runtimeMode)) {
+  if (installedAt && !isUpgradeBusinessBlocked()) {
     console.log(`[setup] 系统已安装（${installedAt}）`);
     // 启动时按套卡归组标记优先显示卡（手动指定优先，自动推导不覆盖）
     await recomputePrimary().catch((err) => console.error('[cards] 优先显示重算失败:', err));
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
       ? '[upgrade] 必选迁移或迁移执行期间，业务更新与推送已暂停'
       : '[setup] 系统未安装：请访问 Web 页面，按安装向导设置管理员密码');
   }
-  if (upgrade.shouldStartScheduler) startScheduler();
+  startScheduler();
 
   app.listen(config.port, () => {
     console.log(`[server] 守候信用卡小管家已启动: http://localhost:${config.port}`);
@@ -147,10 +147,12 @@ main()
   .finally(() => {
     // 开发模式下由 tsx watch 管理进程生命周期；生产模式下显式断开
     process.on('SIGINT', async () => {
+      await stopScheduler();
       await prisma.$disconnect().catch(() => undefined);
       process.exit(0);
     });
     process.on('SIGTERM', async () => {
+      await stopScheduler();
       await prisma.$disconnect().catch(() => undefined);
       process.exit(0);
     });

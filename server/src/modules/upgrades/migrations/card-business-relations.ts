@@ -7,6 +7,7 @@ import { listBusinessRelationshipParsers, tryParse } from '../../../parsers/regi
 import { acquireEmailAccountLock, openAccountMailReader, type MailBodyResult } from '../../email/email.service';
 import type { MigrationInspection, TaskExecutionResult, VersionMigration } from '../migration.types';
 import { affectedBankNames } from '../migration-context';
+import { MailboxUnavailableError } from '../../email/mail-reader-error';
 
 interface MailTaskPayload {
   accountId: number;
@@ -121,11 +122,13 @@ async function processItem(
     await applyParsedBills(log.id, result.parserId, result.bills);
     await markItem(item, 'succeeded');
   } catch (error) {
+    if (error instanceof MailboxUnavailableError) throw error;
     if (error instanceof ApiError && error.status === 404) {
       await markItem(item, 'unchanged');
       return;
     }
-    await markItem(item, 'failed', error instanceof Error ? error.message : String(error));
+    // 单封解析/内容失败直接忽略，不把局部问题变成整批重试。
+    await markItem(item, 'unchanged', '该邮件无法完整处理，已跳过并保留原账单');
   }
 }
 
@@ -159,11 +162,15 @@ async function executeBusinessTask(taskId: number): Promise<TaskExecutionResult>
       reader = await openAccountMailReader(accountId);
       for (const item of accountItems) await processItem(item, reader.fetch);
     } catch (error) {
-      const message = (error instanceof Error ? error.message : String(error)).slice(0, 512);
-      await prisma.upgradeTaskItem.updateMany({
-        where: { id: { in: accountItems.map((item) => item.id) }, status: { in: ['pending', 'running'] } },
-        data: { status: 'failed', error: message, processedAt: new Date() },
+      const missingAccount = error instanceof ApiError && error.status === 404;
+      if (!(error instanceof MailboxUnavailableError) && !missingAccount) throw error;
+      const unfinished = await prisma.upgradeTaskItem.findMany({
+        where: { id: { in: accountItems.map((item) => item.id) }, status: { in: ['pending', 'running', 'failed'] } },
       });
+      for (const item of unfinished) await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: {
+        status: missingAccount ? 'unchanged' : 'failed', error: missingAccount ? null : '邮箱无法读取，请重新设置邮箱后继续', processedAt: new Date(),
+        payload: { ...readMailPayload(item.payload), ...(missingAccount ? {} : { failureKind: 'mailbox_unavailable' }) },
+      } });
       await updateTaskCounts(taskId);
     } finally {
       await reader?.close().catch(() => undefined);
@@ -178,7 +185,7 @@ async function executeBusinessTask(taskId: number): Promise<TaskExecutionResult>
     succeeded: counts.succeeded,
     unchanged: counts.unchanged,
     failed: counts.failed,
-    error: counts.failed > 0 ? '部分历史账单更新失败，请重试' : undefined,
+    error: counts.failed > 0 ? '邮箱无法读取，请重新设置邮箱后继续' : undefined,
   };
 }
 

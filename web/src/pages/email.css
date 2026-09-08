@@ -58,3 +58,9 @@
     grid-column: 2;
   }
 }
+.email-account-mobile-modal .ant-modal-container { display: flex; flex-direction: column; height: 100dvh; padding: 20px 16px; border-radius: 0; }
+.email-account-mobile-modal .ant-modal-body { flex: 1; min-height: 0; overflow-y: auto; }
+.email-account-mobile-modal .ant-modal-header, .email-account-mobile-modal .ant-modal-footer { flex-shrink: 0; }
+.upgrade-mailbox-settings .ant-modal-body { max-height: calc(100dvh - 220px); overflow-y: auto; }
+.upgrade-mailbox-section + .upgrade-mailbox-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+.upgrade-mailbox-section > h3 { margin: 0 0 16px; overflow-wrap: anywhere; }

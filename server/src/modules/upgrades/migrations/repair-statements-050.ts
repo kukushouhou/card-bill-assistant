@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '../../../generated/prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { ApiError } from '../../../lib/errors';
+import { MailboxUnavailableError } from '../../email/mail-reader-error';
 import { tryParse, getParserById } from '../../../parsers/registry';
 import { acquireEmailAccountLock, openAccountMailReader, type MailBodyResult } from '../../email/email.service';
 import type { VersionMigration } from '../migration.types';
@@ -28,14 +29,20 @@ function bankImpact(items: MailItem[]): BankImpact[] {
 function impactText(payload: unknown): string | null {
   const banks = (payload as Payload | null)?.banks;
   if (!Array.isArray(banks) || !banks.length) return null;
-  return `需要复核：${banks.map((bank) => `${bank.bankName} ${bank.billCount} 笔现有账单（${bank.mailCount} 封邮件）`).join('；')}。系统将修正金额并补齐原文中的遗漏账单和明细。`;
+  return `需要复核：${banks.map((bank) => `${bank.bankName} ${bank.billCount} 笔现有账单（${bank.mailCount} 封邮件）`).join('；')}。`;
 }
 
 export const repairStatements050Migration: VersionMigration = {
-  key: STATEMENT_REPAIR_KEY, targetVersion: '0.5.0', order: 10, mode: 'required',
-  title: '历史账单核对与修复',
-  description: '核对已有账单的金额、币种及明细，保留手动还款。自动结清状态仅从本次执行日期往前一个月起恢复，包含未来账单。',
+  // 历史修复由用户决定，不能按“影响历史金额”把它升级为系统必需迁移。
+  key: STATEMENT_REPAIR_KEY, targetVersion: '0.5.0', order: 10, mode: 'optional',
+  title: '修复账单金额错误与明细遗漏',
+  description: [
+    '旧版解析器会误读部分账单的应还金额和最低还款额，包括把应还金额读成负数；还会漏掉部分账单和交易明细。这可能让应还账单显示为“已还清”，造成待还金额和还款提醒不准确。',
+    '本次升级会修正错误金额，补齐遗漏的账单和明细。误标为已还清的账单，从修复当天往前一个月起按还款日恢复待还；手动还款记录保留。',
+  ].join('\n\n'),
   executeLabel: '确认修复',
+  ignoreLabel: '忽略更新',
+  ignoreWarning: '忽略后，历史账单的错误金额和遗漏明细会保留；新账单仍按修复后的解析器处理。系统将不再提供本次迁移服务。',
   describeImpact: ({ payload }) => impactText(payload),
   async inspect(db) {
     const items = await candidates(db);
@@ -65,44 +72,51 @@ export const repairStatements050Migration: VersionMigration = {
       const own = rows.filter((row) => (row.payload as unknown as MailItem).accountId === accountId);
       let release: (() => void) | undefined;
       let reader: Awaited<ReturnType<typeof openAccountMailReader>> | undefined;
-      let connectionError: unknown;
       try {
         release = acquireEmailAccountLock(accountId);
-        try { reader = await retryRead(() => openAccountMailReader(accountId)); } catch (error) { connectionError = error; }
+        reader = await retryRead(() => openAccountMailReader(accountId));
         for (const item of own) {
           const mail = item.payload as unknown as MailItem;
           try {
-            let body: MailBodyResult | undefined;
-            let unavailable: unknown = connectionError;
-            if (reader) { try { body = await retryRead(() => reader!.fetch(mail.uid)); } catch (error) { unavailable = error; } }
-            const parsed = body ? tryParse({ ...body, date: new Date(body.date), text: body.text ?? undefined,
-              html: body.html ?? undefined, pdfText: body.pdfText ?? undefined, attachText: body.attachText ?? undefined }, mail.parserId) : null;
-            if (parsed && (!parsed.matched || !parsed.bills.length)) unavailable = new Error('原文无法完整解析');
-            const bills = parsed?.matched && parsed.bills.length ? parsed.bills : null;
+            const body: MailBodyResult = await reader.fetch(mail.uid);
+            const parsed = tryParse({ ...body, date: new Date(body.date), text: body.text ?? undefined,
+              html: body.html ?? undefined, pdfText: body.pdfText ?? undefined, attachText: body.attachText ?? undefined }, mail.parserId);
+            if (!parsed.matched || !parsed.bills.length) throw new Error('原文无法完整解析');
             await prisma.$transaction(async (tx) => {
               // 状态与修复写在同一事务，宕机后不会二次翻转金额。
               const current = await tx.upgradeTaskItem.findUniqueOrThrow({ where: { id: item.id } });
               if (current.status === 'succeeded' || current.status === 'unchanged') return;
               const result = await repairStatementMail(tx, { mailLogId: mail.mailLogId, billIds: mail.billIds,
-                parserId: mail.parserId, parsed: bills, lowerBound: new Date(payload.lowerBound!) });
+                parserId: mail.parserId, parsed: parsed.bills, lowerBound: new Date(payload.lowerBound!) });
               const changed = result.correctedBills + result.addedBills + result.restoredRepayments > 0;
               await tx.upgradeTaskItem.update({ where: { id: item.id }, data: { status: changed ? 'succeeded' : 'unchanged',
-                processedAt: new Date(), error: null, payload: json({ ...mail, result,
-                  ...(unavailable ? { incompleteReason: '原文不可取得或无法完整读取，未恢复的明细保留原状' } : {}) }) } });
+                processedAt: new Date(), error: null, payload: json({ ...mail, result }) } });
             }, { timeout: 60_000 });
           } catch (error) {
-            await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: { status: 'failed', processedAt: new Date(),
-              error: error instanceof Error ? error.message.slice(0, 512) : '账单修复失败' } });
+            if (error instanceof MailboxUnavailableError) throw error;
+            // 单封失败直接跳过，尤其不要求用户恢复已删除邮件；原账单和已完成结果保留。
+            await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: { status: 'unchanged', processedAt: new Date(),
+              error: null, payload: json({ ...mail, result: { ...emptyRepairCounts(), unavailableMails: 1 },
+                incompleteReason: '该邮件无法完整修复，已跳过并保留原账单和明细' }) } });
           }
           await updateCounts(taskId);
         }
       } catch (error) {
-        await prisma.upgradeTaskItem.updateMany({ where: { id: { in: own.map((row) => row.id) }, status: { in: ['pending', 'running', 'failed'] } },
-          data: { status: 'failed', error: error instanceof Error ? error.message.slice(0, 512) : '邮箱修复失败' } });
+        const missingAccount = error instanceof ApiError && error.status === 404;
+        // 数据库/锁等基础设施错误不等于邮箱配置错误，不能误引导用户修改授权码。
+        if (!(error instanceof MailboxUnavailableError) && !missingAccount) throw error;
+        // 连接阶段失败或运行中确认断连才需要重新配置；结构化记录对应邮箱，不靠错误文案猜测。
+        const unfinished = await prisma.upgradeTaskItem.findMany({ where: { id: { in: own.map((row) => row.id) }, status: { in: ['pending', 'running', 'failed'] } } });
+        for (const item of unfinished) await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: {
+          status: missingAccount ? 'unchanged' : 'failed', error: missingAccount ? null : '邮箱无法读取，请重新设置邮箱后继续', processedAt: new Date(),
+          payload: json({ ...item.payload as unknown as MailItem, ...(missingAccount
+            ? { result: { ...emptyRepairCounts(), unavailableMails: 1 }, incompleteReason: '邮箱已解绑，已跳过并保留原账单和明细' }
+            : { failureKind: 'mailbox_unavailable' }) }),
+        } });
       } finally { await reader?.close().catch(() => undefined); release?.(); }
     }
     const counts = await updateCounts(taskId);
-    return { ...counts, error: counts.failed ? '部分账单尚未修复，请重试。已经完成的账单不会重复处理。' : undefined };
+    return { ...counts, error: counts.failed ? '邮箱无法读取，请重新设置邮箱后继续。已完成的修改已保留。' : undefined };
   },
 };
 
