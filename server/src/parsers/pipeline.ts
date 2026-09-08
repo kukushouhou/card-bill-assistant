@@ -53,12 +53,15 @@ export async function applyParsedBills(mailLogId: number, parserId: string, bill
           paidAmount: true,
         },
       });
-      const previousContext: PreviousBillContext = { rows: previousRows, usedIds: new Set() };
+      const previousContext: PreviousBillContext = { rows: previousRows, usedIds: new Set(), sharedSequence: 0 };
+      await tx.billTransaction.deleteMany({ where: { statementMailLogId: mailLogId } });
       const applied: AppliedBill[] = [];
       for (const bill of bills) {
         applied.push(await applyParsedBillInTransaction(tx, mailLogId, parserId, bill, previousContext));
       }
       await reconcileCurrentCycleTransactions(tx, bills, applied);
+      const sharedCurrencies = bills.filter((bill) => bill.transactions?.some((row) => row.statementShared)).map((bill) => bill.currency);
+      if (sharedCurrencies.length) await tx.bill.updateMany({ where: { mailLogId, currency: { in: sharedCurrencies } }, data: { hasDetails: true } });
       const appliedIds = applied.map((row) => row.id);
       if (previousRows.some((row) => !appliedIds.includes(row.id))) {
         await tx.bill.deleteMany({
@@ -71,6 +74,7 @@ export async function applyParsedBills(mailLogId: number, parserId: string, bill
 }
 
 interface PreviousBillContext {
+  sharedSequence: number;
   rows: Array<{
     id: number;
     cardId: number;
@@ -105,7 +109,7 @@ interface ResolvedCard {
 
 interface ResolvedBillTransaction {
   source: ParsedTransaction;
-  cardId: number;
+  cardId: number | null;
   transactionDate: Date | null;
   data: Prisma.BillTransactionCreateManyInput;
 }
@@ -383,7 +387,7 @@ async function applyParsedBillInTransaction(
     const primaryCard = resolved.find((r) => r.id === preferredId) ?? ownerCard ?? resolved[0]!;
 
     // 账单级年费金额与卡片级年费日分开处理；这里只计算实际年费金额。
-    const annualFeeAmount = detectAnnualFeeAmount(bill.transactions);
+    const annualFeeAmount = detectAnnualFeeAmount(bill.transactions?.filter((row) => !row.statementShared));
 
     // 历史账单自动已还：还款日已过（今天之前）必然已结清；当期/未来账单保持 unpaid
     const autoPaid = bill.amount <= 0 || dueDate.getTime() < shanghaiMidnight(new Date()).getTime();
@@ -420,9 +424,9 @@ async function applyParsedBillInTransaction(
         hasDetails: (bill.transactions?.length ?? 0) > 0,
         annualFeeAmount,
         source: 'email',
-        paidStatus: autoPaid ? 'paid' : previousBill?.paidStatus ?? 'unpaid',
-        paidAt: autoPaid ? dueDate : previousBill?.paidAt ?? null,
-        paidAmount: autoPaid ? (bill.amount ?? null) : previousBill?.paidAmount ?? null,
+        paidStatus: previousBill?.paidStatus ?? (autoPaid ? 'paid' : 'unpaid'),
+        paidAt: previousBill ? previousBill.paidAt : autoPaid ? dueDate : null,
+        paidAmount: previousBill ? previousBill.paidAmount : autoPaid ? bill.amount : null,
       },
       update: {
         cycleStartDate: bill.cycleStartDate ? shanghaiMidnight(bill.cycleStartDate) : null,
@@ -435,13 +439,11 @@ async function applyParsedBillInTransaction(
         hasDetails: (bill.transactions?.length ?? 0) > 0,
         annualFeeAmount,
         source: 'email',
-        // 历史账单（还款日已过）强制已还；当期账单保留用户手动标记的还款状态；
-        // 自动零账单（auto-none）被真实账单覆盖时回正为未还，避免真账单误挂已还状态
-        ...(autoPaid
-          ? { paidStatus: 'paid' as const, paidAt: dueDate, paidAmount: bill.amount ?? null }
-          : existingBill?.source === 'auto-none'
-            ? { paidStatus: 'unpaid' as const, paidAt: null, paidAmount: null }
-            : {}),
+        // 已存在的真实账单保留还款决定；仅自动零账单被真实账单接管时重新判定。
+        ...(existingBill?.source === 'auto-none'
+          ? autoPaid ? { paidStatus: 'paid' as const, paidAt: dueDate, paidAmount: bill.amount }
+            : { paidStatus: 'unpaid' as const, paidAt: null, paidAmount: null }
+          : {}),
       },
     });
 
@@ -486,6 +488,10 @@ async function applyParsedBillInTransaction(
     // 阶段 4.5：明细跟随独立币种账单持久化；账户级行挂套卡优先显示卡；年费日复用同一归属。
     const cardByTail = new Map(resolved.map((row) => [row.tail, row.id] as const));
     const transactions = bill.transactions ?? [];
+    const externalTails = [...new Set(transactions.filter((row) => row.statementShared || row.statementAccountCardLast4 === bill.cardLast4)
+      .map((row) => row.cardLast4).filter((tail): tail is string => !!tail && !cardByTail.has(tail)))];
+    const externalCards = externalTails.length ? await tx.card.findMany({ where: { bankName: bill.bankName, cardLast4: { in: externalTails } }, select: { id: true, cardLast4: true } }) : [];
+    const externalByTail = new Map(externalCards.map((card) => [card.cardLast4, card.id]));
     for (const transaction of transactions) {
       const transactionCurrency = normalizeCurrency(transaction.currency ?? currency);
       if (transactionCurrency !== currency) {
@@ -499,17 +505,18 @@ async function applyParsedBillInTransaction(
       const sourceTail = transaction.sourceCardLast4 ?? rawTail;
       const mobile = rawTail != null && mobileTails.has(rawTail);
       const explicitTail = rawTail && !mobile && !isPlaceholderTail(rawTail) ? rawTail : null;
+      const accountConfirmed = transaction.statementShared || transaction.statementAccountCardLast4 === bill.cardLast4;
       const transactionCardId = mobile && ownerCard
         ? ownerCard.id
         : explicitTail
-          ? cardByTail.get(explicitTail)
+          ? cardByTail.get(explicitTail) ?? (accountConfirmed ? externalByTail.get(explicitTail) : undefined)
           : preferredId;
-      if (explicitTail && transactionCardId == null) {
+      if (explicitTail && transactionCardId == null && !accountConfirmed) {
         throw new Error(
           `${bill.bankName}(${bill.cardLast4}) ${period} 明细卡尾 ${explicitTail} 未进入账单套卡`,
         );
       }
-      const cardId = transactionCardId ?? preferredId;
+      const cardId = transactionCardId ?? (explicitTail && accountConfirmed ? null : preferredId);
       const snapshotTail = mobile && ownerCard
         ? ownerCard.tail
         : explicitTail ?? resolved.find((row) => row.id === cardId)?.tail ?? primaryCard.tail;
@@ -529,7 +536,8 @@ async function applyParsedBillInTransaction(
         cardId,
         transactionDate,
         data: {
-          billId: billRow.id,
+          billId: transaction.statementShared ? null : billRow.id,
+          ...(transaction.statementShared ? { statementMailLogId: mailLogId } : {}),
           bankName: bill.bankName,
           cardId,
           cardLast4: snapshotTail,
@@ -541,7 +549,7 @@ async function applyParsedBillInTransaction(
           currency,
           originalAmount: hasUsefulOriginalAmount ? originalAmount : null,
           originalCurrency: hasUsefulOriginalAmount ? originalCurrency : null,
-          sequence,
+          sequence: transaction.statementShared ? previousContext.sharedSequence++ : sequence,
         },
       };
     });
@@ -719,6 +727,7 @@ async function updateAnnualFeeDatesFromTransactions(
 ): Promise<void> {
   const latestByCard = new Map<number, Date>();
   for (const transaction of transactions) {
+    if (transaction.cardId == null) continue;
     if (!isAnnualFeeDateEvidence(transaction.source)) continue;
     if (!transaction.transactionDate) {
       console.log(
@@ -768,7 +777,7 @@ async function reconcileCurrentCycleTransactions(
   if (hasOfficialDetails) {
     await tx.billTransaction.deleteMany({
       where: {
-        billId: null,
+        billId: null, statementMailLogId: null,
         dailyMailLogId: { not: null },
         bankName,
         transactionDate: range,
@@ -857,7 +866,7 @@ export async function applyCurrentCycleTransactions(
         }
         await tx.billTransaction.createMany({
           data: eligible.map((transaction, sequence) => ({
-            billId: null,
+            billId: null, statementMailLogId: null,
             bankName: batch.bankName,
             dailyMailLogId: mailLogId,
             cardId: transaction.cardLast4 ? cardIds.get(transaction.cardLast4) ?? null : null,

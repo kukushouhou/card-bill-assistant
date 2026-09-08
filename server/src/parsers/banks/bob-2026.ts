@@ -1,3 +1,4 @@
+import { fiveColumnTextTransactions, htmlTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill } from '../types';
 import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, parseAmount, parseDate, pick, pickHolder, UNKNOWN_CARD_TAIL } from '../_util';
 
@@ -42,7 +43,7 @@ export const bob2026Parser: BankParser = {
     if (!bill) return [];
     // 明细为 5 行组：交易日/记账日/摘要/RMB:金额/卡尾号（行末）；金额 +号=支出、-号=还款。
     // 卡尾在明细行末的为合并账户银行：全部卡尾作为批量副卡（主卡取第一个）。
-    const txns = fiveLineTransactions(text, /^RMB:(-?[\d,]+\.\d{2})$/);
+    const txns = htmlTransactions(mail, 'five') ?? fiveColumnTextTransactions(text, /^RMB:(-?[\d,]+\.\d{2})$/);
     applyTransactionTails(bill, txns);
     return [bill];
   },

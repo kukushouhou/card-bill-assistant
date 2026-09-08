@@ -1,19 +1,16 @@
+import AboutSystemCard from '../components/AboutSystemCard';
 import { useDraftGuard } from '../lib/draftGuard';
 import SkinManager from '../skins/SkinManager';
-import SettingSwitch from '../components/SettingSwitch';
+import NotificationChannelsCard from '../components/NotificationChannelsCard';
+import NotificationChannelEditor, { type NotificationDraft } from '../components/NotificationChannelEditor';
 import '../components/info-fields.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
-import { BellOutlined, DeleteOutlined, InfoCircleOutlined, SafetyOutlined, SendOutlined } from '../skins/icons';
+import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Space, Spin, Tag, Typography } from 'antd';
+import { InfoCircleOutlined, SafetyOutlined } from '../skins/icons';
 import { Popup } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
-import type { MeInfo, SettingsInfo } from '../api/types';
+import type { MeInfo, NotificationChannelInfo, SettingsInfo } from '../api/types';
 import { Page } from '../components/Layout';
-import {
-  defaultNotificationConfig,
-  NotificationConfigFields,
-  type NotificationConfigValue,
-} from '../components/NotificationConfigFields';
 import { useResponsive, useResetOnModeChange } from '../responsive';
 import {
   InlineConfirm,
@@ -481,306 +478,11 @@ function MobilePinDestroyFlow({ controller }: { controller: PinSettingsControlle
   );
 }
 
-interface NotificationFormValues {
-  enabled: boolean;
-  config: NotificationConfigValue;
-}
-
-function NotificationChannelsCard({
-  settings,
-  reading,
-  readError,
-  onRetry,
-  beginWrite,
-  endWrite,
-  refreshSettings,
-}: {
-  settings: SettingsInfo | null;
-  reading: boolean;
-  readError: string | null;
-  onRetry: SharedRefresh;
-  beginWrite: () => boolean;
-  endWrite: () => void;
-  refreshSettings: SharedRefresh;
-}) {
-  const { message } = App.useApp();
-  const { isMobile } = useResponsive();
-  const [form] = Form.useForm<NotificationFormValues>();
-  const sendingEnabled = Form.useWatch('enabled', form);
-  const [selectedType, setSelectedType] = useState('bark');
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [confirmRemoving, setConfirmRemoving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
-  const initialized = useRef(false);
-  useDraftGuard(dirty);
-  const loadingRef = useRef(false);
-  const testingRef = useRef(false);
-
-  const notificationSettings = settings?.notifications ?? { providers: [], channels: [] };
-  const providers = notificationSettings.providers;
-  const selectedProvider = providers.find((provider) => provider.type === selectedType) ?? providers[0];
-  const selectedChannel = notificationSettings.channels.find((channel) => channel.type === selectedProvider?.type);
-
-  useEffect(() => {
-    if (settings && !form.isFieldsTouched()) {
-      const available = settings.notifications;
-      const nextType = initialized.current ? selectedType : available.channels[0]?.type ?? available.providers[0]?.type ?? 'bark';
-      initialized.current = true;
-      const nextChannel = available.channels.find((channel) => channel.type === nextType);
-      setSelectedType(nextType);
-      const provider = available.providers.find((item) => item.type === nextType) ?? available.providers[0];
-      form.setFieldsValue({
-        enabled: nextChannel?.enabled ?? true,
-        config: { ...(provider ? defaultNotificationConfig(provider) : {}), ...(nextChannel?.config ?? {}) },
-      });
-    }
-  }, [form, settings, selectedType]); // notificationSettings 由 settings 派生，不单独作为依赖避免重置正在编辑的表单。
-
-  const commitProvider = (type: string) => {
-    setDirty(false); setPendingProvider(null); form.resetFields();
-    const channel = notificationSettings.channels.find((item) => item.type === type);
-    setSelectedType(type);
-    setConfirmRemoving(false);
-    form.setFieldsValue({
-      enabled: channel?.enabled ?? true,
-      config: { ...defaultNotificationConfig(providers.find((item) => item.type === type)!), ...(channel?.config ?? {}) },
-    });
-  };
-
-  const selectProvider = (type: string) => {
-    if (type === selectedType || loadingRef.current || testingRef.current) return;
-    if (dirty) setPendingProvider(type); else commitProvider(type);
-  };
-
-  const save = async (values: NotificationFormValues) => {
-    if (!selectedProvider) return;
-    if (loadingRef.current || !beginWrite()) return;
-    loadingRef.current = true;
-    setLoading(true);
-    try {
-      await api.put(`/api/settings/notification-channels/${encodeURIComponent(selectedProvider.type)}`, values);
-      message.success('通知渠道已保存');
-      setDirty(false);
-      form.resetFields();
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '通知渠道保存失败');
-    } finally {
-      endWrite();
-    }
-    await refreshSettings({ freshAfterInFlight: true }).catch(() => undefined);
-    loadingRef.current = false;
-    setLoading(false);
-  };
-
-  const test = async () => {
-    if (!selectedProvider || testingRef.current) return;
-    let values: NotificationFormValues;
-    try {
-      values = await form.validateFields();
-    } catch {
-      return;
-    }
-    testingRef.current = true;
-    setTesting(true);
-    try {
-      await api.post(`/api/settings/notification-channels/${encodeURIComponent(selectedProvider.type)}/test`, {
-        config: values.config,
-      });
-      message.success('测试通知已发送');
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '测试通知发送失败');
-    } finally {
-      testingRef.current = false;
-      setTesting(false);
-    }
-  };
-
-  const remove = async () => {
-    if (!selectedProvider || loadingRef.current || !beginWrite()) return;
-    loadingRef.current = true;
-    setLoading(true);
-    try {
-      await api.delete(`/api/settings/notification-channels/${encodeURIComponent(selectedProvider.type)}`);
-      message.success('通知渠道已停用并移除');
-      setConfirmRemoving(false);
-      form.resetFields();
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '通知渠道移除失败');
-    } finally {
-      endWrite();
-    }
-    await refreshSettings({ freshAfterInFlight: true }).catch(() => undefined);
-    loadingRef.current = false;
-    setLoading(false);
-  };
-
-  return (
-    <Card
-      className="settings-card"
-      title={<span className="settings-card-title"><BellOutlined /><span>通知渠道</span></span>}
-      size="small"
-      variant="outlined"
-      extra={selectedChannel ? <Tag color={selectedChannel.enabled ? 'success' : 'default'}>{selectedChannel.enabled ? '已启用' : '已停用'}</Tag> : <Tag>未配置</Tag>}
-    >
-      <Typography.Paragraph className="settings-notification-description" type="secondary">
-        还款、出账、年费和自定义提醒会通过已启用的渠道发送。同一渠道的当日提醒会合并，避免连续打扰。
-      </Typography.Paragraph>
-      {notificationSettings.channels.length > 0 && (
-        <Space wrap className="settings-notification-channel-summary">
-          <Typography.Text type="secondary">已配置：</Typography.Text>
-          {notificationSettings.channels.map((channel) => (
-            <Tag key={channel.type} color={channel.enabled ? 'success' : 'default'}>
-              {channel.name}{channel.enabled ? '' : '（已停用）'}
-            </Tag>
-          ))}
-        </Space>
-      )}
-      {readError && (
-        <Alert
-          type="error"
-          showIcon
-          title="通知渠道读取失败"
-          description={settings ? `${readError}。当前保留上次成功读取的设置，请重试确认。` : `${readError}。设置确认前不能保存或测试。`}
-          action={
-            <Button size="small" loading={reading} onClick={() => void onRetry().catch(() => undefined)}>
-              重试
-            </Button>
-          }
-          style={{ marginBottom: 16 }}
-        />
-      )}
-      {!settings ? (
-        !readError && (
-          <div className="mobile-section-loading">
-            <Spin description="正在读取通知渠道"><div style={{ width: 180, height: 52 }} /></Spin>
-          </div>
-        )
-      ) : (
-        <Form
-          className="settings-form settings-notification-form"
-          form={form}
-          layout="vertical"
-          disabled={Boolean(readError)}
-          initialValues={{ enabled: true, config: {} }}
-          onValuesChange={() => setDirty(true)}
-          onFinish={save}
-        >
-          {pendingProvider && <InlineConfirm title="切换通知渠道？" description="当前渠道有未保存的修改。" confirmText="放弃修改并切换" onCancel={() => setPendingProvider(null)} onConfirm={() => commitProvider(pendingProvider)} />}
-          <section className="presentation-form-section settings-channel-section">
-          <h3>发送渠道</h3>
-          <Form.Item label="渠道类型">
-            {isMobile ? (
-              <Radio.Group
-                className="settings-provider-options"
-                value={selectedProvider?.type}
-                options={providers.map((provider) => ({ value: provider.type, label: provider.name }))}
-                optionType="button"
-                buttonStyle="solid"
-                onChange={(event) => selectProvider(event.target.value)}
-              />
-            ) : (
-              <Select
-                value={selectedProvider?.type}
-                options={providers.map((provider) => ({ value: provider.type, label: provider.name }))}
-                onChange={selectProvider}
-                placeholder="选择通知渠道"
-              />
-            )}
-          </Form.Item>
-          {selectedProvider && (
-            <Alert
-              type="info"
-              showIcon
-              title={selectedProvider.name}
-              description={selectedProvider.description}
-              style={{ marginBottom: 16 }}
-            />
-          )}
-          <div className="settings-delivery-row">
-            <div className="settings-delivery-copy"><strong>发送状态</strong><span>{sendingEnabled === false ? '关闭' : '开启'}</span></div>
-            <Form.Item name="enabled" valuePropName="checked" noStyle><SettingSwitch aria-label="发送状态" /></Form.Item>
-          </div>
-          </section>
-          <section className="presentation-form-section settings-connection-section">
-            <h3>连接配置</h3>
-            {selectedProvider && <NotificationConfigFields provider={selectedProvider} prefix={['config']} />}
-          </section>
-          {confirmRemoving && (
-            isMobile ? (
-              <div className="settings-notification-remove-confirm">
-                <Alert
-                  type="warning"
-                  showIcon
-                  title={`停用并移除 ${selectedProvider?.name ?? '此渠道'}？`}
-                  description="移除后不会再通过此渠道发送提醒，可以随时重新绑定。"
-                />
-                <div className="settings-mobile-confirm-actions">
-                  <Button onClick={() => setConfirmRemoving(false)}>取消</Button>
-                  <Button type="primary" danger loading={loading} onClick={() => void remove()}>确认移除</Button>
-                </div>
-              </div>
-            ) : (
-              <Alert
-                type="warning"
-                showIcon
-                title={`停用并移除 ${selectedProvider?.name ?? '此渠道'}？`}
-                description="移除后不会再通过此渠道发送提醒，可以随时重新绑定。"
-                action={(
-                  <Space wrap>
-                    <Button size="small" onClick={() => setConfirmRemoving(false)}>取消</Button>
-                    <Button size="small" danger loading={loading} onClick={() => void remove()}>确认移除</Button>
-                  </Space>
-                )}
-                style={{ marginBottom: 16 }}
-              />
-            )
-          )}
-          {isMobile ? (
-            <div className="settings-notification-actions">
-              <Button icon={<SendOutlined />} onClick={test} loading={testing} disabled={loading}>
-                发送测试通知
-              </Button>
-              {selectedChannel && !confirmRemoving && (
-                <Button danger icon={<DeleteOutlined />} onClick={() => setConfirmRemoving(true)} disabled={loading || testing}>
-                  停用并移除
-                </Button>
-              )}
-              <Button
-                className="settings-notification-primary-action"
-                type="primary"
-                htmlType="submit"
-                loading={loading}
-                disabled={testing}
-              >
-                保存
-              </Button>
-            </div>
-          ) : (
-            <Space wrap className="settings-notification-actions">
-              <Button type="primary" htmlType="submit" loading={loading} disabled={testing}>
-                保存
-              </Button>
-              <Button icon={<SendOutlined />} onClick={test} loading={testing} disabled={loading}>
-                发送测试通知
-              </Button>
-              {selectedChannel && !confirmRemoving && (
-                <Button danger icon={<DeleteOutlined />} onClick={() => setConfirmRemoving(true)} disabled={loading || testing}>
-                  停用并移除
-                </Button>
-              )}
-            </Space>
-          )}
-        </Form>
-      )}
-    </Card>
-  );
-}
-
 export default function Settings() {
   const { message } = App.useApp();
   const { isMobile } = useResponsive();
+  // 编辑会话独立于响应式列表，切换断点时保留草稿。
+  const [editingChannel, setEditingChannel] = useState<NotificationChannelInfo | null | undefined>();
   const [pinFact, setPinFact] = useState<ReadFact<MeInfo['pin']>>({
     value: null,
     loading: false,
@@ -854,6 +556,16 @@ export default function Settings() {
   const refreshPin = useCoalescedRefresh(loadPin);
   const refreshSettings = useCoalescedRefresh(loadSettings);
 
+  const saveNotificationChannel = async (values: NotificationDraft) => {
+    if (!beginNotificationWrite()) throw new Error('其他操作正在保存，请稍后重试');
+    try {
+      if (editingChannel) await api.put('/api/settings/notification-channels/' + editingChannel.id, { name: values.name, config: values.config });
+      else await api.post('/api/settings/notification-channels', values);
+      message.success('已保存');
+    } finally { endNotificationWrite(); }
+    await refreshSettings({ freshAfterInFlight: true }).catch(() => message.warning('操作已完成，列表刷新失败，请重试'));
+  };
+
   useEffect(() => {
     void refreshPin().catch(() => undefined);
     void refreshSettings().catch(() => undefined);
@@ -907,12 +619,17 @@ export default function Settings() {
                   beginWrite={beginNotificationWrite}
                   endWrite={endNotificationWrite}
                   refreshSettings={refreshSettings}
+                  onEdit={setEditingChannel}
                 />
               </div>
+              <AboutSystemCard />
             </div>
           </MobilePullToRefresh>
         </Page>
       </div>
+      {editingChannel !== undefined && <NotificationChannelEditor key={editingChannel?.id ?? 'new'}
+        providers={settingsFact.value?.notifications.providers ?? []} initial={editingChannel ?? undefined}
+        onClose={() => setEditingChannel(undefined)} onSave={saveNotificationChannel} />}
       {mobileDestroyActive && <MobilePinDestroyFlow controller={pinController} />}
     </>
   );

@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { assertCompleteRecords } from '../statement-rows';
 import { buildBill, mergeAccountBillsByCurrency, parseAmount, parseDate } from '../_util';
 
 /**
@@ -53,7 +54,7 @@ export const ceb2017Parser: BankParser = {
     });
     if (!bill) return [];
     const bills = [bill];
-    const usdAmountRaw = pdf.match(/USD Statement Balance\s+\$?(-?[\d,]+\.\d{2})/)?.[1];
+    const usdAmountRaw = pdf.match(/USD Statement Balance\s+[＄$]?(-?[\d,]+\.\d{2})/)?.[1];
     const usdIdx = pdf.indexOf('美元账户');
     if (usdAmountRaw != null && usdIdx >= 0) {
       const usdSection = pdf.slice(usdIdx);
@@ -64,7 +65,7 @@ export const ceb2017Parser: BankParser = {
         cardLast4: usdCard[2]!,
         holderName: bill.holderName,
         amount: parseAmount(usdAmountRaw) ?? 0,
-        minAmount: usdMinRaw == null ? 0 : parseAmount(usdMinRaw),
+        minAmount: usdMinRaw == null ? null : parseAmount(usdMinRaw),
         currency: 'USD',
         statementDate,
         dueDate,
@@ -83,7 +84,7 @@ export const ceb2017Parser: BankParser = {
 
 /**
  * 光大 2017 PDF 明细（流式连排，同 ceb2019 格式）："交易日 记账日 卡尾 描述 金额"。
- * 仅取人民币区块（切片到美元账户），金额带"(存入)"前缀为还款/冲抵（取负）。
+ * 按人民币／美元账户分别读取，金额带"(存入)"前缀为还款/冲抵（取负）。
  */
 function parseCeb2017Transactions(pdf: string, currency: 'CNY' | 'USD'): Array<ParsedTransaction & { cardLast4?: string }> {
   const usdIdx = pdf.indexOf('美元账户');
@@ -91,9 +92,11 @@ function parseCeb2017Transactions(pdf: string, currency: 'CNY' | 'USD'): Array<P
     ? usdIdx >= 0 ? pdf.slice(usdIdx) : ''
     : usdIdx > 0 ? pdf.slice(0, usdIdx) : pdf;
   const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
+  let consumed = 0;
   for (const m of section.matchAll(
     /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+(\d{4})\s+((?:(?!\d{4}\/\d{2}\/\d{2})[\s\S])+?)\s+(?:[（(]存入[）)])?(-?[\d,]+\.\d{2})/g,
   )) {
+    consumed++;
     const desc = m[4]!.replace(/\s+/g, ' ').trim();
     if (!desc || /Closing/.test(desc)) continue;
     const value = parseAmount(m[5]!);
@@ -106,5 +109,6 @@ function parseCeb2017Transactions(pdf: string, currency: 'CNY' | 'USD'): Array<P
       cardLast4: m[3],
     });
   }
+  assertCompleteRecords(section, consumed);
   return txns;
 }

@@ -1,3 +1,4 @@
+import { fiveColumnTextTransactions, htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill } from '../types';
 import {
   attachTransactions,
@@ -55,7 +56,7 @@ export const hnnxs2026Parser: BankParser = {
     });
     if (!bill) return [];
     // 明细为 5 行组：交易日/记账日/摘要/金额/卡尾号；金额负数=转入（还款），正数=支出
-    attachTransactions([bill], fiveLineTransactions(text, /^(-?[\d,]+\.\d{2})$/));
+    attachStatementTransactions([bill], htmlTransactions(mail, 'five') ?? fiveColumnTextTransactions(text, /^(-?[\d,]+\.\d{2})$/));
     return [bill];
   },
 };

@@ -1,14 +1,12 @@
 import { useResponsive } from '../responsive';
-import { App, Button, List, Modal, Progress, Space, Tag, Typography } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { App, Button, Modal, Progress, Segmented, theme } from 'antd';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api } from '../api/client';
-import type { UpgradeMigrationMode, UpgradePlan, UpgradeTask } from '../api/types';
+import type { UpgradePlan, UpgradeTask, StatementRepairResult } from '../api/types';
+import UpgradeResultSummary from './UpgradeResultSummary';
+import { ExclamationCircleFilled, LockOutlined } from '../skins/icons';
+import './upgrade-prompt.css';
 
-export function migrationModeText(mode: UpgradeMigrationMode): string {
-  if (mode === 'required') return '必选迁移';
-  if (mode === 'optional') return '可选迁移';
-  return '静默迁移';
-}
 function taskStatusText(task: UpgradeTask): string | null {
   if (task.status === 'approved') return '已确认';
   if (task.status === 'ignored') return '已忽略';
@@ -20,17 +18,28 @@ function taskStatusText(task: UpgradeTask): string | null {
 export default function UpgradePrompt() {
   const { message } = App.useApp();
   const { isMobile } = useResponsive();
+  const { token } = theme.useToken();
   const [plan, setPlan] = useState<UpgradePlan | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [result, setResult] = useState<StatementRepairResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [choices, setChoices] = useState<Record<string, 'approve' | 'ignore'>>({});
   const hadExecution = useRef(false);
+
+  const showResult = async () => {
+    const report = await api.get<StatementRepairResult | null>('/api/upgrades/latest-result').catch(() => null);
+    if (report?.counts) setResult(report);
+    else message.success('系统升级已完成');
+  };
 
   const load = async () => {
     const next = await api.get<UpgradePlan | null>('/api/upgrades');
     if (!next && hadExecution.current) {
       hadExecution.current = false;
-      message.success('系统升级已完成');
+      await showResult();
     }
-    if (next?.status === 'executing') hadExecution.current = true;
+    if (next?.status === 'executing' && next.migrations.some((migration) => migration.mode !== 'silent')) {
+      hadExecution.current = true;
+    }
     setPlan(next);
   };
 
@@ -44,83 +53,108 @@ export default function UpgradePrompt() {
     return () => window.clearInterval(timer);
   }, [plan?.status]);
 
-  if (!plan) return null;
+  // 静默项目只参与后台协调，不展示项目、进度弹窗或完成提示。
+  const visibleMigrations = plan?.migrations.filter((migration) => migration.mode !== 'silent') ?? [];
+  if (!plan || visibleMigrations.length === 0) return result ? <Modal key="upgrade-result" open title="系统升级结果" onCancel={() => setResult(null)}
+    footer={<Button type="primary" onClick={() => setResult(null)}>完成</Button>}><UpgradeResultSummary result={result} /></Modal> : null;
   const executing = plan.status === 'executing';
+  const pendingTasks = plan.tasks.filter((task) => ['awaiting_decision', 'failed'].includes(task.status));
+  const hasIgnoredChoices = pendingTasks.some((task) => task.mode === 'optional' && choices[task.key] === 'ignore');
   const activeTask = plan.tasks.find((task) => task.status === 'running');
   const total = plan.tasks.reduce((sum, task) => sum + task.total, 0);
   const processed = plan.tasks.reduce((sum, task) => sum + task.processed, 0);
   const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  const standaloneError = plan.error && !plan.tasks.some((task) => task.error === plan.error);
 
-  const decide = async (task: UpgradeTask, action: 'approve' | 'ignore') => {
-    setBusyKey(task.key);
+  const confirm = async () => {
+    setSubmitting(true);
     try {
-      const next = await api.post<UpgradePlan>(`/api/upgrades/${encodeURIComponent(task.key)}/${action}`);
-      if (next.status === 'executing') hadExecution.current = true;
+      const next = await api.post<UpgradePlan | null>('/api/upgrades/decisions', {
+        planId: plan.id,
+        decisions: pendingTasks.map((task) => ({
+          key: task.key,
+          action: task.mode === 'required' ? 'approve' : choices[task.key] ?? 'approve',
+        })),
+      });
+      if (!next) await showResult();
+      hadExecution.current = next?.status === 'executing';
+      setChoices({});
       setPlan(next);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '升级操作失败，请重试');
     } finally {
-      setBusyKey(null);
+      setSubmitting(false);
     }
   };
 
   return (
-    <Modal open width={isMobile ? '100vw' : 'min(820px, 94vw)'} className={isMobile ? 'mobile-upgrade-flow' : undefined} style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : undefined} title={`系统升级 ${plan.fromVersion ?? '旧版本'} → ${plan.toVersion}`}
-      closable={false} maskClosable={false} keyboard={false} footer={null}>
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Modal key="upgrade-plan" open width={isMobile ? '100vw' : 'min(860px, 94vw)'}
+      className={`upgrade-flow${isMobile ? ' mobile-upgrade-flow' : ''}`}
+      style={isMobile ? { top: 0, maxWidth: '100vw', paddingBottom: 0 } : { top: 64 }}
+      title={<div className="upgrade-heading"><span>系统升级</span><span className="upgrade-version">{plan.fromVersion ?? '旧版本'} → {plan.toVersion}</span></div>}
+      closable={false} maskClosable={false} keyboard={false}
+      footer={!executing && pendingTasks.length > 0 ? (
+        <Button type="primary" block={isMobile} loading={submitting} onClick={() => void confirm()}>
+          {plan.status === 'failed' && !hasIgnoredChoices ? '重试' : '确认并继续'}
+        </Button>
+      ) : null}>
+      <div className="upgrade-plan">
         {plan.hasRequired && (
-          <Typography.Text type="warning">
-            本次升级包含必选迁移。全部迁移完成前，邮件同步、业务更新和提醒推送已暂停。
-          </Typography.Text>
+          <div className="upgrade-gate-notice" role="status">
+            <LockOutlined aria-hidden />
+            <span>编辑、邮件同步和提醒推送已暂停，完成更新后恢复。</span>
+          </div>
         )}
-        {!plan.hasRequired && plan.status === 'awaiting_decision' && (
-          <Typography.Text type="secondary">
-            迁移尚未开始；等待决定期间，邮件同步和提醒推送保持正常。
-          </Typography.Text>
-        )}
-        {plan.error && <Typography.Text type="danger">{plan.error}</Typography.Text>}
+        {standaloneError && <div className="upgrade-error" role="alert"><ExclamationCircleFilled aria-hidden /><span>{plan.error}</span></div>}
         {executing && (
-          <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Typography.Text>{activeTask ? `正在执行：${activeTask.title}` : '正在执行升级迁移'}</Typography.Text>
+          <div className="upgrade-progress">
+            <span>{activeTask ? `正在更新：${activeTask.title}` : '正在更新'}</span>
             <Progress percent={percent} status="active" />
-          </Space>
+          </div>
         )}
-        <List bordered dataSource={plan.migrations} renderItem={(migration) => {
+        <div className="upgrade-items" role="list">{visibleMigrations.map((migration) => {
           const task = plan.tasks.find((candidate) => candidate.key === migration.key);
           const statusText = task ? taskStatusText(task) : null;
           const actionable = task && ['awaiting_decision', 'failed'].includes(task.status) && !executing;
-          const actions = actionable ? [
-            ...(task.mode === 'optional' ? [(
-              <Button key="ignore" danger disabled={busyKey != null} onClick={() => void decide(task, 'ignore')}>
-                {task.ignoreLabel ?? '忽略迁移'}
-              </Button>
-            )] : []),
-            <Button key="approve" type="primary" loading={busyKey === task.key}
-              disabled={busyKey != null && busyKey !== task.key} onClick={() => void decide(task, 'approve')}>
-              {task.status === 'failed' ? '重新执行' : task.executeLabel}
-            </Button>,
-          ] : undefined;
+          const ignoring = actionable && task.mode === 'optional' && choices[task.key] === 'ignore';
+          const warningId = `upgrade-ignore-${plan.id}-${migration.key}`;
           return (
-            <List.Item actions={actions}>
-              <List.Item.Meta
-                title={<Space wrap><span>{migration.title}</span>
-                  <Tag color={migration.mode === 'required' ? 'red' : migration.mode === 'optional' ? 'blue' : 'default'}>
-                    {migrationModeText(migration.mode)}
-                  </Tag>{statusText && <Tag>{statusText}</Tag>}</Space>}
-                description={<Space direction="vertical" size={4}>
-                  <Typography.Text type="secondary">{migration.description}</Typography.Text>
-                  {task?.status === 'failed' && task.error && <Typography.Text type="danger">{task.error}</Typography.Text>}
-                </Space>}
-              />
-            </List.Item>
+            <section key={migration.key} className="upgrade-item" role="listitem" aria-labelledby={`upgrade-title-${migration.key}`}>
+              <h3 className="upgrade-item-title" id={`upgrade-title-${migration.key}`}>{migration.title}</h3>
+              <div className="upgrade-item-scope">
+                {migration.mode === 'optional' && <span className="upgrade-optional">可选更新</span>}
+                {migration.summary && <span>{migration.summary}</span>}
+              </div>
+              <p className="upgrade-item-description">{migration.description}</p>
+              <div className="upgrade-item-action">
+              {actionable && task.mode === 'optional' && (
+                <Segmented<'approve' | 'ignore'> block motionName=""
+                  className={`upgrade-decision${choices[task.key] === 'ignore' ? '' : ' upgrade-decision-recommended'}`}
+                  style={{ '--upgrade-primary-ink': token.colorTextLightSolid } as CSSProperties}
+                  name={`upgrade-choice-${plan.id}-${task.key}`}
+                  aria-label={migration.title} value={choices[task.key] ?? 'approve'} disabled={submitting}
+                  aria-describedby={ignoring ? warningId : undefined}
+                  options={[
+                    { value: 'ignore', label: '忽略' },
+                    { value: 'approve', label: '执行' },
+                  ]}
+                  onChange={(value) => setChoices((current) => ({ ...current, [task.key]: value }))} />
+              )}
+              {statusText && <span className="upgrade-status">{statusText}</span>}
+              {!statusText && migration.mode === 'required' && <span className="upgrade-fixed-action"><LockOutlined aria-hidden />必须更新</span>}
+              </div>
+              {task?.status === 'failed' && task.error && <div className="upgrade-error" role="alert"><ExclamationCircleFilled aria-hidden /><span>{task.error}</span></div>}
+              {ignoring && (
+                <div id={warningId} className="upgrade-ignore-warning" role="alert">
+                  <ExclamationCircleFilled aria-hidden />
+                  <span>{task.status === 'failed' && task.succeeded > 0 && '已经完成的修改会保留。'}{task.ignoreWarning
+                    ?? '系统将不再提供本次迁移服务。'}</span>
+                </div>
+              )}
+            </section>
           );
-        }} />
-        {plan.tasks.some((task) => task.mode === 'optional' && task.status === 'awaiting_decision') && (
-          <Typography.Text type="secondary">
-            忽略后，本次数据更新将不再提供执行入口。
-          </Typography.Text>
-        )}
-      </Space>
+        })}</div>
+      </div>
     </Modal>
   );
 }

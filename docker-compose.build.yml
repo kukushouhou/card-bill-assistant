@@ -7,4 +7,5 @@ services:
   app:
     build:
       context: .
+      pull: true
     image: card-bill-assistant:local

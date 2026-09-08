@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { abcTextTransactions, attachStatementTransactions, htmlTransactions } from '../statement-rows';
 import { attachTransactions, buildBill, cycleEnd, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
 /**
@@ -7,7 +8,7 @@ import { attachTransactions, buildBill, cycleEnd, mailText, parseAmount, parseDa
  *   标题: 中国农业银行金穗信用卡电子对账单
  *   正文: 卡号 Card No 625998******9164 账单周期 Statement Cycle 2026/07/20-2026/08/19
  *         到期还款日 Payment Due Date 2026/09/13
- *         本期应还款额(欠款为-) New Balance 人民币(CNY) -1,399.80（负数=溢缴款）
+ *         本期应还款额(欠款为-) New Balance 人民币(CNY) -1,399.80（银行负数表示欠款）
  */
 export const abc2026Parser: BankParser = {
   id: 'abc2026',
@@ -40,30 +41,15 @@ export const abc2026Parser: BankParser = {
       bankName: '农业银行',
       cardLast4: cardM[2],
       holderName: pickHolder(text),
-      amount,
-      minAmount,
+      amount: -amount,
+      minAmount: minAmount == null ? null : -minAmount,
       currency: 'CNY',
       statementDate,
       dueDate,
       cardNoFull: `${cardM[1]}******${cardM[2]}`,
     });
     if (!bill) return [];
-    // 明细为单行连续流（拍平后多笔连排）："260722 260722 9164 摘要 121.60/CNY -121.60/CNY"
-    // 入账金额列标注"(支出为-)"：负=消费入账(取正)，正=还款/存入(取负)
-    const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
-    for (const m of text.matchAll(
-      /(\d{6})\s+(\d{6})\s+(\d{4})\s+(.{2,60}?)\s+(-?[\d,]+\.\d{2})\/CNY\s+(-?[\d,]+\.\d{2})\/CNY/g,
-    )) {
-      const posted = parseAmount(m[6]);
-      if (posted == null) continue;
-      txns.push({
-        date: m[1],
-        description: m[4].trim(),
-        amount: -posted,
-        cardLast4: m[3],
-      });
-    }
-    attachTransactions([bill], txns);
+    attachStatementTransactions([bill], htmlTransactions(mail, 'abc') ?? abcTextTransactions(text));
     return [bill];
   },
 };

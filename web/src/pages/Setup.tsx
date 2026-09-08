@@ -1,18 +1,15 @@
 import BuiltinSkinPicker from '../skins/BuiltinSkinPicker';
 import { useSkin, SkinDecorations, ColorModeSwitch } from '../skins/SkinProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Card, Checkbox, Col, Collapse, Divider, Form, Input, Row, Steps, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, Divider, Form, Input, Row, Steps, Tag, Typography } from 'antd';
 import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '../skins/icons';
 import { api, ApiError } from '../api/client';
 import { useAppName } from '../appName';
 import type { SetupStatus } from '../api/types';
 import { useResponsive } from '../responsive';
 import { useDraftGuard } from '../lib/draftGuard';
-import {
-  defaultNotificationConfig,
-  NotificationConfigFields,
-  type NotificationConfigValue,
-} from '../components/NotificationConfigFields';
+import SetupNotificationFields from '../components/SetupNotificationFields';
+import type { NotificationDraft } from '../components/NotificationChannelEditor';
 
 interface SetupAccountValues {
   password: string;
@@ -20,7 +17,7 @@ interface SetupAccountValues {
 }
 
 interface SetupNotificationValues {
-  notificationConfigs?: Record<string, NotificationConfigValue>;
+  notificationEntries?: NotificationDraft[];
 }
 
 interface SetupFormValues extends SetupAccountValues, SetupNotificationValues {
@@ -47,13 +44,15 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [installing, setInstalling] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   useDraftGuard(hasDraft && step < COMPLETE_STEP);
-  const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
-  const [expandedNotificationType, setExpandedNotificationType] = useState<string>();
   const [form] = Form.useForm<SetupFormValues>();
   const checkingRef = useRef(false);
   const installingRef = useRef(false);
   const accountValuesRef = useRef<SetupAccountValues | null>(null);
   const notificationValuesRef = useRef<SetupNotificationValues>({});
+
+  useEffect(() => {
+    if (step === 2) form.setFieldValue('notificationEntries', structuredClone(notificationValuesRef.current.notificationEntries ?? []));
+  }, [form, step]);
 
   const check = useCallback(async () => {
     if (checkingRef.current) return;
@@ -92,10 +91,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         skinId,
         password: accountValues.password,
         pin: accountValues.pin || undefined,
-        notifications: notificationTypes.map((type) => ({
-          type,
-          config: values.notificationConfigs?.[type] ?? {},
-        })),
+        notifications: values.notificationEntries ?? [],
       });
       void appearance.refresh().catch(() => undefined);
       message.success('安装完成');
@@ -300,73 +296,16 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 2 && (
-          <Form onValuesChange={() => setHasDraft(true)} form={form} layout="vertical" onFinish={() => {
-            // 切换步骤会卸载字段，单独保存已确认的全部渠道配置。
-            notificationValuesRef.current = { notificationConfigs: form.getFieldValue('notificationConfigs') ?? {} };
-            setStep(3);
-          }} initialValues={{ notificationConfigs: {} }}>
-            <div className="setup-notification-heading">
-                <Typography.Title className="setup-section-title" level={5} style={{ margin: 0 }}><BellOutlined /><span>选择通知渠道</span></Typography.Title>
-                <Typography.Text type="secondary">可选择多个渠道同时发送，也可暂不配置，安装后再到系统设置中添加。</Typography.Text>
-            </div>
-
-            <Checkbox.Group
-              className="setup-notification-options"
-              value={notificationTypes}
-              onChange={(values) => {
-                const nextTypes = values.map(String);
-                const added = nextTypes.find((type) => !notificationTypes.includes(type));
-                if (added) {
-                  const provider = (status?.notificationProviders ?? []).find((item) => item.type === added);
-                  if (provider && form.getFieldValue(['notificationConfigs', added]) == null) {
-                    form.setFieldValue(['notificationConfigs', added], defaultNotificationConfig(provider));
-                  }
-                  setExpandedNotificationType(added);
-                }
-                setNotificationTypes(nextTypes);
-              }}
-              style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 20 }}
-            >
-              {(status?.notificationProviders ?? []).map((provider) => (
-                <Checkbox key={provider.type} value={provider.type}>{provider.name}</Checkbox>
-              ))}
-            </Checkbox.Group>
-
-            {notificationTypes.length === 0 ? (
-              <Alert
-                type="info"
-                showIcon
-                title="安装后不会发送系统通知"
-                description="账单与提醒仍会正常生成，你可以稍后在设置页绑定通知渠道。"
-                style={{ marginTop: 20 }}
-              />
-            ) : (
-              <Collapse
-                accordion
-                className="setup-notification-config"
-                style={{ marginTop: 20 }}
-                activeKey={expandedNotificationType}
-                onChange={(key) => setExpandedNotificationType(Array.isArray(key) ? key[0] : key)}
-                items={(status?.notificationProviders ?? [])
-                  .filter((provider) => notificationTypes.includes(provider.type))
-                  .map((provider) => ({
-                    key: provider.type,
-                    label: provider.name,
-                    children: (
-                      <>
-                        <Typography.Paragraph type="secondary">{provider.description}</Typography.Paragraph>
-                        <NotificationConfigFields
-                          provider={provider}
-                          prefix={['notificationConfigs', provider.type]}
-                        />
-                      </>
-                    ),
-                  }))}
-              />
-            )}
-
+          <Form form={form} layout="vertical" initialValues={{ notificationEntries: notificationValuesRef.current.notificationEntries ?? [] }}
+            onValuesChange={() => { setHasDraft(true); notificationValuesRef.current = { notificationEntries: structuredClone(form.getFieldValue('notificationEntries') ?? []) }; }}
+            onFinish={() => {
+              notificationValuesRef.current = { notificationEntries: structuredClone(form.getFieldValue('notificationEntries') ?? []) };
+              setStep(3);
+            }}>
+            <Typography.Title className="setup-section-title" level={5}><BellOutlined /><span>选择通知渠道</span></Typography.Title>
+            <SetupNotificationFields providers={status?.notificationProviders ?? []} />
             <div className="setup-actions">
-              <Button onClick={() => setStep(1)}>上一步</Button>
+              <Button onClick={() => { notificationValuesRef.current = { notificationEntries: structuredClone(form.getFieldValue('notificationEntries') ?? []) }; setStep(1); }}>上一步</Button>
               <Button type="primary" htmlType="submit">下一步</Button>
             </div>
           </Form>

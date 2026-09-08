@@ -129,4 +129,31 @@ describe('runDailyReminderJob 通用通知渠道', () => {
     expect(prisma.notifyLog.updateMany).not.toHaveBeenCalled();
     expect(sendNotificationChannelBatch).not.toHaveBeenCalled();
   });
+
+  it('旧 Bark 当天已发送时只跳过旧实例，新增 Bark 独立发送并可失败重试', async () => {
+    resolveNotificationChannels.mockResolvedValue([
+      { id: 7, type: 'bark', name: '旧手机', deliveryKey: null, enabled: true, config: {} },
+      { id: 8, type: 'bark', name: '备用手机', deliveryKey: 'instance:8', enabled: true, config: {} },
+    ]);
+    prisma.notifyLog.create.mockImplementation(async ({ data }) => {
+      if (data.channel === 'bark') throw { code: 'P2002' };
+      return { id: 8 };
+    });
+    prisma.notifyLog.updateMany.mockResolvedValue({ count: 0 });
+    sendNotificationChannelBatch.mockResolvedValueOnce({ ok: false });
+    expect(await runDailyReminderJob()).toEqual({ pushed: 0, skipped: 1, failed: 1 });
+    expect(prisma.notifyLog.deleteMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { in: [8] } }) }));
+    expect(await runDailyReminderJob()).toEqual({ pushed: 1, skipped: 1, failed: 0 });
+    expect(sendNotificationChannelBatch.mock.calls.every(([channel]) => channel.id === 8)).toBe(true);
+  });
+  it('一个实例发送失败后仍继续发送同类型的另一个实例', async () => {
+    resolveNotificationChannels.mockResolvedValue([
+      { id: 8, type: 'bark', name: '手机甲', deliveryKey: 'instance:8', config: {} },
+      { id: 9, type: 'bark', name: '手机乙', deliveryKey: 'instance:9', config: {} },
+    ]);
+    sendNotificationChannelBatch.mockResolvedValueOnce({ ok: false });
+    expect(await runDailyReminderJob()).toEqual({ pushed: 1, failed: 1, skipped: 0 });
+    expect(prisma.notifyLog.create.mock.calls.map(([arg]) => arg.data.channel)).toEqual(['instance:8', 'instance:9']);
+  });
+
 });

@@ -1,3 +1,4 @@
+.transaction-return { display: flex; justify-content: flex-end; margin-bottom: 16px; }
 .transaction-filters {
   display: grid;
   grid-template-columns: minmax(140px, 180px) minmax(180px, 230px) minmax(240px, 260px) minmax(200px, 1fr);
@@ -173,6 +174,20 @@
 .transaction-context-heading > .ant-btn { flex-shrink: 0; }
 .transaction-context-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
 .transaction-context-controls > .ant-btn:last-child { margin-left: auto; }
+.transaction-bill-summary { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(0, 2fr); align-items: stretch; gap: 24px; }
+.transaction-bill-total { display: grid; align-content: center; gap: 10px; padding: 18px; border-radius: var(--radius, 10px); background: var(--primary-soft); }
+.transaction-bill-total > span { color: var(--text-secondary); font-size: 13px; }
+.transaction-bill-total > strong { font-size: 30px; line-height: 1.2; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
+.transaction-bill-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center; gap: 16px 20px; margin: 0; }
+.transaction-bill-facts > div { display: grid; align-content: start; gap: 7px; min-width: 0; }
+.transaction-bill-facts dt { font-size: 12px; color: var(--text-secondary); }
+.transaction-bill-facts dd { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: 14px; line-height: 22px; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; }
+.transaction-bill-status .ant-tag { margin: 0; }
+.transaction-remaining { color: var(--danger); }
+.transaction-due { font-size: 12px; }
+.transaction-due-today { color: var(--danger); }
+.transaction-due-soon { color: var(--warning); }
+.transaction-due-later { color: var(--text-secondary); font-weight: 400; }
 @media(max-width:1023px) {
   .transaction-context { padding: 16px; gap: 14px; }
   .transaction-context-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -180,4 +195,10 @@
   .transaction-context-controls .ant-segmented-group { display: flex; }
   .transaction-context-controls .ant-segmented-item { flex: 1; }
   .transaction-context-controls > .ant-btn:last-child { grid-column: 2; width: 100%; padding-inline: 8px; }
+  .transaction-bill-summary { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .transaction-bill-total { padding: 16px; gap: 8px; }
+  .transaction-bill-total > strong { font-size: 28px; }
+  .transaction-bill-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .transaction-bill-status { grid-column: 1 / -1; }
+  .transaction-context-heading > .ant-btn, .transaction-context-controls > .ant-btn { min-height: 44px; }
 }

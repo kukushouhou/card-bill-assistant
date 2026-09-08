@@ -57,12 +57,18 @@ try {
       const selected = await context.request.put('/api/skins/active', { data: { id, version: '1.0.0' } });
       assert.equal(selected.status(), 200);
       await context.addInitScript(value => localStorage.setItem('appearance.mode', value), mode);
-      const page = await context.newPage(); await page.goto('/bills');
+      const page = await context.newPage();
+      const agendaResponse = page.waitForResponse(response => response.url().includes('/api/agenda?') && response.status() === 200);
+      await page.goto('/bills');
+      const agenda = await (await agendaResponse).json();
+      const sorted = [...agenda.items].sort((a, b) => Number(!a.daysOverdue) - Number(!b.daysOverdue) || a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+      assert.deepEqual(agenda.items.map(item => item.key), sorted.map(item => item.key), '待处理预览必须按逾期优先、还款日升序排列');
       await expect(page.locator('html')).toHaveAttribute('data-skin', id + '@1.0.0');
       await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
       await expect(page.locator('.agenda-summary-number').first()).toHaveText('4,123.40');
       const rows = page.locator(mobile ? '.agenda-mobile-row' : '.agenda-table .ant-table-row');
       await expect(rows.nth(mobile ? 1 : 2)).toBeVisible();
+      assert.deepEqual(await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-row-key'))), agenda.items.map(item => item.key), '预览显示顺序必须与账单接口一致');
       await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
       const layout = await checkAlignment(page, mobile);
       const summary = await page.locator('.agenda-totals').boundingBox();
@@ -76,7 +82,7 @@ try {
       const hash = createHash('sha256').update(png).digest('hex').slice(0, 12);
       const variant = device + '-' + mode;
       captures.push({ id, variant, name: 'previews/' + variant + '-' + hash + '.png', png });
-      audit.push({ id, variant, clip, hash, ...layout });
+      audit.push({ id, variant, clip, hash, order: agenda.items.map(item => ({ key: item.key, dueDate: item.date, daysOverdue: item.daysOverdue })), ...layout });
     } finally { await context.close(); }
   }
 } finally { await browser.close(); }

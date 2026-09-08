@@ -1,0 +1,30 @@
+.notification-channel-heading { display: flex; align-items: center; gap: 8px; }
+.notification-channel-list .ant-table-cell { vertical-align: middle; }
+.notification-channel-name { overflow-wrap: anywhere; font-weight: 500; }
+.notification-channel-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.notification-channel-status > span { color: var(--text-secondary); font-size: 13px; }
+.notification-channel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.notification-channel-error { color: var(--danger); margin-top: 4px; font-size: 13px; }
+.notification-basic-fields { margin-bottom: 20px; }
+.notification-basic-fields .ant-form-item { margin-bottom: 0; }
+.notification-provider-fields { min-width: 0; }
+.notification-provider-fields .ant-collapse { margin-bottom: 16px; }
+.notification-field-note { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin: 8px 0; }
+.bark-sound-select { display: grid; gap: 8px; }
+.bark-sound-select .ant-select { width: 100%; }
+.notification-channel-cards { display: grid; gap: 12px; }
+.notification-channel-card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.notification-channel-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notification-channel-type { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+.notification-channel-card .notification-channel-actions { margin-top: 12px; }
+.setup-notification-entry { margin-bottom: 12px; }
+.setup-notification-entry-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.setup-notification-entry .ant-collapse-header-text { min-width: 0; }
+@media (width < 1024px) {
+  .notification-basic-fields .ant-col + .ant-col { margin-top: 16px; }
+  .notification-channel-actions .ant-btn { min-height: 44px; }
+  .notification-editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .notification-editor-actions .ant-btn:first-child { grid-column: 1 / -1; }
+  .notification-editor-actions .ant-btn:nth-child(2) { grid-column: 2; grid-row: 2; }
+  .notification-editor-actions .ant-btn:nth-child(3) { grid-column: 1; grid-row: 2; }
+}

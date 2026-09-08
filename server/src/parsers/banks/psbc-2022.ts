@@ -1,3 +1,4 @@
+import { htmlTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { buildBill, mailText, monthlyRuleDate, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
@@ -15,41 +16,17 @@ import { buildBill, mailText, monthlyRuleDate, parseAmount, parseDate, pick, pic
  *         → 摘要 → ￥金额行 → 卡尾行（2024 起金额后另有国别/境内外标识行）
  */
 
-/**
- * 旧版明细解析：与现役同构的状态机，仅日期格式为 YYYY/MM/DD。
- */
-function parsePsbc2022Transactions(text: string): Array<ParsedTransaction & { cardLast4?: string }> {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
-  for (let i = 0; i < lines.length; i++) {
-    const d1 = lines[i] ?? '';
-    if (!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(d1)) continue;
-    const d2 = lines[i + 1] ?? '';
-    if (!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(d2)) continue;
-    let j = i + 2;
-    const desc: string[] = [];
-    let amount: number | null = null;
-    while (j < lines.length && j <= i + 8) {
-      const l = lines[j] ?? '';
-      const am = l.match(/^￥\s*(-?[\d,]+\.\d{2})$/);
-      if (am) {
-        amount = parseAmount(am[1]);
-        break;
-      }
-      desc.push(l);
-      j++;
-    }
-    if (amount == null || desc.length === 0) continue;
-    const tailLine = lines[j + 1] ?? '';
-    txns.push({
-      date: d1,
-      description: desc.join(''),
-      amount,
-      cardLast4: /^\d{4}$/.test(tailLine) ? tailLine : undefined,
-    });
-    i = j;
-  }
-  return txns;
+/** 日期对分隔完整记录，兼容无分隔符日期和跨行描述。 */
+function parsePsbc2022Transactions(text: string): ParsedTransaction[] {
+  const heads = [...text.matchAll(/\b(\d{4}\/\d{1,2}\/\d{1,2}|\d{8})\s+(\d{4}\/\d{1,2}\/\d{1,2}|\d{8})\b/g)];
+  return heads.map((head, index) => {
+    const segment = text.slice(head.index! + head[0].length, heads[index + 1]?.index ?? text.length);
+    const record = segment.match(/^\s*([\s\S]+?)\s+￥\s*(-?[\d,]+\.\d{2})(?:\s+(\d{4})\b)?/);
+    if (!record) throw new Error('邮储交易区块存在未完整读取的记录');
+    const amount = parseAmount(record[2]);
+    if (amount == null) throw new Error('邮储交易金额无法读取');
+    return { date: head[1], description: record[1]!.replace(/\s+/g, ' ').trim(), amount, cardLast4: record[3] ?? null };
+  });
 }
 
 export const psbc2022Parser: BankParser = {
@@ -89,7 +66,7 @@ export const psbc2022Parser: BankParser = {
     });
     if (!bill) return [];
 
-    const txns = parsePsbc2022Transactions(text);
+    const txns = htmlTransactions(mail, 'five') ?? parsePsbc2022Transactions(text);
     if (txns.length > 0) {
       bill.transactions = txns;
       // 合并账户：账单内出现过的全部卡尾（主卡在前）

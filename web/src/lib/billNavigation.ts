@@ -32,11 +32,12 @@ export function paymentTarget(row: BillRow): MarkPaidTarget {
 export function useBillNavigation() {
   const location = useLocation();
   const navigate = useMobileFlowNavigation();
-  return (billId: number) => {
+  return (target: number | { cardId: number }) => {
     const state = { ...location.state, sourceSnapshot: sourceSnapshots.get(location.pathname), sourceScrollTop: document.getElementById('root')?.scrollTop || window.scrollY };
     // 同时保存到原浏览器记录，让浏览器返回与页面内返回使用相同来源。
     window.history.replaceState({ ...window.history.state, usr: state }, '');
-    navigate('/transactions?billId=' + billId, { state: { billSource: { path: location.pathname + location.search, state } } });
+    const query = typeof target === 'number' ? 'billId=' + target : 'cardId=' + target.cardId;
+    navigate('/transactions?' + query, { state: { billSource: { path: location.pathname + location.search, state, ...(typeof target === 'number' ? {} : { cardId: target.cardId }) } } });
   };
 }
 

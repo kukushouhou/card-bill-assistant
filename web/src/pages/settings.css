@@ -225,3 +225,20 @@
     margin-left: auto;
   }
 }
+
+.settings-about { grid-column: 1 / -1; min-width: 0; margin-top: 16px; padding: 28px 8px 12px; border-top: 1px solid var(--border); }
+.settings-about > h2 { margin: 0 0 24px; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+.settings-about-brand { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.settings-about-mark { flex: none; font-size: 46px; color: var(--primary); }
+.settings-about-brand h3 { margin: 0 0 4px; font-size: 24px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.settings-about .settings-about-tagline { margin: 0; color: var(--text-secondary); }
+.settings-about .settings-about-version { margin-bottom: 12px; font-size: 13px; color: var(--text-secondary); }
+.settings-about .settings-about-description { max-width: 640px; margin-bottom: 20px; line-height: 1.8; }
+.settings-about-footer { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 28px; font-size: 12px; line-height: 1.8; color: var(--text-secondary); }
+.settings-about-upgrade { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 767px) {
+  .settings-about { padding: 24px 4px 8px; }
+  .settings-about-brand { gap: 12px; }
+  .settings-about-mark { font-size: 36px; }
+  .settings-about-brand h3 { font-size: 21px; }
+}

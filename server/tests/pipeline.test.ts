@@ -326,7 +326,7 @@ describe('applyParsedBill 明细元数据落库', () => {
     });
     expect(tx.billTransaction.deleteMany).toHaveBeenCalledWith({
       where: {
-        billId: null,
+        billId: null, statementMailLogId: null,
         dailyMailLogId: { not: null },
         bankName: '招商银行',
         transactionDate: {
@@ -480,7 +480,7 @@ describe('applyCurrentCycleTransactions 未出账落库', () => {
     expect(tx.card.create).not.toHaveBeenCalled();
     expect(tx.billTransaction.createMany).toHaveBeenCalledWith({
       data: [{
-        billId: null,
+        billId: null, statementMailLogId: null,
         bankName: '招商银行',
         dailyMailLogId: 88,
         cardId: 19,

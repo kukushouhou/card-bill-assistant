@@ -54,6 +54,7 @@ export interface UpgradeTaskView {
   description: string;
   executeLabel: string;
   ignoreLabel: string | null;
+  ignoreWarning: string | null;
   status: string;
   total: number;
   processed: number;
@@ -98,13 +99,15 @@ function parseManifest(value: unknown): ManifestEntry[] {
       || typeof row.title !== 'string'
       || typeof row.description !== 'string'
     ) return [];
+    // 旧计划保留原执行快照，展示文案使用当前定义，避免旧提示一直留在界面。
+    const migration = migrationByKey(row.key);
     return [{
       key: row.key,
       targetVersion: row.targetVersion,
       order: row.order,
       mode: row.mode as MigrationMode,
-      title: row.title,
-      description: row.description,
+      title: migration?.title ?? row.title,
+      description: migration?.description ?? row.description,
       total: Number(row.total ?? 0),
       summary: typeof row.summary === 'string' ? row.summary : null,
     }];
@@ -128,15 +131,19 @@ function taskView(task: {
   failed: number;
   error: string | null;
 }): UpgradeTaskView {
+  const migration = migrationByKey(task.key);
   return {
     key: task.key,
     mode: task.mode as MigrationMode,
     targetVersion: task.toVersion,
     order: task.migrationOrder,
-    title: task.title,
-    description: task.description,
-    executeLabel: task.executeLabel,
-    ignoreLabel: task.ignoreLabel,
+    title: migration?.title ?? task.title,
+    description: migration?.description ?? task.description,
+    executeLabel: migration?.executeLabel ?? task.executeLabel,
+    ignoreLabel: task.mode === 'optional' ? migration?.ignoreLabel ?? task.ignoreLabel : null,
+    ignoreWarning: task.mode === 'optional'
+      ? migration?.ignoreWarning ?? '系统将不再提供本次迁移服务。'
+      : null,
     status: task.status,
     total: task.total,
     processed: task.processed,
@@ -153,6 +160,15 @@ async function planView(planId: number): Promise<UpgradePlanView | null> {
   const tasks = plan.tasks
     .map(taskView)
     .sort((a, b) => compareVersions(a.targetVersion, b.targetVersion) || a.order - b.order);
+  const migrations = parseManifest(plan.manifest).map((entry) => {
+    const task = plan.tasks.find((candidate) => candidate.key === entry.key);
+    const migration = migrationByKey(entry.key);
+    return {
+      ...entry,
+      // 旧框架已将实际银行保存在 payload 中，显示范围不需要重读邮箱或改写任务。
+      summary: task ? migration?.describeImpact?.({ total: task.total, payload: task.payload }) ?? entry.summary : entry.summary,
+    };
+  });
   return {
     id: plan.id,
     fromVersion: plan.fromVersion,
@@ -161,7 +177,7 @@ async function planView(planId: number): Promise<UpgradePlanView | null> {
     hasRequired: plan.hasRequired,
     runtimeMode: getUpgradeRuntimeState().mode,
     error: plan.error,
-    migrations: parseManifest(plan.manifest),
+    migrations,
     tasks,
   };
 }
@@ -222,7 +238,7 @@ function manifestEntry(migration: VersionMigration, inspection: MigrationInspect
     title: migration.title,
     description: migration.description,
     total: inspection.total,
-    summary: inspection.summary ?? null,
+    summary: migration.describeImpact?.(inspection) ?? inspection.summary ?? null,
   };
 }
 
@@ -244,7 +260,7 @@ async function createOrAttachTask(
     title: migration.title,
     description: migration.description,
     executeLabel: migration.executeLabel ?? (migration.mode === 'required' ? '确认并执行' : '现在执行'),
-    ignoreLabel: migration.mode === 'optional' ? migration.ignoreLabel ?? '忽略迁移' : null,
+    ignoreLabel: migration.mode === 'optional' ? migration.ignoreLabel ?? '忽略更新' : null,
     payload: inspection.payload,
     total: inspection.total,
   };
@@ -385,6 +401,57 @@ export async function recordInstalledVersion(): Promise<void> {
 export async function getUpgradePlan(): Promise<UpgradePlanView | null> {
   const plan = await activePlan();
   return plan ? planView(plan.id) : null;
+}
+
+/** 一次确认整份选择，全部校验通过后才原子保存并启动升级。 */
+export async function submitUpgradeDecisions(
+  planId: number,
+  decisions: Array<{ key: string; action: 'approve' | 'ignore' }>,
+): Promise<UpgradePlanView | null> {
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe('SELECT `id` FROM `UpgradePlan` WHERE `id` = ? FOR UPDATE', planId);
+    const plan = await tx.upgradePlan.findUnique({ where: { id: planId }, include: { tasks: true } });
+    if (!plan || !['awaiting_decision', 'failed'].includes(plan.status)) {
+      throw new ApiError(409, '更新状态已变化，请刷新后重试');
+    }
+    const pending = plan.tasks.filter((task) => ['awaiting_decision', 'failed'].includes(task.status));
+    const selected = new Map(decisions.map((decision) => [decision.key, decision.action]));
+    if (pending.length === 0 || decisions.length !== pending.length || selected.size !== decisions.length
+      || pending.some((task) => !selected.has(task.key)) || plan.tasks.some((task) => task.status === 'running')) {
+      throw new ApiError(409, '更新项目已变化，请刷新后重新选择');
+    }
+    const stored = await tx.appSetting.findUnique({ where: { key: INSTALLED_VERSION_KEY } });
+    const { cursor } = await resolveVersionCursor(tx, stored?.value ?? null);
+    // 先校验整批，禁止前项已经保存、后项才发现不能忽略。
+    for (const task of pending) {
+      if (compareVersions(cursor, task.toVersion) >= 0) throw new ApiError(409, '这项更新已结束，无法再次执行');
+      if (!migrationByKey(task.key)) throw new ApiError(409, '更新项目不可用，请刷新后重试');
+      if (task.mode !== 'optional' && selected.get(task.key) === 'ignore') {
+        throw new ApiError(400, '必须更新的项目不能忽略');
+      }
+    }
+    const now = new Date();
+    for (const task of pending) {
+      const ignored = selected.get(task.key) === 'ignore';
+      await tx.upgradeTask.update({
+        where: { id: task.id },
+        data: {
+          status: ignored ? 'ignored' : 'approved',
+          approvedAt: ignored ? task.approvedAt : now,
+          ignoredAt: ignored ? now : null,
+          finishedAt: ignored ? now : null,
+          error: null,
+        },
+      });
+    }
+    await tx.upgradePlan.update({
+      where: { id: planId },
+      data: { status: 'executing', startedAt: plan.startedAt ?? now, error: null },
+    });
+  });
+  setUpgradeRuntimeState({ mode: 'executing', planId, message: null });
+  void resumeUpgradeExecution();
+  return getUpgradePlan();
 }
 
 async function requireActionableTask(key: string) {

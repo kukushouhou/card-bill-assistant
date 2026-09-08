@@ -36,13 +36,20 @@ export function mailText(mail: MailContext): string {
 
 /** HTML 拍平为纯文本（去样式/脚本，保留换行语义） */
 export function flattenHtml(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  const text = replaceClosedHtmlBlocks(replaceClosedHtmlBlocks(html, 'style'), 'script')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(tr|p|div|td|table|h\d)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[ \t]+/g, ' ');
+    .replace(/<\/(tr|p|div|td|table|h\d)>/gi, '\n');
+  // 无闭合符的后缀原本也不会被替换；提前分开可避免每个 '<' 都重扫剩余全文。
+  const lastTagEnd = text.lastIndexOf('>') + 1;
+  return (text.slice(0, lastTagEnd).replace(/<[^>]+>/g, ' ') + text.slice(lastTagEnd)).replace(/[ \t]+/g, ' ');
+}
+
+function replaceClosedHtmlBlocks(text: string, tag: 'style' | 'script'): string {
+  let lastEnd = 0;
+  for (const match of text.matchAll(new RegExp(`</${tag}>`, 'gi'))) lastEnd = match.index + match[0].length;
+  if (!lastEnd) return text;
+  // 保持原有前缀匹配、大小写及最近闭合标签规则，完整块以后的未闭合内容原样保留。
+  return text.slice(0, lastEnd).replace(new RegExp(`<${tag}[\\s\\S]*?</${tag}>`, 'gi'), ' ') + text.slice(lastEnd);
 }
 
 /**
@@ -233,7 +240,7 @@ export function citicTransactions(text: string): Array<ParsedTransaction & { car
     const tail = d2 ? cardTailLine(lines[i + 2] ?? '') : null;
     if (!d1 || !d2 || !tail || !/^\d{8}$/.test(d1)) continue;
     const desc = lines[i + 3] ?? '';
-    if (!desc || lines[i + 4] !== 'CNY' || lines[i + 6] !== 'CNY') continue;
+    if (!desc || !/^(CNY|RMB)$/.test(lines[i + 4] ?? '') || !/^(CNY|RMB)$/.test(lines[i + 6] ?? '')) continue;
     const value = parseAmount(lines[i + 7] ?? '');
     if (value == null) continue;
     txns.push({ date: d1, description: desc, amount: value, cardLast4: tail });

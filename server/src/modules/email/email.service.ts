@@ -7,12 +7,13 @@ import { config } from '../../config';
 import { decrypt, encrypt } from '../../lib/crypto';
 import { ApiError } from '../../lib/errors';
 import { getParserById, matchParser, tryParse } from '../../parsers/registry';
-import type { MailContext, RegisteredParser } from '../../parsers/types';
+import type { MailContext, RegisteredParser, PdfTextPage } from '../../parsers/types';
 import { applyCurrentCycleTransactions, applyParsedBills } from '../../parsers/pipeline';
 import { isDebitOnlyStatement, isImageOnlyMail } from '../../parsers/_util';
 import { isBlacklisted } from '../../parsers/blacklist';
 import { recomputePrimary } from '../../lib/card-groups';
 import { MICROSOFT_YAHEI_GLYPH_MAP } from '../../parsers/assets/microsoft-yahei-glyph-map';
+import { MailSourceLimitError, readMailSource } from './mail-source';
 
 export interface EmailAccountParams {
   email: string;
@@ -61,6 +62,13 @@ interface EnvelopeInfo {
   date: Date;
 }
 
+async function recordMailSourceLimit(accountId: number, env: EnvelopeInfo, error: MailSourceLimitError): Promise<void> {
+  await prisma.mailLog.create({ data: {
+    accountId, uid: env.uid, messageId: env.messageId?.slice(0, 255), fromAddress: env.from.slice(0, 255),
+    subject: env.subject.slice(0, 512), mailDate: env.date, status: 'error', error: error.message,
+  } });
+}
+
 async function fetchEnvelopes(client: ImapFlow, uids: number[]): Promise<EnvelopeInfo[]> {
   if (uids.length === 0) return [];
   const messages = await client.fetchAll(uids, { uid: true, envelope: true }, { uid: true });
@@ -87,20 +95,23 @@ async function fetchEnvelopes(client: ImapFlow, uids: number[]): Promise<Envelop
 }
 
 async function fetchMailContext(client: ImapFlow, uid: number, env: EnvelopeInfo): Promise<MailContext> {
-  const msg = await client.fetchOne(uid, { uid: true, source: true }, { uid: true });
+  const msg = await readMailSource(client, uid);
   const raw = msg ? msg.source : undefined;
   let text: string | undefined;
   let html: string | undefined;
   let pdfText: string | undefined;
+  let pdfPages: PdfTextPage[] | undefined;
   let attachText: string | undefined;
   if (raw) {
     const parsed = await simpleParser(prepareRawForParser(raw, env.from));
     text = parsed.text || undefined;
     html = typeof parsed.html === 'string' ? parsed.html : undefined;
-    pdfText = await extractPdfText(parsed.attachments || []);
+    const pdfContent = await extractPdfContent(parsed.attachments || []);
+    pdfText = pdfContent.text;
+    pdfPages = pdfContent.pages;
     attachText = extractAttachmentHtmlText(parsed.attachments || []);
   }
-  return { from: env.from, subject: env.subject, date: env.date, text, html, pdfText, attachText };
+  return { from: env.from, subject: env.subject, date: env.date, text, html, pdfText, pdfPages, attachText };
 }
 
 function isCurrentCycleParser(parser: RegisteredParser): boolean {
@@ -143,7 +154,13 @@ async function previewLatestCmbStatementDate(
     .sort((a, b) => b.uid - a.uid);
   for (const env of candidates) {
     if (latest && env.date <= latest) break;
-    const mail = cache.get(env.uid) ?? await fetchMailContext(client, env.uid, env);
+    let mail: MailContext;
+    try { mail = cache.get(env.uid) ?? await fetchMailContext(client, env.uid, env); }
+    catch (error) {
+      // 超限邮件留给正式同步记录错误，不能让预读阶段阻断整个邮箱同步。
+      if (error instanceof MailSourceLimitError) continue;
+      throw error;
+    }
     cache.set(env.uid, mail);
     const result = tryParse(mail);
     if (!result.matched || result.bills.length === 0) continue;
@@ -234,35 +251,50 @@ export function prepareRawForParser(raw: Buffer, from: string): Buffer {
 
 /** 提取 PDF 附件的文本（账单正文在附件中的银行，如中国银行合并账单） */
 export async function extractPdfText(attachments: Attachment[]): Promise<string | undefined> {
+  return (await extractPdfContent(attachments)).text;
+}
+
+/** 同一读取入口同时提供文本与表格坐标；二者均不入库。 */
+export async function extractPdfContent(attachments: Attachment[]): Promise<{ text?: string; pages: PdfTextPage[] }> {
   const MAX_BYTES = 5 * 1024 * 1024;
   const chunks: string[] = [];
-  for (const a of attachments) {
+  const layout: PdfTextPage[] = [];
+  for (const [attachment, a] of attachments.entries()) {
     const isPdf = a.contentType === 'application/pdf' || /\.pdf$/i.test(a.filename || '');
     const content = a.content as Buffer | undefined;
     if (!isPdf || !content || content.length > MAX_BYTES) continue;
+    let pdf: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
     try {
-      const pdf = await getDocumentProxy(new Uint8Array(content));
+      pdf = await getDocumentProxy(new Uint8Array(content));
       const { text } = await extractText(pdf, { mergePages: false });
       const pages = Array.isArray(text) ? text : [text];
       const repaired: string[] = [];
       for (let pageNumber = 1; pageNumber <= pages.length; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
-        repaired.push(await repairMicrosoftYaHeiText(page, pages[pageNumber - 1] ?? ''));
+        const repair = await microsoftYaHeiReplacer(page);
+        repaired.push(repair(pages[pageNumber - 1] ?? ''));
+        if (typeof page.getTextContent === 'function') {
+          const content = await page.getTextContent();
+          const viewport = page.getViewport({ scale: 1 });
+          layout.push({ attachment, page: pageNumber, width: viewport.width, height: viewport.height,
+            items: content.items.flatMap((item) => 'str' in item ? [{ text: repair(item.str), x: item.transform[4]!, y: item.transform[5]!, width: item.width, height: item.height }] : []) });
+        }
       }
       const trimmed = repaired.join('\n').trim();
       if (trimmed) chunks.push(trimmed.slice(0, 200_000));
     } catch (err) {
       console.warn(`[email] PDF 附件提取失败 ${a.filename}:`, err instanceof Error ? err.message : err);
+    } finally {
+      await pdf?.loadingTask.destroy().catch(() => undefined);
     }
   }
-  return chunks.length ? chunks.join('\n') : undefined;
+  return { text: chunks.length ? chunks.join('\n') : undefined, pages: layout };
 }
 
 /** 仅修复 Microsoft YaHei 字体中 PDF.js 仍原样返回 CID 的字符。 */
-async function repairMicrosoftYaHeiText(
+async function microsoftYaHeiReplacer(
   page: Awaited<ReturnType<Awaited<ReturnType<typeof getDocumentProxy>>['getPage']>>,
-  text: string,
-): Promise<string> {
+): Promise<(text: string) => string> {
   const operators = await page.getOperatorList();
   const replacements = new Map<string, string>();
   let microsoftYaHei = false;
@@ -281,8 +313,7 @@ async function repairMicrosoftYaHeiText(
       if (repaired) replacements.set(glyph.unicode, repaired);
     }
   }
-  if (replacements.size === 0) return text;
-  return Array.from(text, (character) => replacements.get(character) ?? character).join('');
+  return (text) => replacements.size === 0 ? text : Array.from(text, (character) => replacements.get(character) ?? character).join('');
 }
 
 /** 提取 HTML 附件的文本（账单正文在 HTML 附件中的银行，如工商银行 2018-2019 对账单，GBK 编码） */
@@ -512,6 +543,7 @@ export async function syncAccount(accountId: number): Promise<{
           }
         } catch (err) {
           summary.errors++;
+          if (err instanceof MailSourceLimitError) await recordMailSourceLimit(accountId, env, err);
           console.error(`[email] 处理邮件失败 uid=${env.uid}:`, err);
         }
       }
@@ -656,17 +688,18 @@ export interface MailBodyResult {
   text: string | null;
   html: string | null;
   pdfText: string | null;
+  pdfPages?: PdfTextPage[];
   attachText: string | null;
   attachments: Array<{ filename: string; size: number }>;
 }
 
 async function fetchMailBodyFromClient(client: ImapFlow, uid: number): Promise<MailBodyResult> {
-  const msg = await client.fetchOne(uid, { uid: true, envelope: true, source: true }, { uid: true });
+  const msg = await readMailSource(client, uid, true);
   if (!msg || !msg.envelope) throw new ApiError(404, '邮件不存在');
   if (!msg.source) throw new ApiError(404, '邮件原文为空');
   const fromAddress = (msg.envelope.from || []).map((a) => a.address || '').join(', ');
   const parsed = await simpleParser(prepareRawForParser(msg.source, fromAddress));
-  const pdfText = await extractPdfText(parsed.attachments || []);
+  const pdfContent = await extractPdfContent(parsed.attachments || []);
   const attachText = extractAttachmentHtmlText(parsed.attachments || []);
   return {
     uid,
@@ -675,7 +708,8 @@ async function fetchMailBodyFromClient(client: ImapFlow, uid: number): Promise<M
     date: (msg.envelope.date || new Date()).toISOString(),
     text: parsed.text || null,
     html: typeof parsed.html === 'string' ? parsed.html : null,
-    pdfText: pdfText ?? null,
+    pdfText: pdfContent.text ?? null,
+    pdfPages: pdfContent.pages,
     attachText: attachText ?? null,
     attachments: (parsed.attachments || []).map((a) => ({
       filename: a.filename || '(未命名附件)',
@@ -955,6 +989,7 @@ async function runHistorySync(accountId: number): Promise<void> {
           }
         } catch (err) {
           state.errors++;
+          if (err instanceof MailSourceLimitError) await recordMailSourceLimit(accountId, env, err);
           console.error(`[email] 历史拉取处理邮件失败 uid=${env.uid}:`, err);
         }
       }

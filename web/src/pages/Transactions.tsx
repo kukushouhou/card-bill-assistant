@@ -11,6 +11,7 @@ import type { CardRow, PagedTransactions, TransactionRow } from '../api/types';
 import { Page } from '../components/Layout';
 import { formatMoney } from '../lib/money';
 import { useResponsive } from '../responsive';
+import TransactionBillSummary from '../components/TransactionBillSummary';
 import './transactions.css';
 
 const { RangePicker } = DatePicker;
@@ -103,6 +104,7 @@ export default function Transactions() {
     [cards, draftBank, billId, scopedIds],
   );
   const activeCard = useMemo(() => cards.find((card) => card.id === cardId), [cardId, cards]);
+  const cardHistory = !billId && cardId != null && location.state?.billSource?.cardId === cardId;
   const activeFilterCount = Number(Boolean(bank)) + Number(Boolean(cardId)) + Number(Boolean(dates?.[0] || dates?.[1]));
 
   const resetPage = () => {};
@@ -234,8 +236,14 @@ export default function Transactions() {
 
   return (
     <Page title="账单明细">
+      {cardHistory && <section className="transaction-context" data-skin-slot="summary">
+        <div className="transaction-context-heading"><div><h3>{activeCard ? activeCard.bankName + ' · 历史明细' : '卡片历史明细'}</h3>{activeCard && <span>卡尾 {activeCard.displayLast4}</span>}</div><Button onClick={back}>返回来源</Button></div>
+        <div className="transaction-context-controls"><Button onClick={() => setParams({}, { replace: true, state: location.state })}>查看全部明细</Button></div>
+      </section>}
+      {!billId && !cardHistory && location.state?.billSource && <div className="transaction-return"><Button onClick={back}>返回来源</Button></div>}
       {billId && <section className="transaction-context" data-skin-slot="summary">
-        <div className="transaction-context-heading"><div><h3>{context ? context.bankName + ' · ' + displayPeriod(context.period) : '账单明细'}</h3>{context && <span>卡尾 {context.cards.map(card => card.cardLast4).join(' / ')}</span>}</div><Button onClick={back}>返回来源</Button></div>
+        <div className="transaction-context-heading"><div><h3>{context ? context.bankName + ' · ' + (history ? '历史明细' : displayPeriod(context.period)) : '账单明细'}</h3>{context && <span>卡尾 {context.cards.map(card => card.cardLast4).join(' / ')}</span>}</div><Button onClick={back}>返回来源</Button></div>
+        {context && !history && <TransactionBillSummary bill={context} />}
         <div className="transaction-context-controls">
         <Segmented value={history ? 'history' : 'bill'} options={[{ value: 'bill', label: '本账单' }, { value: 'history', label: '历史明细' }]} onChange={value => setParams({ [value === 'bill' ? 'billId' : 'scopeBillId']: billId }, { replace: true, state: location.state })} />
         {history && <DatePicker picker="month" aria-label="账期" placeholder="全部账期" value={params.get('period') ? dayjs(params.get('period')) : null} onChange={value => update({ period: value?.format('YYYY-MM') })} />}
@@ -252,7 +260,7 @@ export default function Transactions() {
                 <strong>{row.bankName}（{row.cardLast4 ?? '----'}）</strong>
                 <Tag color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? row.period : displayPeriod(row.period)}</Tag>
               </div>
-              <Typography.Paragraph className="transaction-description">{row.description}</Typography.Paragraph>
+              <Typography.Paragraph className="transaction-description">{row.statementShared && <Tag>账户共享明细</Tag>}{row.description}</Typography.Paragraph>
               <div className="transaction-mobile-meta">
                 <div className="transaction-mobile-date"><span>交易日</span><span>{transactionDate(row)}</span></div>
                 <div className="transaction-mobile-direction-amount">
@@ -284,7 +292,7 @@ export default function Transactions() {
             { title: '交易日', width: 130, render: (_, row) => transactionDate(row) },
             { title: '银行 / 卡尾', width: 170, render: (_, row) => `${row.bankName}（${row.cardLast4 ?? '----'}）` },
             { title: '方向', width: 70, align: 'center', render: (_, row) => transactionDirection(row.amount) },
-            { title: '交易描述', dataIndex: 'description' },
+            { title: '交易描述', dataIndex: 'description', render: (value, row) => <>{row.statementShared && <Tag>账户共享明细</Tag>}{value}</> },
             {
               title: '账期',
               dataIndex: 'period',

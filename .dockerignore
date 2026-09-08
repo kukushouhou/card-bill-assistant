@@ -2,6 +2,10 @@
 .gitignore
 .env
 **/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
 **/node_modules
 **/dist
 **/*.tsbuildinfo

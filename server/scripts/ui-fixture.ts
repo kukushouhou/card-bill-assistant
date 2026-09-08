@@ -7,7 +7,8 @@ import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const storage = path.join(root, '.ui-fixture');
+const storage = process.env.UI_FIXTURE_STORAGE || path.join(root, '.ui-fixture');
+const fixturePort = Number(process.env.UI_FIXTURE_PORT || 4173);
 await fs.mkdir(storage, { recursive: true });
 process.env.SKIN_STORAGE_DIR = path.join(storage, 'skins');
 process.env.JWT_SECRET = 'local-ui-fixture-not-a-real-account';
@@ -63,6 +64,7 @@ const transactionMatch = (where: any = {}) => transactions.filter(row => {
   return true;
 });
 const delegates: Record<string, any> = {
+  admin: { findUnique: async ({ where }: any) => where.id === 1 ? { id: 1, username: 'admin' } : null },
   card: { findMany: async () => cardRows },
   bill: { findMany: async () => bills.map(withCard), findUnique: async ({ where }: any) => { const bill = bills.find(bill => bill.id === where.id); return bill ? withCard(bill) : null; } },
   billTransaction: { count: async ({ where }: any) => transactionMatch(where).length, findMany: async ({ where, skip = 0, take = 100 }: any) => transactionMatch(where).slice(skip, skip + take).map(row => ({ ...row, bill: bills.find(bill => bill.id === row.billId) ? withCard(bills.find(bill => bill.id === row.billId)) : null })) },
@@ -81,13 +83,15 @@ const { summarizeAgenda, billItem, cardBillView } = await import('../src/modules
 const { listNotificationProviderDefinitions } = await import('../src/notify/registry');
 const app = express(); app.use(express.json()); app.use(cookieParser());
 let authed = true; let installed = true; let upgrade: any = null; let failNext: string | null = null;
-const signed = jwt.sign({ sub: '1', username: 'admin' }, process.env.JWT_SECRET);
+const signed = jwt.sign({ sub: '1', username: 'admin' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 app.use((req, res, next) => { if (authed) req.cookies.drc_token = signed; if (failNext && req.path === failNext) { failNext = null; res.status(503).json({ error: '请求暂时失败，请重试' }); } else next(); });
-app.post('/__fixture', (req, res) => { if (req.body.reset) { bills = structuredClone(initialData.bills); transactions = structuredClone(initialData.transactions); occurrences = structuredClone(initialData.occurrences); reminders = structuredClone(initialData.reminders); cardRows.splice(0, cardRows.length, ...structuredClone(initialData.cards)); accounts = structuredClone(initialData.accounts); history = structuredClone(initialData.history); channels = []; } if ('authed' in req.body) authed = req.body.authed; if ('installed' in req.body) installed = req.body.installed; if ('upgrade' in req.body) upgrade = req.body.upgrade; if ('failNext' in req.body) failNext = req.body.failNext; res.json({ ok: true }); });
-app.get('/api/app', async (_req, res) => res.json({ name: '守候信用卡小管家', skin: await activeSkin() }));
+app.post('/__fixture', (req, res) => { if (req.body.reset) { bills = structuredClone(initialData.bills); transactions = structuredClone(initialData.transactions); occurrences = structuredClone(initialData.occurrences); reminders = structuredClone(initialData.reminders); cardRows.splice(0, cardRows.length, ...structuredClone(initialData.cards)); accounts = structuredClone(initialData.accounts); history = structuredClone(initialData.history); channels = []; channelSequence = 0; notificationSends = []; } if ('authed' in req.body) authed = req.body.authed; if ('installed' in req.body) installed = req.body.installed; if ('upgrade' in req.body) upgrade = req.body.upgrade; if ('failNext' in req.body) failNext = req.body.failNext; res.json({ ok: true }); });
+app.get('/api/app', async (_req, res) => res.json({ name: '守候信用卡小管家', version: APP_VERSION, skin: await activeSkin() }));
+app.get('/api/upgrades/latest-result', (_req, res) => res.json(null));
 app.get('/api/setup/status', (_req, res) => res.json({ installed, dbOk: true, installedAt: installed ? '2026-01-01' : null, notificationProviders: listNotificationProviderDefinitions() }));
 app.post('/api/setup/install', async (req, res) => { installed = true; authed = false; if (req.body.skinId) await delegates.appSetting.upsert({ where: { key: 'appearance.skin' }, create: { value: JSON.stringify({ id: req.body.skinId, version: '1.0.0' }) }, update: { value: JSON.stringify({ id: req.body.skinId, version: '1.0.0' }) } }); res.json({ ok: true }); });
 app.get('/api/auth/me', (_req, res) => authed ? res.json({ username: 'admin', pin: { hasPin: true, locked: false, lockedUntil: null } }) : res.status(401).json({ error: '未登录' }));
+app.post('/api/auth/login-challenge', (_req, res) => res.json({ required: false }));
 app.post('/api/auth/login', (_req, res) => { authed = true; res.json({ ok: true }); });
 app.post('/api/auth/logout', (_req, res) => { authed = false; res.json({ ok: true }); });
 app.post('/api/auth/pin/verify', (_req, res) => res.json({ ok: true }));
@@ -129,23 +133,30 @@ app.get('/api/email/parsers', (_req, res) => res.json([{ id: 'bcm2026', name: '�
 app.post('/api/email/dry-run', (_req, res) => res.json({ results: [{ uid: 1234, subject: '信用卡电子账单', from: 'bank@example.test', date: date(todayText), parserId: 'bcm2026', parsed: true, bills: [{ bankName: '交通银行', cardLast4: '0988', period, amount: 8.8, currency: 'CNY', statementDate: period + '-10', dueDate: todayText }], error: null }] }));
 app.get('/api/email/accounts/:id/messages/:uid', (req, res) => res.json({ uid: Number(req.params.uid), subject: '信用卡电子账单', from: 'bank@example.test', date: date(todayText), attachments: [], text: '交通银行电子账单（示例）\n卡尾 0988\n应还金额 8.80 元' }));
 let channels: any[] = [];
+let channelSequence = 0;
+let notificationSends: any[] = [];
 app.get('/api/settings', (_req, res) => res.json({ notifications: { providers: listNotificationProviderDefinitions(), channels }, reminderHour: 8 }));
-app.put('/api/settings/notification-channels/:type', (req, res) => { channels = [...channels.filter(item => item.type !== req.params.type), { type: req.params.type, name: req.params.type, configured: true, ...req.body }]; res.json({ ok: true }); });
-app.post('/api/settings/notification-channels/:type/test', (_req, res) => res.json({ ok: true }));
+app.post('/api/settings/notification-channels', (req, res) => { const channel = { ...req.body, id: ++channelSequence, configured: true }; channels.push(channel); res.status(201).json({ ok: true, channel }); });
+app.put('/api/settings/notification-channels/:id', (req, res) => { const channel = channels.find(item => item.id === Number(req.params.id)); if (!channel) { res.status(404).json({ error: '通知渠道不存在' }); return; } Object.assign(channel, req.body); res.json({ ok: true, channel }); });
+app.delete('/api/settings/notification-channels/:id', (req, res) => { channels = channels.filter(item => item.id !== Number(req.params.id)); res.json({ ok: true }); });
+app.post('/api/settings/notification-channels/test', (req, res) => { notificationSends.push(structuredClone(req.body)); res.json({ ok: true }); });
+app.post('/api/settings/notification-channels/:id/test', (req, res) => { const channel = channels.find(item => item.id === Number(req.params.id)); if (!channel) { res.status(404).json({ error: '通知渠道不存在' }); return; } notificationSends.push(structuredClone(channel)); res.json({ ok: true }); });
+app.get('/__notification-sends', (_req, res) => res.json(notificationSends));
 app.use('/api', (_req, res) => res.status(404).json({ error: '该验收接口未配置' }));
 app.use((error: any, _req: any, res: any, _next: any) => { console.error(error.message); res.status(error.status ?? (error.issues ? 400 : 500)).json({ error: error.message }); });
 let vite: { close: () => Promise<void> } | undefined;
 if (process.env.UI_FIXTURE_STATIC === '1') {
-  const dist = path.join(root, 'web/dist');
+  const dist = process.env.UI_FIXTURE_WEB_DIST || path.join(root, 'web/dist');
   app.use(express.static(dist));
-  app.get('/{*page}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.get('/{*page}', (_req, res) => res.sendFile('index.html', { root: dist }));
 } else {
   const { createServer } = await import('../../web/node_modules/vite/dist/node/index.js');
   const development = await createServer({ root: path.join(root, 'web'), configFile: path.join(root, 'web/vite.config.ts'), server: { middlewareMode: true }, optimizeDeps: { force: true }, appType: 'spa' });
   vite = development; app.use(development.middlewares);
 }
 const initialData = structuredClone({ bills, transactions, occurrences, reminders, cards: cardRows, accounts, history });
-const server = app.listen(4173, '127.0.0.1', () => console.log('UI fixture ready http://127.0.0.1:4173'));
+const server = app.listen(fixturePort, '127.0.0.1', () => console.log('UI fixture ready http://127.0.0.1:' + fixturePort));
 process.on('SIGINT', async () => { await vite?.close(); server.close(() => process.exit(0)); });
 // 暴露导出范本准备能力仅供本地验收脚本，不启动任何业务调度器。
 await skins.list();
+import { APP_VERSION } from '../src/version';

@@ -80,7 +80,8 @@ describe('安装向导', () => {
     fireEvent.change(screen.getByLabelText('登录密码'), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'password123' } });
     await user.click(screen.getByRole('button', { name: '下一步' }));
-    await user.click(await screen.findByRole('checkbox', { name: 'Webhook' }));
+    await user.click(await screen.findByRole('button', { name: '添加渠道' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Webhook' }));
     fireEvent.change(await screen.findByLabelText('推送地址'), { target: { value: 'https://example.test/first' } });
     await user.click(screen.getByRole('button', { name: '下一步' }));
     await screen.findByRole('region', { name: '外观主题' });
@@ -101,7 +102,7 @@ describe('安装向导', () => {
     await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(2));
     for (const [url, payload] of apiMocks.post.mock.calls) {
       expect(url).toBe('/api/setup/install');
-      expect(payload).toEqual({ skinId: 'modern', password: 'password123', pin: undefined, notifications: [{ type: 'webhook', config: { url: 'https://example.test/updated' } }] });
+      expect(payload).toEqual({ skinId: 'modern', password: 'password123', pin: undefined, notifications: [{ type: 'webhook', name: 'Webhook', enabled: true, config: { url: 'https://example.test/updated' } }] });
     }
   }, 30_000);
 });

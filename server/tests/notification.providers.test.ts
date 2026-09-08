@@ -45,7 +45,7 @@ describe('通知提供方注册表', () => {
 
 describe('个人通知渠道协议', () => {
   it('ntfy 使用主题、令牌和聚合消息发布 JSON', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(response());
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 'synthetic-message-id' }));
     vi.stubGlobal('fetch', fetchMock);
     const config = ntfyProvider.parseConfig({ serverUrl: 'https://ntfy.example.com/', topic: 'credit', token: 'secret' });
 
@@ -57,7 +57,7 @@ describe('个人通知渠道协议', () => {
   });
 
   it('Gotify 使用应用令牌请求消息接口', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(response());
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 25 }));
     vi.stubGlobal('fetch', fetchMock);
     const config = gotifyProvider.parseConfig({ serverUrl: 'https://gotify.example.com', token: 'app-token', priority: '8' });
 

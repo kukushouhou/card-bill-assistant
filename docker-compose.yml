@@ -4,15 +4,15 @@ services:
     container_name: due-reminder-db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: due_reminder
       MYSQL_USER: reminder
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-please_change_me}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}
       TZ: Asia/Shanghai
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -24,14 +24,14 @@ services:
         max-file: "3"
 
   app:
-    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.4.2}
+    image: ghcr.io/kukushouhou/card-bill-assistant:${APP_VERSION:-0.5.0}
     container_name: due-reminder-app
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: mysql://reminder:${MYSQL_PASSWORD:-please_change_me}@db:3306/due_reminder
+      DATABASE_URL: mysql://reminder:${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}@db:3306/due_reminder
       # 32 字节 hex（64 字符）。生成：node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?请在 .env 中设置 ENCRYPTION_KEY（64 位 hex，部署后不可更改）}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}

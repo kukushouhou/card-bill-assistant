@@ -7,6 +7,7 @@ export interface PinStatus {
 }
 
 export interface AppInfo {
+  version?: string;
   name: string;
 }
 
@@ -32,6 +33,7 @@ export interface UpgradeTask {
   description: string;
   executeLabel: string;
   ignoreLabel: string | null;
+  ignoreWarning?: string | null;
   status: 'awaiting_decision' | 'approved' | 'ignored' | 'running' | 'completed' | 'failed';
   total: number;
   processed: number;
@@ -64,7 +66,7 @@ export interface SetupStatus {
 export interface NotificationProviderField {
   key: string;
   label: string;
-  type: 'url' | 'text' | 'password' | 'select';
+  type: 'url' | 'text' | 'password' | 'select' | 'bark-sound';
   placeholder?: string;
   description?: string;
   required: boolean;
@@ -81,6 +83,8 @@ export interface NotificationProviderDefinition {
 }
 
 export interface NotificationChannelInfo {
+  id: number;
+  configError?: string;
   type: string;
   name: string;
   enabled: boolean;
@@ -449,6 +453,7 @@ export interface BillsSummary {
 }
 
 export interface TransactionRow {
+  statementShared?: boolean;
   id: number;
   billId: number | null;
   period: string;
@@ -479,6 +484,14 @@ export interface TransactionContext {
   period: string;
   currency: string;
   amount: number | null;
+  remainingAmount: number | null;
+  minAmount: number | null;
+  paidAmount: number | null;
+  paidStatus: 'paid' | 'partial' | 'unpaid';
+  paidAt: string | null;
+  dueDate: string;
+  statementDate: string | null;
+  daysOverdue: number | null;
   mode: 'bill' | 'history';
   cards: Array<{ id: number; cardLast4: string }>;
 }
@@ -631,4 +644,12 @@ export interface SyncSummary {
 export interface SettingsInfo {
   reminderHour: number;
   notifications: NotificationSettingsInfo;
+}
+
+export interface StatementRepairResult {
+  version: string; finishedAt: string; lowerBound: string;
+  banks: Array<{ bankName: string; billCount: number; mailCount: number }>;
+  counts: { correctedBills: number; addedBills: number; addedTransactions: number; correctedTransactions: number;
+    removedTransactions: number; restoredRepayments: number; fallbackMinimumBills: number; unavailableMails: number };
+  incomplete: Array<{ bankName: string; billCount: number; reason: string }>;
 }

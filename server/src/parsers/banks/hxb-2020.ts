@@ -1,3 +1,4 @@
+import { htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, monthlyRuleDate, parseAmount, parseDate, pick, pickHolder, propagateAccountBillTails, UNKNOWN_CARD_TAIL } from '../_util';
 
@@ -90,6 +91,13 @@ export const hxb2020Parser: BankParser = {
       if (usdBill) {
         for (const transaction of usdTransactions) transaction.currency = 'USD';
         applyTransactionTails(usdBill, usdTransactions);
+      }
+    }
+    const tableTransactions = htmlTransactions(mail, 'five');
+    if (tableTransactions) {
+      for (const bill of bills) {
+        const rows = tableTransactions.filter((row) => row.currency === bill.currency);
+        if (rows.length) applyTransactionTails(bill, rows);
       }
     }
     propagateAccountBillTails(bills);

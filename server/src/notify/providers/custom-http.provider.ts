@@ -4,6 +4,7 @@ import type { NotificationChannelConfig, NotificationProvider } from '../types';
 import {
   aggregateMessages,
   connectionFailure,
+  discardResponse,
   fetchNotification,
   httpFailure,
 } from '../provider-utils';
@@ -147,7 +148,9 @@ export const customHttpProvider: NotificationProvider = {
       );
       const body = buildBody(parsed, vars, headers);
       const response = await fetchNotification(url, { method: parsed.method, headers, body });
-      return response.ok ? { ok: true } : httpFailure(response);
+      if (!response.ok) return httpFailure(response);
+      await discardResponse(response);
+      return { ok: true };
     } catch (error) {
       return connectionFailure(error);
     }

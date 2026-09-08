@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
-import { requireValidPin } from '../modules/auth/auth.service';
+import { withValidPin } from '../modules/auth/auth.service';
 import { decrypt, encrypt } from '../lib/crypto';
 import { computeCycle } from '../modules/reminders/reminder.engine';
 import { lastPassedCycle, openMissingCycle } from '../modules/bills/ledger';
@@ -428,7 +428,10 @@ router.delete(
     const id = Number(req.params.id);
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
-    await prisma.card.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.card.delete({ where: { id } });
+      await cleanupOrphanSharedTransactions(tx);
+    });
     res.json({ ok: true });
   }),
 );
@@ -449,45 +452,46 @@ router.post(
   '/:id/secret',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const card = await prisma.card.findUnique({ where: { id } });
-    if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
     const input = secretSchema.parse(req.body);
-    const key = await requireValidPin(input.pin);
+    await withValidPin(input.pin, async (key, tx) => {
+      const card = await tx.card.findUnique({ where: { id } });
+      if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
 
-    // MMYY 归一化为 MM/YY
-    const expDate = input.expDate
-      ? input.expDate.includes('/')
-        ? input.expDate
-        : `${input.expDate.slice(0, 2)}/${input.expDate.slice(2)}`
-      : null;
+      // MMYY 归一化为 MM/YY
+      const expDate = input.expDate
+        ? input.expDate.includes('/')
+          ? input.expDate
+          : `${input.expDate.slice(0, 2)}/${input.expDate.slice(2)}`
+        : null;
 
-    // 完整卡号保存闸门：按匹配尾号分闸，拒绝时不写入任何字段
-    // 1) 匹配尾号已是真号：录入后四位必须与现有匹配尾号一致
-    // 2) 匹配尾号是占位 + 展示尾号未完善：由完整卡号后四位写入展示尾号（仅这一次）
-    // 3) 匹配尾号是占位 + 展示尾号已有四位：后四位不变（回填原值）放行，变更拒绝
-    let displayLast4: string | undefined;
-    if (input.cardNoFull) {
-      const last4 = input.cardNoFull.slice(-4);
-      const placeholder = card.cardLast4 === '----' || card.cardLast4 === '0000';
-      if (!placeholder) {
-        if (last4 !== card.cardLast4) {
-          throw new ApiError(400, `该卡已记录的账单尾号为 ${card.cardLast4}，与本次录入的完整卡号不符`);
+      // 完整卡号保存闸门：按匹配尾号分闸，拒绝时不写入任何字段
+      // 1) 匹配尾号已是真号：录入后四位必须与现有匹配尾号一致
+      // 2) 匹配尾号是占位 + 展示尾号未完善：由完整卡号后四位写入展示尾号（仅这一次）
+      // 3) 匹配尾号是占位 + 展示尾号已有四位：后四位不变（回填原值）放行，变更拒绝
+      let displayLast4: string | undefined;
+      if (input.cardNoFull) {
+        const last4 = input.cardNoFull.slice(-4);
+        const placeholder = card.cardLast4 === '----' || card.cardLast4 === '0000';
+        if (!placeholder) {
+          if (last4 !== card.cardLast4) {
+            throw new ApiError(400, `该卡已记录的账单尾号为 ${card.cardLast4}，与本次录入的完整卡号不符`);
+          }
+        } else if (card.displayLast4 === '----') {
+          displayLast4 = last4;
+        } else if (last4 !== card.displayLast4) {
+          throw new ApiError(400, `该卡已记录的账单尾号为 ${card.displayLast4}，与本次录入的完整卡号不符`);
         }
-      } else if (card.displayLast4 === '----') {
-        displayLast4 = last4;
-      } else if (last4 !== card.displayLast4) {
-        throw new ApiError(400, `该卡已记录的账单尾号为 ${card.displayLast4}，与本次录入的完整卡号不符`);
       }
-    }
 
-    await prisma.card.update({
-      where: { id },
-      data: {
-        cardNoFullEnc: input.cardNoFull ? encrypt(key, input.cardNoFull) : null,
-        expDateEnc: expDate ? encrypt(key, expDate) : null,
-        cvvEnc: input.cvv ? encrypt(key, input.cvv) : null,
-        ...(displayLast4 ? { displayLast4 } : {}),
-      },
+      await tx.card.update({
+        where: { id },
+        data: {
+          cardNoFullEnc: input.cardNoFull ? encrypt(key, input.cardNoFull) : null,
+          expDateEnc: expDate ? encrypt(key, expDate) : null,
+          cvvEnc: input.cvv ? encrypt(key, input.cvv) : null,
+          ...(displayLast4 ? { displayLast4 } : {}),
+        },
+      });
     });
     res.json({ ok: true });
   }),
@@ -498,19 +502,21 @@ router.post(
   '/:id/secret/view',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const card = await prisma.card.findUnique({ where: { id } });
-    if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
-    const pin = req.body?.pin;
-    const key = await requireValidPin(pin);
-    if (!card.cardNoFullEnc && !card.expDateEnc && !card.cvvEnc) {
-      throw new ApiError(404, '该卡尚未录入敏感信息');
-    }
-    res.json({
-      cardNoFull: card.cardNoFullEnc ? decrypt(key, Buffer.from(card.cardNoFullEnc)) : null,
-      expDate: card.expDateEnc ? decrypt(key, Buffer.from(card.expDateEnc)) : null,
-      cvv: card.cvvEnc ? decrypt(key, Buffer.from(card.cvvEnc)) : null,
+    const secrets = await withValidPin(req.body?.pin, async (key, tx) => {
+      const card = await tx.card.findUnique({ where: { id } });
+      if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
+      if (!card.cardNoFullEnc && !card.expDateEnc && !card.cvvEnc) {
+        throw new ApiError(404, '该卡尚未录入敏感信息');
+      }
+      return {
+        cardNoFull: card.cardNoFullEnc ? decrypt(key, Buffer.from(card.cardNoFullEnc)) : null,
+        expDate: card.expDateEnc ? decrypt(key, Buffer.from(card.expDateEnc)) : null,
+        cvv: card.cvvEnc ? decrypt(key, Buffer.from(card.cvvEnc)) : null,
+      };
     });
+    res.set('Cache-Control', 'no-store').json(secrets);
   }),
 );
 
 export default router;
+import { cleanupOrphanSharedTransactions } from '../modules/bills/shared-transactions';

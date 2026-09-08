@@ -58,8 +58,9 @@ export const feishuProvider: NotificationProvider = {
       });
       if (!response.ok) return httpFailure(response);
       const result = await readJsonObject(response);
+      if (!result) return serviceFailure(undefined, '通知服务响应无效，请稍后重试');
       const code = result?.code ?? result?.StatusCode;
-      return result && Number(code) !== 0
+      return ![0, '0'].includes(code as number | string)
         ? serviceFailure(result.msg ?? result.StatusMessage)
         : { ok: true };
     } catch (error) {

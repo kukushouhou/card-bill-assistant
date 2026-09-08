@@ -58,7 +58,7 @@ export const telegramProvider: NotificationProvider = {
       );
       if (!response.ok) return httpFailure(response);
       const result = await readJsonObject(response);
-      return result?.ok === false ? serviceFailure(result.description) : { ok: true };
+      return result?.ok === true ? { ok: true } : serviceFailure(result?.description, '通知服务未确认发送成功');
     } catch (error) {
       return connectionFailure(error);
     }

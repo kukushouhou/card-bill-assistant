@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { assertCompleteRecords, htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import { buildBill, mailText, mergeAccountBillsByCurrency, parseAmount, parseDate, pickHolder } from '../_util';
 
 /**
@@ -11,7 +12,7 @@ import { buildBill, mailText, mergeAccountBillsByCurrency, parseAmount, parseDat
  *   卡区块（拍平分行）:
  *     00062597****9409975 / 光大白条信用卡 / 2,309.32 / 2,309.32 / 115.47
  *     （卡号 / 卡名 / 本期余额 / 本期应还款额 / 本期最小还款额，多卡多组，后跟"总计"行）
- *   美元账户区块结构相同（同卡重复），仅取人民币区块。
+ *   人民币与美元账户区块分别读取，区块出现顺序不限。
  */
 export const ceb2016Parser: BankParser = {
   id: 'ceb2016',
@@ -35,13 +36,14 @@ export const ceb2016Parser: BankParser = {
 
     const holderName = pickHolder(text);
     const bills: ParsedBill[] = [];
+    const tableTransactions = htmlTransactions(mail, 'ceb');
     for (const currency of ['CNY', 'USD'] as const) {
       const marker = currency === 'CNY' ? '人民币账户' : '美元账户';
       const start = text.indexOf(marker);
       if (start < 0) continue;
       const detailMarker = `${marker}交易明细`;
       const detailStart = text.indexOf(detailMarker, start);
-      const otherMarker = currency === 'CNY' ? text.indexOf('美元账户', start + marker.length) : -1;
+      const otherMarker = text.indexOf(currency === 'CNY' ? '美元账户' : '人民币账户', start + marker.length);
       const summaryEndCandidates = [detailStart, otherMarker].filter((index) => index > start);
       const section = text.slice(start, summaryEndCandidates.length ? Math.min(...summaryEndCandidates) : text.length);
       const seen = new Set<string>();
@@ -65,13 +67,15 @@ export const ceb2016Parser: BankParser = {
         });
         if (bill) bills.push(bill);
       }
-      const transactions = parseCeb2016Transactions(text, currency);
+      const transactions = tableTransactions ? [] : parseCeb2016Transactions(text, currency);
       for (const bill of bills.filter((candidate) => candidate.currency === currency)) {
         const own = transactions.filter((transaction) => transaction.cardLast4 === bill.cardLast4);
         if (own.length > 0) bill.transactions = own;
       }
     }
-    return mergeAccountBillsByCurrency(bills);
+    const merged = mergeAccountBillsByCurrency(bills);
+    if (tableTransactions) attachStatementTransactions(merged, tableTransactions);
+    return merged;
   },
 };
 
@@ -79,12 +83,14 @@ function parseCeb2016Transactions(text: string, currency: 'CNY' | 'USD'): Parsed
   const marker = currency === 'CNY' ? '人民币账户交易明细' : '美元账户交易明细';
   const start = text.indexOf(marker);
   if (start < 0) return [];
-  const other = currency === 'CNY' ? text.indexOf('美元账户交易明细', start + marker.length) : -1;
+  const other = text.indexOf(currency === 'CNY' ? '美元账户' : '人民币账户', start + marker.length);
   const section = text.slice(start, other > start ? other : text.length);
   const transactions: ParsedTransaction[] = [];
+  let consumed = 0;
   for (const match of section.matchAll(
     /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+(\d{4})\s+((?:(?!\d{4}\/\d{2}\/\d{2})[\s\S])+?)\s+(?:[（(]存入[）)])?(-?[\d,]+\.\d{2})/g,
   )) {
+    consumed++;
     const description = match[4]!.replace(/\s+/g, ' ').trim();
     const value = parseAmount(match[5]!);
     if (!description || value == null || /Closing/.test(description)) continue;
@@ -96,5 +102,6 @@ function parseCeb2016Transactions(text: string, currency: 'CNY' | 'USD'): Parsed
       cardLast4: match[3],
     });
   }
+  assertCompleteRecords(section, consumed);
   return transactions;
 }

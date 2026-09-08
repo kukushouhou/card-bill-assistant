@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { NotificationMessage, NotificationSendResult } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+export const MAX_NOTIFICATION_RESPONSE_BYTES = 64 * 1024;
 
 export function httpUrlSchema(message: string, max = 1_000) {
   return z
@@ -47,24 +48,47 @@ export async function fetchNotification(url: string | URL, init: RequestInit): P
 }
 
 export async function readJsonObject(response: Response): Promise<Record<string, unknown> | null> {
+  const reader = response.body?.getReader();
+  if (!reader) return null;
   try {
-    const value = await response.json();
+    if (Number(response.headers.get('content-length')) > MAX_NOTIFICATION_RESPONSE_BYTES) {
+      await reader.cancel(); return null;
+    }
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.byteLength;
+      if (bytes > MAX_NOTIFICATION_RESPONSE_BYTES) { await reader.cancel(); return null; }
+      chunks.push(Buffer.from(part.value));
+    }
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : null;
   } catch {
     return null;
+  } finally {
+    reader.releaseLock();
   }
 }
 
-export function httpFailure(response: Response): NotificationSendResult {
+export async function discardResponse(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+export async function httpFailure(response: Response): Promise<NotificationSendResult> {
+  await discardResponse(response);
   return { ok: false, error: `通知服务返回 HTTP ${response.status}` };
 }
 
 export function connectionFailure(error: unknown): NotificationSendResult {
   return {
     ok: false,
-    error: error instanceof Error ? `无法连接通知服务：${error.message}` : '无法连接通知服务',
+    // 底层异常可能包含完整 URL、令牌或用户名密码，不传到页面及任务日志。
+    error: error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)
+      ? '连接通知服务超时，请稍后重试' : '无法连接通知服务，请检查配置或稍后重试',
   };
 }
 

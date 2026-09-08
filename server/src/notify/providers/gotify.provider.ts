@@ -6,6 +6,8 @@ import {
   fetchNotification,
   httpFailure,
   httpUrlSchema,
+  readJsonObject,
+  serviceFailure,
 } from '../provider-utils';
 
 const gotifyConfigSchema = z.object({
@@ -46,7 +48,10 @@ export const gotifyProvider: NotificationProvider = {
         },
         body: JSON.stringify({ title: message.title, message: message.body, priority: parsed.priority }),
       });
-      return response.ok ? { ok: true } : httpFailure(response);
+      if (!response.ok) return httpFailure(response);
+      const result = await readJsonObject(response);
+      return typeof result?.id === 'number' && Number.isSafeInteger(result.id) && result.id > 0
+        ? { ok: true } : serviceFailure(result?.error, '通知服务未确认发送成功');
     } catch (error) {
       return connectionFailure(error);
     }

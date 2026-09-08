@@ -51,7 +51,8 @@ export const serverChanProvider: NotificationProvider = {
       });
       if (!response.ok) return httpFailure(response);
       const result = await readJsonObject(response);
-      return result && Number(result.code) !== 0
+      if (!result) return serviceFailure(undefined, '通知服务响应无效，请稍后重试');
+      return ![0, '0'].includes(result.code as number | string)
         ? serviceFailure(result.message ?? result.msg)
         : { ok: true };
     } catch (error) {

@@ -11,7 +11,7 @@ export interface NotificationSendResult {
 export interface NotificationProviderField {
   key: string;
   label: string;
-  type: 'url' | 'text' | 'password' | 'select';
+  type: 'url' | 'text' | 'password' | 'select' | 'bark-sound';
   placeholder?: string;
   description?: string;
   required: boolean;
@@ -43,8 +43,11 @@ export interface NotificationProvider {
 }
 
 export interface ResolvedNotificationChannel {
+  id: number;
+  deliveryKey: string | null;
   type: string;
   name: string;
   enabled: boolean;
   config: NotificationChannelConfig;
+  configError?: string;
 }

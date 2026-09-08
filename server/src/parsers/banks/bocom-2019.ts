@@ -1,3 +1,4 @@
+import { htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { buildBill, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
 import { addDays } from '../../lib/dates';
@@ -31,16 +32,16 @@ import { addDays } from '../../lib/dates';
 function parseBocom2019Transactions(text: string): ParsedTransaction[] {
   const refundStart = text.indexOf('还款、退货');
   const chargeStart = text.indexOf('消费、取现');
-  if (refundStart < 0 || chargeStart < 0 || chargeStart < refundStart) return [];
+  if (refundStart < 0 && chargeStart < 0) return [];
   const sections: Array<[string, 1 | -1]> = [
-    [text.slice(refundStart, chargeStart), -1],
-    [text.slice(chargeStart), 1],
+    [refundStart < 0 ? '' : text.slice(refundStart, chargeStart > refundStart ? chargeStart : undefined), -1],
+    [chargeStart < 0 ? '' : text.slice(chargeStart, refundStart > chargeStart ? refundStart : undefined), 1],
   ];
 
   const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
   // 2019 格式：YYYY/MM/DD 日期对 + 摘要（可跨行）+ RMB 金额对
   const fullRe =
-    /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+([\s\S]{2,120}?)\s+(RMB|CNY|USD)\s+([\d,]+\.\d{2})\s+(RMB|CNY|USD)\s+([\d,]+\.\d{2})/g;
+    /(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{4}[-/]\d{2}[-/]\d{2})\s+([\s\S]{2,120}?)\s+(RMB|CNY|USD)\s+([\d,]+\.\d{2})\s+(RMB|CNY|USD)\s+([\d,]+\.\d{2})/g;
   for (const [seg, sign] of sections) {
     const segTail = seg.match(/卡号末四位\s*(\d{4})/)?.[1];
     for (const m of seg.matchAll(fullRe)) {
@@ -96,7 +97,7 @@ export const bocom2019Parser: BankParser = {
     if (!cardM) return [];
 
     // 账单周期：仅中文标签（现役模板标签后跟 Statement Cycle 英文，不会误中）
-    const cycleM = text.match(/账单周期[：:]?\s*\d{4}\/\d{2}\/\d{2}-(\d{4}\/\d{2}\/\d{2})/);
+    const cycleM = text.match(/账单周期[：:]?\s*\d{4}[-/]\d{2}[-/]\d{2}-(\d{4}[-/]\d{2}[-/]\d{2})/);
     if (!cycleM) return [];
     const statementDate = parseDate(cycleM[1]!);
     if (!statementDate) return [];
@@ -127,7 +128,7 @@ export const bocom2019Parser: BankParser = {
       cardNoFull: `${cardM[1]!}******${cardM[2]!}`,
     });
     if (!bill) return [];
-    const transactions = parseBocom2019Transactions(text);
+    const transactions = htmlTransactions(mail, 'bocom') ?? parseBocom2019Transactions(text);
     bill.transactions = transactions.filter((transaction) => (transaction.currency ?? 'CNY') === 'CNY');
     const bills = [bill];
     const usdAmount = text.match(/本期应还款额?\s*[￥¥]\s*-?[\d,]+\.\d{2}\s*[＄$]\s*(-?[\d,]+\.\d{2})/)?.[1];
@@ -143,6 +144,7 @@ export const bocom2019Parser: BankParser = {
         bills.push(usdBill);
       }
     }
+    attachStatementTransactions(bills, transactions);
     return bills;
   },
 };

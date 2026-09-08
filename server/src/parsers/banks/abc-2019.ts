@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { abcTextTransactions, htmlTransactions } from '../statement-rows';
 import { buildBill, mailText, parseAmount, parseDate, pickHolder } from '../_util';
 
 /**
@@ -27,44 +28,6 @@ function findLineIdx(lines: string[], re: RegExp, from: number, to: number): num
     if (re.test(lines[i]!)) return i;
   }
   return -1;
-}
-
-/**
- * 旧版明细解析：堆叠块 TDate/PDate(YYYYMMDD)/卡尾(可缺，如账单分期交易)/摘要 1-2 行/
- * 交易金额/CNY/入账金额/CNY。入账金额"支出为-"，与现役同口径取相反数
- * （正=消费/费用入账，负=还款/返还冲抵）。摘要行 2019-2022 为乱码，原样保留。
- */
-function parseAbc2019Transactions(text: string): Array<ParsedTransaction & { cardLast4?: string }> {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
-  for (let i = 0; i + 1 < lines.length; i++) {
-    if (!/^\d{8}$/.test(lines[i]!) || !/^\d{8}$/.test(lines[i + 1]!)) continue;
-    let j = i + 2;
-    let cardLast4: string | undefined;
-    if (/^\d{4}$/.test(lines[j] ?? '')) {
-      cardLast4 = lines[j];
-      j++;
-    }
-    // 摘要行最多 2 行（交易摘要 + 交易地点），遇金额行或日期行（异常块）停止
-    const desc: string[] = [];
-    while (
-      j < lines.length &&
-      desc.length < 2 &&
-      !/^-?[\d,]+\.\d{2}\/CNY$/.test(lines[j]!) &&
-      !/^\d{8}$/.test(lines[j]!)
-    ) {
-      desc.push(lines[j]!);
-      j++;
-    }
-    const a1 = (lines[j] ?? '').match(/^-?[\d,]+\.\d{2}\/CNY$/);
-    const a2 = (lines[j + 1] ?? '').match(/^(-?[\d,]+\.\d{2})\/CNY$/);
-    if (desc.length === 0 || !a1 || !a2) continue;
-    const posted = parseAmount(a2[1]!);
-    if (posted == null) continue;
-    txns.push({ date: lines[i], description: desc.join(' '), amount: -posted, cardLast4 });
-    i = j + 1;
-  }
-  return txns;
 }
 
 export const abc2019Parser: BankParser = {
@@ -116,8 +79,8 @@ export const abc2019Parser: BankParser = {
       bankName: '农业银行',
       cardLast4: cardM[2]!,
       holderName: pickHolder(text),
-      amount: amounts[0]!,
-      minAmount: amounts.length >= 2 ? amounts[1]! : null,
+      amount: -amounts[0]!,
+      minAmount: amounts.length >= 2 ? -amounts[1]! : null,
       currency: 'CNY',
       statementDate,
       dueDate,
@@ -125,9 +88,9 @@ export const abc2019Parser: BankParser = {
     });
     if (!bill) return [];
     // 单卡账单：明细中无卡尾的行（如账单分期交易）归属账单头卡号
-    const txns = parseAbc2019Transactions(text);
+    const txns = htmlTransactions(mail, 'abc') ?? abcTextTransactions(text);
     if (txns.length > 0) {
-      bill.transactions = txns.map((t) => ({ ...t, cardLast4: t.cardLast4 ?? cardM[2]! }));
+      bill.transactions = txns;
       // 农行旧模板可能由抬头卡承接合并账单，但明细中出现另一张实体卡。
       // 承接卡保持抬头卡尾，其他真实卡尾加入套卡，供入库层建立 BillCard 与明细归属。
       let transactionTails = Array.from(new Set(bill.transactions.map((t) => t.cardLast4).filter((tail): tail is string => !!tail)));

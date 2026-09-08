@@ -59,6 +59,7 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
   }
 
   for (const channel of channels) {
+    const deliveryKey = channel.deliveryKey ?? channel.type;
     const leaseAt = new Date();
     const staleBefore = new Date(leaseAt.getTime() - NOTIFY_PENDING_LEASE_MS);
     const toSend: Array<{ title: string; body: string }> = [];
@@ -70,7 +71,7 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
             type: event.type,
             refId: event.refId,
             fireDate: now,
-            channel: channel.type,
+            channel: deliveryKey,
             status: 'pending',
             sentAt: leaseAt,
           },
@@ -87,7 +88,7 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
             type: event.type,
             refId: event.refId,
             fireDate: now,
-            channel: channel.type,
+            channel: deliveryKey,
             status: 'pending',
             sentAt: { lte: staleBefore },
           },
@@ -104,7 +105,7 @@ export async function runDailyReminderJob(): Promise<{ pushed: number; skipped: 
               type: event.type,
               refId: event.refId,
               fireDate: now,
-              channel: channel.type,
+              channel: deliveryKey,
             },
           },
           select: { id: true },

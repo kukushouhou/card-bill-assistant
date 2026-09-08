@@ -294,7 +294,7 @@ router.get(
       period: bill.period,
       currency: bill.currency,
       annualFeeAmount: bill.annualFeeAmount == null ? null : Number(bill.annualFeeAmount),
-      transactions: bill.transactions.map((transaction) => ({
+      transactions: [...bill.transactions, ...(bill.mailLogId ? await prisma.billTransaction.findMany({ where: { statementMailLogId: bill.mailLogId, currency: bill.currency }, orderBy: { sequence: 'asc' } }) : [])].map((transaction) => ({
         id: transaction.id,
         date: transaction.dateText,
         transactionDate: transaction.transactionDate?.toISOString() ?? null,
@@ -304,6 +304,7 @@ router.get(
         originalAmount: transaction.originalAmount == null ? null : Number(transaction.originalAmount),
         originalCurrency: transaction.originalCurrency,
         cardLast4: transaction.cardLast4,
+        ...(transaction.statementMailLogId != null ? { statementShared: true } : {}),
       })),
     });
   }),
@@ -363,7 +364,10 @@ router.delete(
     const id = Number(req.params.id);
     const bill = await prisma.bill.findUnique({ where: { id } });
     if (!bill) throw new ApiError(404, '账单不存在');
-    await prisma.bill.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.bill.delete({ where: { id } });
+      await cleanupOrphanSharedTransactions(tx);
+    });
     res.json({ ok: true });
   }),
 );
@@ -425,3 +429,4 @@ router.get(
 );
 
 export default router;
+import { cleanupOrphanSharedTransactions } from '../modules/bills/shared-transactions';

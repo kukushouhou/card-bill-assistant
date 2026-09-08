@@ -87,13 +87,18 @@ test('邮箱测试不保存，日志带账户，进度退出后可从全局重�
   await expect(page.getByRole('dialog').getByText(/33.3%/)).toBeVisible();
 });
 
-test('通知渠道切换取消保留旧渠道和输入', async ({ page }) => {
+test('通知渠道编辑取消保留草稿，放弃后不改变实例', async ({ page, request }) => {
+  await request.post('/api/settings/notification-channels', { data: { type: 'bark', name: '我的手机', config: { url: 'https://example.test/saved' } } });
   await page.goto('/settings');
-  const notifications = page.locator('.settings-grid-notifications');
-  await notifications.getByLabel('推送地址', { exact: false }).fill('https://example.test/draft');
-  await notifications.getByRole('combobox').first().click();
-  await page.getByText('Gotify', { exact: true }).last().click();
-  await expect(notifications.getByText('切换通知渠道？', { exact: true })).toBeVisible();
-  await notifications.getByRole('button', { name: '取消', exact: true }).click();
-  await expect(notifications.getByLabel('推送地址', { exact: false })).toHaveValue('https://example.test/draft');
+  await page.locator('.notification-channel-list').getByRole('button', { name: '编辑', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑通知渠道', exact: true });
+  await editor.getByLabel('推送地址', { exact: true }).fill('https://example.test/draft');
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(editor.getByText('放弃未保存的修改？', { exact: true })).toBeVisible();
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(editor.getByLabel('推送地址', { exact: true })).toHaveValue('https://example.test/draft');
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await editor.getByRole('button', { name: '放弃修改', exact: true }).click();
+  const settings = await (await request.get('/api/settings')).json();
+  expect(settings.notifications.channels[0]).toMatchObject({ name: '我的手机', config: { url: 'https://example.test/saved' } });
 });

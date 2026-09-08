@@ -1,3 +1,4 @@
+const sharedActive = { OR: [{ statementMailLogId: null }, { statementMailLog: { bills: { some: {} } } }] };
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import http from 'node:http';
@@ -25,6 +26,7 @@ describe('统一账单明细来源', () => {
     prisma.billTransaction.count.mockResolvedValue(0);
     prisma.billTransaction.findMany.mockResolvedValue([]);
     prisma.bill.findUnique.mockResolvedValue({ id: 11, period: '2026-08', currency: 'CNY', amount: 43.4,
+      paidStatus: 'unpaid', paidAmount: null, minAmount: 4.34, paidAt: null, dueDate: fromYmd('2026-09-08'), statementDate: fromYmd('2026-08-10'),
       card: { id: 1, bankName: '交通银行', cardLast4: '0988', displayLast4: '0988' },
       cards: [{ card: { id: 2, cardLast4: '2233', displayLast4: '2233' } }],
     });
@@ -33,15 +35,15 @@ describe('统一账单明细来源', () => {
     await withServer('/api/transactions', transactionsRouter, async url => {
       const response = await fetch(url + '/api/transactions?billId=11');
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, mode: 'bill', cards: [{ id: 1 }, { id: 2 }] } });
+      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, mode: 'bill', amount: 43.4, remainingAmount: 43.4, paidStatus: 'unpaid', minAmount: 4.34, dueDate: '2026-09-07T16:00:00.000Z', cards: [{ id: 1 }, { id: 2 }] } });
     });
-    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: 11 } });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: 11 }] }, sharedActive] } });
   });
   it('历史只限定来源账单关联卡，账期筛选使用所属账单而非交易日期', async () => {
     await withServer('/api/transactions', transactionsRouter, async url => {
       expect((await fetch(url + '/api/transactions?scopeBillId=11&period=2026-07')).status).toBe(200);
     });
-    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: { not: null }, cardId: { in: [1, 2] }, bill: { period: '2026-07' } } });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: { not: null }, cardId: { in: [1, 2] } }] }, { OR: [{ bill: { period: '2026-07' } }, { statementMailLog: { bills: { some: { period: '2026-07' } } } }] }, sharedActive] } });
     expect(prisma.bill.findUnique).toHaveBeenCalledTimes(1);
   });
   it('账单不存在明确返回 404，不能扩大成全量明细', async () => {
@@ -51,12 +53,53 @@ describe('统一账单明细来源', () => {
     });
     expect(prisma.billTransaction.findMany).not.toHaveBeenCalled();
   });
+  it('账户共享明细在同封同币种账单中可见，保留旧卡且不算未出账或改变应还金额', async () => {
+    const source = await prisma.bill.findUnique();
+    prisma.bill.findUnique.mockResolvedValue({ ...source, mailLogId: 81 });
+    prisma.billTransaction.count.mockResolvedValue(1);
+    prisma.billTransaction.findMany.mockResolvedValue([{ id: 90, billId: null, statementMailLogId: 81, bankName: '建设银行',
+      cardId: 9, cardLast4: '6075', dateText: '2026-08-02', description: '旧卡还款', amount: -26.9, currency: 'CNY',
+      transactionDate: fromYmd('2026-08-02'), bill: null, statementMailLog: { bills: [{ period: '2026-08', currency: 'CNY' }] }, originalAmount: null, originalCurrency: null }]);
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11');
+      expect(await response.json()).toMatchObject({ total: 1, context: { amount: 43.4 },
+        items: [{ billId: null, period: '2026-08', cardLast4: '6075', statementShared: true, unbilled: false, amount: -26.9 }] });
+    });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [
+      { OR: [{ billId: 11 }, { statementMailLogId: 81, currency: 'CNY' }] }, sharedActive,
+    ] } });
+  });
   it('本账单与历史范围互斥，来源外卡片不会扩大范围', async () => {
     await withServer('/api/transactions', transactionsRouter, async url => {
       expect((await fetch(url + '/api/transactions?billId=11&scopeBillId=11')).status).toBe(400);
       expect((await fetch(url + '/api/transactions?scopeBillId=11&cardId=999')).status).toBe(200);
     });
-    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { billId: { not: null }, cardId: { in: [] } } });
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: { not: null }, cardId: { in: [1, 2] } }] }, sharedActive], cardId: { in: [] } } });
+  });
+  it('部分还款概况取账单余额，已还最低不再算逾期', async () => {
+    const source = await prisma.bill.findUnique();
+    prisma.bill.findUnique.mockResolvedValue({ ...source, paidStatus: 'partial', paidAmount: 10, dueDate: fromYmd('2025-01-01') });
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11');
+      expect(await response.json()).toMatchObject({ total: 0, context: { amount: 43.4, paidStatus: 'partial', paidAmount: 10, remainingAmount: 33.4, daysOverdue: null } });
+    });
+  });
+  it('已还清保留原账单总额而非当前交易小计，剩余待还为零', async () => {
+    const source = await prisma.bill.findUnique();
+    prisma.bill.findUnique.mockResolvedValue({ ...source, paidStatus: 'paid', paidAmount: 43.4, paidAt: fromYmd('2026-09-08') });
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11&page=2&pageSize=1');
+      expect(await response.json()).toMatchObject({ items: [], context: { amount: 43.4, paidStatus: 'paid', remainingAmount: 0, paidAt: '2026-09-07T16:00:00.000Z', daysOverdue: null } });
+    });
+  });
+  it('无本期账单时按卡片查询全部记录，不虚构账单上下文', async () => {
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?cardId=3');
+      expect(response.status).toBe(200);
+      expect(await response.json()).not.toHaveProperty('context');
+    });
+    expect(prisma.bill.findUnique).not.toHaveBeenCalled();
+    expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [sharedActive], cardId: 3 } });
   });
 });
 
@@ -142,6 +185,7 @@ describe('GET /api/transactions', () => {
     });
 
     const where = {
+      AND: [sharedActive],
       bankName: '光大银行',
       cardId: 9,
       transactionDate: { gte: fromYmd('2026-08-01'), lt: fromYmd('2026-08-11') },

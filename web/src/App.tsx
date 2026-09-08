@@ -16,7 +16,7 @@ import { Button, Result, Space, Spin } from 'antd';
 import { ReloadOutlined, SyncOutlined } from './skins/icons';
 import { api } from './api/client';
 import type { AppInfo, MeInfo, SetupStatus } from './api/types';
-import { AppNameContext, DEFAULT_APP_NAME } from './appName';
+import { AppNameContext, AppVersionContext, DEFAULT_APP_NAME } from './appName';
 import Setup from './pages/Setup';
 import Login from './pages/Login';
 import Layout from './components/Layout';
@@ -130,6 +130,7 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [authed, setAuthed] = useState(false);
   const [appName, setAppName] = useState(DEFAULT_APP_NAME);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -138,6 +139,7 @@ export default function App() {
         // 接口返回空名/异常数据时回退默认名
         const name = typeof info?.name === 'string' && info.name.trim() ? info.name : DEFAULT_APP_NAME;
         setAppName(name);
+        setAppVersion(typeof info.version === 'string' && /^\d+\.\d+\.\d+$/.test(info.version) ? info.version : null);
         document.title = name;
       })
       .catch(() => {/* 网络错误等：保持默认名 */});
@@ -212,7 +214,9 @@ export default function App() {
 
   return (
     <AppNameContext.Provider value={appName}>
+    <AppVersionContext.Provider value={appVersion}>
       <ResponsiveProvider>{content}</ResponsiveProvider>
+    </AppVersionContext.Provider>
     </AppNameContext.Provider>
   );
 }

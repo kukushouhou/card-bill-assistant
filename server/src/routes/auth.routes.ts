@@ -3,6 +3,9 @@ import { asyncHandler, ApiError } from '../lib/errors';
 import { config } from '../config';
 import { requireAuth } from './middleware';
 import * as authService from '../modules/auth/auth.service';
+import { attemptLimit } from './security.middleware';
+import { createLoginChallenge } from '../modules/auth/login-guard';
+import { revokeSession } from '../modules/auth/session';
 
 const router = Router();
 
@@ -17,22 +20,28 @@ function setAuthCookie(res: Response, token: string): void {
 }
 
 // 登录
+router.post('/login-challenge', attemptLimit(60, 60_000, { countSuccess: true }), asyncHandler(async (req, res) => {
+  res.json(await createLoginChallenge(req.body?.username));
+}));
+
 router.post(
   '/login',
+  attemptLimit(10),
   asyncHandler(async (req, res) => {
-    const { username, password } = req.body as { username?: string; password?: string };
+    const { username, password, proof } = (req.body ?? {}) as { username?: string; password?: string; proof?: unknown };
     if (!username || !password) throw new ApiError(400, '请输入用户名和密码');
-    const { token } = await authService.login(username, password);
+    const { token } = await authService.login(username, password, proof);
     setAuthCookie(res, token);
     res.json({ ok: true });
   }),
 );
 
 // 登出
-router.post('/logout', (req, res) => {
-  res.clearCookie('drc_token', { path: '/' });
+router.post('/logout', asyncHandler(async (req, res) => {
+  try { await revokeSession(req.cookies?.drc_token); }
+  finally { res.clearCookie('drc_token', { path: '/' }); }
   res.json({ ok: true });
-});
+}));
 
 // 当前登录态
 router.get(
@@ -49,10 +58,12 @@ router.get(
 router.post(
   '/password',
   requireAuth,
+  attemptLimit(10),
   asyncHandler(async (req, res) => {
-    const { oldPassword, newPassword } = req.body as { oldPassword?: string; newPassword?: string };
+    const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string };
     if (!oldPassword || !newPassword) throw new ApiError(400, '请输入原密码和新密码');
-    await authService.changePassword(oldPassword, newPassword);
+    const { token } = await authService.changePassword(oldPassword, newPassword);
+    setAuthCookie(res, token);
     res.json({ ok: true });
   }),
 );
@@ -92,7 +103,7 @@ router.put(
   '/pin',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { oldPin, newPin } = req.body as { oldPin?: string; newPin?: string };
+    const { oldPin, newPin } = (req.body ?? {}) as { oldPin?: string; newPin?: string };
     await authService.changePin(oldPin, newPin);
     res.json({ ok: true });
   }),
@@ -103,11 +114,7 @@ router.delete(
   '/pin',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const pin = req.body?.pin ?? req.query?.pin;
-    // 若已设置 PIN，需先验证当前 PIN 才能作废，防误操作
-    const status = await authService.getPinStatus();
-    if (status.hasPin) await authService.requireValidPin(pin);
-    const result = await authService.destroyPin();
+    const result = await authService.destroyPin(req.body?.pin);
     res.json({ ok: true, destroyedCards: result.destroyedCards });
   }),
 );

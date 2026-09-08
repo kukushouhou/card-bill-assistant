@@ -1,8 +1,9 @@
 import { SkinDecorations } from '../skins/SkinProvider';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, App } from 'antd';
 import { LockOutlined, UserOutlined } from '../skins/icons';
-import { api, ApiError } from '../api/client';
+import { ApiError } from '../api/client';
+import { loginWithProof } from '../lib/loginProof';
 import { useAppName } from '../appName';
 import { useResponsive } from '../responsive';
 
@@ -12,20 +13,26 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
+  const loginRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => loginRequest.current?.abort(), []);
 
   const onFinish = async (values: { password: string }) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    const controller = new AbortController();
+    loginRequest.current = controller;
     setLoading(true);
     try {
-      await api.post('/api/auth/login', { username: 'admin', password: values.password });
+      await loginWithProof('admin', values.password, controller.signal);
+      if (controller.signal.aborted) return;
       message.success('登录成功');
       onSuccess();
     } catch (err) {
+      if (controller.signal.aborted) return;
       message.error(err instanceof ApiError ? err.message : '登录失败');
     } finally {
       loadingRef.current = false;
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 

@@ -28,7 +28,7 @@ import {
   LeftOutlined,
 } from '../skins/icons';
 import { api } from '../api/client';
-import { useAppName } from '../appName';
+import { useAppName, useAppVersion } from '../appName';
 import { useResponsive } from '../responsive';
 import { useHistoryGate } from '../historyGate';
 import UpgradePrompt from './UpgradePrompt';
@@ -88,6 +88,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
   useSourceScroll();
   const { message } = App.useApp();
   const appName = useAppName();
+  const appVersion = useAppVersion();
   const { isMobile } = useResponsive();
   const historyGate = useHistoryGate();
   const [flow, setFlow] = useState<MobileFlowMeta | null>(null);
@@ -574,7 +575,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
         ) : (
           <header className="desktop-app-header" data-skin-slot="header">
             <SkinDecorations slot="header" />
-            <div className="desktop-app-brand"><span className="desktop-brand-mark" aria-hidden="true"><CreditCardOutlined /></span><Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title></div>
+            <div className="desktop-app-brand"><span className="desktop-brand-mark" aria-hidden="true"><CreditCardOutlined /></span><Typography.Title level={4} data-skin-slot="brand">{appName}{appVersion && <span className="app-version-suffix">v{appVersion}</span>}</Typography.Title></div>
             <div className="desktop-header-actions">{(historyGate.blocked || historyGate.focusedTask) && <Button onClick={openHistoryProgress}>历史拉取进度</Button>}<ColorModeSwitch /><Button icon={<LogoutOutlined />} type="text" onClick={logout}>
               退出登录
             </Button></div>
@@ -611,7 +612,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
             {moreOpen && (
               <section className="mobile-more-page" aria-label="更多功能">
                 <div className="mobile-more-brand">
-                  <Typography.Title level={4} data-skin-slot="brand">{appName}</Typography.Title>
+                  <Typography.Title level={4} data-skin-slot="brand">{appName}{appVersion && <span className="app-version-suffix">v{appVersion}</span>}</Typography.Title>
                 </div>
                 <div className="mobile-more-appearance"><ColorModeSwitch /></div>
                 <List header="管理功能">

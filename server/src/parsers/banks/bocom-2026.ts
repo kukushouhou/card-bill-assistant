@@ -1,3 +1,4 @@
+import { htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { attachTransactions, buildBill, cycleEnd, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
@@ -44,7 +45,7 @@ export const bocom2026Parser: BankParser = {
       cardNoFull: `${cardM[1]}******${cardM[2]}`,
     });
     if (!bill) return [];
-    const transactions = parseBocomTransactions(text);
+    const transactions = htmlTransactions(mail, 'bocom') ?? parseBocomTransactions(text);
     bill.transactions = transactions.filter((transaction) => transaction.currency === 'CNY');
     const bills = [bill];
     const usdAmount = text.match(/本期应还款\s*￥\s*-?[\d,]+\.\d{2}\s*[＄$]\s*(-?[\d,]+\.\d{2})/)?.[1];
@@ -60,6 +61,7 @@ export const bocom2026Parser: BankParser = {
         bills.push(usdBill);
       }
     }
+    attachStatementTransactions(bills, transactions);
     return bills;
   },
 };
@@ -70,10 +72,10 @@ export const bocom2026Parser: BankParser = {
  */
 function parseBocomTransactions(text: string): ParsedTransaction[] {
   const txns: Array<ParsedTransaction & { cardLast4?: string }> = [];
-  const lineRe = /(\d{2}\/\d{2})\s+(\d{2}\/\d{2})\s+(\d{4})\s+(.{2,80}?)\s+([A-Z]{3})\s+([\d,]+\.\d{2})\s+([A-Z]{3})\s+([\d,]+\.\d{2})/g;
+  const lineRe = /(\d{2}\/\d{2})\s+(\d{2}\/\d{2})\s+(\d{4})\s+([\s\S]{2,300}?)\s+([A-Z]{3})\s+([\d,]+\.\d{2})\s+([A-Z]{3})\s+([\d,]+\.\d{2})/g;
   const refundStart = text.indexOf('还款、退货、费用返还明细');
   const chargeStart = text.indexOf('消费、取现、其他费用明细');
-  if (refundStart < 0 || chargeStart < 0 || chargeStart < refundStart) return txns.map(({ cardLast4: _c, ...r }) => r);
+  if (refundStart < 0 && chargeStart < 0) return [];
   const scan = (segment: string, sign: 1 | -1) => {
     for (const m of segment.matchAll(lineRe)) {
       const value = parseAmount(m[8]);
@@ -82,7 +84,7 @@ function parseBocomTransactions(text: string): ParsedTransaction[] {
       txns.push({ date: m[1], description: m[4].trim(), amount: sign * value, currency: m[7], originalAmount: originalValue, originalCurrency: m[5], cardLast4: m[3] });
     }
   };
-  scan(text.slice(refundStart, chargeStart), -1);
-  scan(text.slice(chargeStart), 1);
+  if (refundStart >= 0) scan(text.slice(refundStart, chargeStart > refundStart ? chargeStart : undefined), -1);
+  if (chargeStart >= 0) scan(text.slice(chargeStart, refundStart > chargeStart ? refundStart : undefined), 1);
   return txns.map(({ cardLast4: _c, ...r }) => r);
 }

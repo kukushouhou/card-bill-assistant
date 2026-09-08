@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { addDays, fromYmd } from '../lib/dates';
+import type { Prisma } from '../generated/prisma/client';
+import { addDays, daysBetween, fromYmd, today } from '../lib/dates';
+import { isOverdue, remainingOf } from '../modules/bills/paid';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
 
@@ -34,14 +36,26 @@ router.get(
       },
     });
     if (contextId != null && !contextBill) throw new ApiError(404, '账单不存在');
+    const payment = contextBill ? {
+      amount: contextBill.amount == null ? null : Number(contextBill.amount),
+      minAmount: contextBill.minAmount == null ? null : Number(contextBill.minAmount),
+      paidAmount: contextBill.paidAmount == null ? null : Number(contextBill.paidAmount),
+      paidStatus: contextBill.paidStatus, dueDate: contextBill.dueDate,
+    } : null;
+    const now = today();
     const relatedCards = contextBill ? [...new Map([
       contextBill.card, ...contextBill.cards.map((link) => link.card),
     ].map((card) => [card.id, { id: card.id, cardLast4: card.displayLast4 || card.cardLast4 }])).values()] : [];
     const dateFrom = input.dateFrom ? fromYmd(input.dateFrom) : undefined;
     const dateToExclusive = input.dateTo ? addDays(fromYmd(input.dateTo), 1) : undefined;
-    const where = {
-      ...(input.billId ? { billId: input.billId } : input.scopeBillId ? { billId: { not: null }, cardId: { in: relatedCards.map((card) => card.id) } } : {}),
-      ...(input.period ? { bill: { period: input.period } } : {}),
+    const and: Prisma.BillTransactionWhereInput[] = [];
+    if (input.billId) and.push({ OR: [{ billId: input.billId }, ...(contextBill?.mailLogId ? [{ statementMailLogId: contextBill.mailLogId, currency: contextBill.currency }] : [])] });
+    if (input.scopeBillId) and.push({ OR: [{ billId: { not: null }, cardId: { in: relatedCards.map((card) => card.id) } },
+      ...(contextBill?.mailLogId ? [{ statementMailLogId: contextBill.mailLogId, currency: contextBill.currency }] : [])] });
+    if (input.period) and.push({ OR: [{ bill: { period: input.period } }, { statementMailLog: { bills: { some: { period: input.period } } } }] });
+    and.push({ OR: [{ statementMailLogId: null }, { statementMailLog: { bills: { some: {} } } }] });
+    const where: Prisma.BillTransactionWhereInput = {
+      AND: and,
       ...(input.bank ? { bankName: input.bank } : {}),
       ...(input.cardId ? { cardId: input.scopeBillId && !relatedCards.some((card) => card.id === input.cardId)
         ? { in: [] as number[] } : input.cardId } : {}),
@@ -62,6 +76,7 @@ router.get(
         where,
         include: {
           bill: { include: { card: { select: { cardLast4: true } } } },
+          statementMailLog: { select: { bills: { select: { period: true, currency: true } } } },
         },
         orderBy: [
           { transactionDate: 'desc' },
@@ -78,16 +93,20 @@ router.get(
       total,
       page: input.page,
       pageSize: input.pageSize,
-      ...(contextBill ? { context: {
+      ...(contextBill && payment ? { context: {
         billId: contextBill.id, bankName: contextBill.card.bankName, period: contextBill.period,
-        currency: contextBill.currency, amount: contextBill.amount == null ? null : Number(contextBill.amount),
+        currency: contextBill.currency, ...payment,
+        remainingAmount: payment.amount == null ? null : remainingOf(payment),
+        daysOverdue: isOverdue(payment, now) ? daysBetween(payment.dueDate, now) : null,
+        statementDate: contextBill.statementDate, paidAt: contextBill.paidAt,
         mode: input.scopeBillId ? 'history' : 'bill', cards: relatedCards,
       } } : {}),
       items: rows.map((row) => ({
         id: row.id,
         billId: row.billId,
-        period: row.bill?.period ?? '未出账',
-        unbilled: row.billId == null,
+        period: row.bill?.period ?? row.statementMailLog?.bills.find((bill) => bill.currency === row.currency)?.period ?? (row.statementMailLogId ? '账户共享' : '未出账'),
+        unbilled: row.billId == null && row.statementMailLogId == null,
+        ...(row.statementMailLogId != null ? { statementShared: true } : {}),
         bankName: row.bankName,
         cardId: row.cardId,
         cardLast4: row.cardLast4 ?? row.bill?.card.cardLast4 ?? null,

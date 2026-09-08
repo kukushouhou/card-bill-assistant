@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { statementTable, htmlTransactions, attachStatementTransactions, assertCompleteRecords } from '../statement-rows';
 import { buildBill, mailText, normalizeCurrency, parseAmount, parseDate, pickHolder } from '../_util';
 
 /**
@@ -33,6 +34,32 @@ export const cgb2026Parser: BankParser = {
 
     const holderName = pickHolder(text);
     const bills: ParsedBill[] = [];
+    // 同一单元格的多个卡尾属于同一账单；没有“附”字时不推断业务主副卡。
+    if (mail.html) {
+      for (const row of statementTable(mail.html).rows) {
+        const c = row.cells;
+        if (c.length < 5 || !/^\d{4}(?:\s*[（(]?\s*\d{4}\s*附?\s*[）)]?)*$/.test(c[0] ?? '')) continue;
+        if (!/^\d{4}\/\d{2}\/\d{2}$/.test(c[3] ?? '') || !/^(人民币|美元)$/.test(c[4] ?? '')) continue;
+        const tails = [...c[0]!.matchAll(/\d{4}/g)].map((m) => m[0]);
+        const amount = c[1] === '无欠款' ? 0 : parseAmount(c[1]);
+        const minAmount = c[2] === '无欠款' ? 0 : parseAmount(c[2]);
+        const dueDate = parseDate(c[3]);
+        if (amount == null || minAmount == null || !dueDate) throw new Error('广发账单汇总行不完整');
+        const bill = buildBill({ bankName: '广发银行', cardLast4: tails[0], holderName, amount, minAmount,
+          currency: normalizeCurrency(c[4]), statementDate, dueDate });
+        if (bill) {
+          bill.cardLast4s = tails;
+          if (/附/.test(c[0]!)) bill.businessCards = { primaryCardLast4: tails[0]!, supplementaryCards: tails.slice(1).map((cardLast4) => ({ cardLast4, holderName: null })) };
+          bills.push(bill);
+        }
+      }
+      if (bills.length) {
+        const transactions = htmlTransactions(mail, 'cgb');
+        if (transactions) attachStatementTransactions(bills, transactions);
+        else assertCompleteRecords(text, 0);
+        return bills;
+      }
+    }
     // 卡行：卡号(可带附属卡标记"6736附"/"6736 附") 本期账单金额 最低还款额 最后还款日 入账货币
     const memberTails = new Map<ParsedBill, string[]>();
     for (const m of text.matchAll(
@@ -71,9 +98,11 @@ export const cgb2026Parser: BankParser = {
       const tail = heads[i]![1]!;
       const seg = text.slice((heads[i]!.index ?? 0) + heads[i]![0].length, heads[i + 1]?.index ?? text.length);
       const list = byTail.get(tail) ?? [];
+      let consumed = 0;
       for (const m of seg.matchAll(
-        /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+(.+?)\s+(?:RMB:\s*[\d,.]+\s+)?(-?[\d,]+\.\d{2})\s+(人民币|美元)\s+(-?[\d,]+\.\d{2})(?:\s+(人民币|美元))?/g,
+        /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+((?:(?!\d{4}\/\d{2}\/\d{2}\s+\d{4}\/\d{2}\/\d{2})[\s\S])+?)\s+(?:RMB:\s*[\d,.]+\s+)?(-?[\d,]+\.\d{2})\s+(人民币|美元)\s+(-?[\d,]+\.\d{2})(?:\s+(人民币|美元))?/g,
       )) {
+        consumed++;
         const value = parseAmount(m[6]!);
         const originalValue = parseAmount(m[4]!);
         if (value == null) continue;
@@ -87,6 +116,7 @@ export const cgb2026Parser: BankParser = {
           cardLast4: tail,
         });
       }
+      assertCompleteRecords(seg, consumed);
       if (list.length > 0) byTail.set(tail, list);
     }
     for (const bill of bills) {

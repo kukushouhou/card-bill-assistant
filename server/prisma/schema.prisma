@@ -26,11 +26,12 @@ model AppSetting {
 
 /**
  * 通知渠道实例。type 对应通知提供方注册表，config 使用环境密钥加密后由各提供方自行校验。
- * 单管理员场景下同一种渠道只保留一份配置；新增渠道类型无需再改表结构。
+ * 每个接收目标独立配置；旧记录没有 deliveryKey 时保留原类型发送标识。
  */
 model NotificationChannel {
   id        Int      @id @default(autoincrement())
-  type      String   @unique
+  type      String
+  deliveryKey String? @unique
   name      String
   config    Json
   enabled   Boolean  @default(true)
@@ -164,7 +165,7 @@ model BillCard {
 
 model BillTransaction {
   id               Int       @id @default(autoincrement())
-  /** null 表示交易仍处于未出账状态。 */
+  /** null 且 statementMailLogId 为空才表示未出账。 */
   billId           Int?
   bill             Bill?     @relation(fields: [billId], references: [id], onDelete: Cascade)
   /** 银行快照；未出账记录不依赖 Bill 也能查询与筛选。 */
@@ -172,6 +173,9 @@ model BillTransaction {
   /** 仅日度邮件来源使用；正式账单明细通过 Bill.mailLogId 追溯。 */
   dailyMailLogId   Int?
   dailyMailLog     MailLog?  @relation("DailyTransactionSource", fields: [dailyMailLogId], references: [id], onDelete: Cascade)
+  /** 正式账单邮件的账户共享明细；billId 为空，但不属于未出账交易。 */
+  statementMailLogId Int?
+  statementMailLog MailLog? @relation("StatementSharedTransactions", fields: [statementMailLogId], references: [id], onDelete: Cascade)
   cardId           Int?
   card             Card?     @relation(fields: [cardId], references: [id], onDelete: SetNull)
   /** 解析当时的展示卡尾；卡档案后续删除时仍可展示来源。 */
@@ -193,6 +197,7 @@ model BillTransaction {
 
   @@unique([billId, sequence])
   @@unique([dailyMailLogId, sequence])
+  @@unique([statementMailLogId, sequence])
   @@index([bankName, transactionDate])
   @@index([transactionDate, id])
   @@index([cardId, transactionDate])
@@ -331,6 +336,7 @@ model MailLog {
   processedAt DateTime     @default(now())
   bills       Bill[]
   dailyTransactions BillTransaction[] @relation("DailyTransactionSource")
+  statementTransactions BillTransaction[] @relation("StatementSharedTransactions")
 
   @@unique([accountId, uid])
 }

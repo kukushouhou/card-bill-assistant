@@ -14,14 +14,16 @@ const prisma = vi.hoisted(() => ({
 }));
 const recomputePrimary = vi.hoisted(() => vi.fn(async () => {}));
 const allCardGroups = vi.hoisted(() => vi.fn(async () => new Map<number, number[]>()));
-const requireValidPin = vi.hoisted(() => vi.fn(async () => Buffer.alloc(32, 7)));
+const requireValidPin = vi.hoisted(() => vi.fn(async (_pin?: unknown) => Buffer.alloc(32, 7)));
 
 vi.mock('../src/lib/prisma', () => ({ prisma }));
 vi.mock('../src/lib/card-groups', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/card-groups')>();
   return { ...actual, recomputePrimary, allCardGroups };
 });
-vi.mock('../src/modules/auth/auth.service', () => ({ requireValidPin }));
+vi.mock('../src/modules/auth/auth.service', () => ({
+  withValidPin: async (pin: unknown, run: (key: Buffer, tx: typeof prisma) => Promise<unknown>) => run(await requireValidPin(pin), prisma),
+}));
 vi.mock('../src/routes/middleware', () => ({
   requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
   COOKIE_NAME: 'drc_token',

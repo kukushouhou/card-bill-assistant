@@ -49,7 +49,8 @@ try {
     await save('dashboard-desktop.png');
     await visit('/bills'); await expect(page.locator('.agenda-totals')).toContainText('4,123.40');
     await save('bill-center-desktop.png');
-    await visit('/transactions'); await expect(page.getByText('账单调整', { exact: true }).first()).toBeVisible();
+    await visit('/transactions?billId=101'); await expect(page.getByRole('region', { name: '本账单还款概况' })).toBeVisible();
+    await expect(page.getByText('账单调整', { exact: true }).first()).toBeVisible();
     await save('transactions-desktop.png');
     await visit('/cards'); await expect(page.locator('.bank-card').first()).toBeVisible();
     await save('card-center-desktop.png');

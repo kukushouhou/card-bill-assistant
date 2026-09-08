@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill } from '../types';
+import { htmlTransactions } from '../statement-rows';
 import {
   attachTransactions,
   buildBill,
@@ -39,15 +40,15 @@ export const citic2026Parser: BankParser = {
     if (!statementDate || !dueDate) return [];
 
     const holderName = pickHolder(text);
-    const txns = citicTransactions(text);
-    const txnTails = txns.map((t) => t.cardLast4);
+    const txns = htmlTransactions(mail, 'citic') ?? citicTransactions(text);
+    const txnTails = txns.map((t) => t.cardLast4).filter((tail): tail is string => !!tail);
     const bills: ParsedBill[] = [];
     // 卡行：卡号 CNY 上期应还 上期已还 本期新增 账户账单金额 最低还款额
     for (const m of text.matchAll(
       /(\d{4})-\d{2}\*{2}-\*{4}-(\d{3,4})\s*CNY\s*(-?[\d,]+\.\d{2})\s*(-?[\d,]+\.\d{2})\s*(-?[\d,]+\.\d{2})\s*(-?[\d,]+\.\d{2})\s*(-?[\d,]+\.\d{2})/g,
     )) {
-      const amount = parseAmount(m[5]);
-      const minAmount = parseAmount(m[6]);
+      const amount = parseAmount(m[6]);
+      const minAmount = parseAmount(m[7]);
       if (amount == null || minAmount == null) continue;
       const cardLast4 = resolveCiticCardLast4(m[2]!, txnTails);
       if (!cardLast4) continue;

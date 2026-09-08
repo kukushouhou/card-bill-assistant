@@ -5,6 +5,7 @@ import { openMissingCycle } from '../../../modules/bills/ledger';
 import { createSiblingZeroBills, inferCardRule } from '../../../parsers/pipeline';
 import { listAccountBillParsers } from '../../../parsers/registry';
 import type { MigrationInspection, TaskExecutionResult, VersionMigration } from '../migration.types';
+import { affectedBankNames } from '../migration-context';
 
 type ZeroBillTarget = {
   cardId: number;
@@ -183,7 +184,7 @@ async function inspectAccountZeroBills(db: PrismaClient | Prisma.TransactionClie
     .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
     .map(([bank, count]) => `${bank} ${count} 张卡`)
     .join('、');
-  return { total: targets.length, payload: { banks: [...byBank.keys()] }, summary: `待补零账单：${summary}` };
+  return { total: targets.length, payload: { banks: [...byBank.keys()] }, summary: `待更新：${summary}` };
 }
 
 /** 可选迁移等待期间邮件可继续同步；真正执行前在这里重新扫描最新目标。 */
@@ -279,10 +280,15 @@ export const accountZeroBillsMigration: VersionMigration = {
   targetVersion: '0.4.1',
   order: 10,
   mode: 'optional',
-  title: '补齐户级账单银行当前账期零账单',
-  description: '招商、民生、平安、华夏按户发账单：当前待还账期内已有同户账单、自身无账单的卡，自动补「无需还款」零账单并同步户内账期规则，消除误报的未取得账单。仅处理当前账期，不改历史。',
+  title: '修正本期账单状态',
+  description: '根据已收到的本期账单，将误显示的「未取得账单」改为「无需还款」，并校正相关卡片的出账日和还款日。无需重读邮件，历史账单不变。',
   executeLabel: '现在执行',
-  ignoreLabel: '忽略迁移',
+  ignoreLabel: '忽略更新',
+  ignoreWarning: '忽略后，本期仍可能显示「未取得账单」并产生多余提醒；收到下期账单后会正常处理。系统将不再提供本次迁移服务。',
+  describeImpact({ total, payload }) {
+    const banks = affectedBankNames(payload);
+    return banks.length > 0 ? `${banks.join('、')} · 共 ${total} 张卡的本期账单` : null;
+  },
   inspect: inspectAccountZeroBills,
   prepareTask: prepareZeroBillTask,
   executeTask: executeZeroBillTask,

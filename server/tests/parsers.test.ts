@@ -371,8 +371,8 @@ describe('abc2019Parser.parse（旧模板抬头卡与明细卡套卡归属）', 
       cardLast4: '1170',
       cardLast4s: ['1170', '5446'],
       period: '2021-04',
-      amount: 709.46,
-      minAmount: 97.23,
+      amount: -709.46,
+      minAmount: -97.23,
     });
     expect(bills[0]!.transactions).toEqual([
       expect.objectContaining({ date: '20210401', cardLast4: '5446', amount: 12 }),
@@ -548,55 +548,14 @@ describe('cmbc2026Parser.parse（明细行末卡尾 → 合并账单批量副卡
   });
 });
 
-describe('boc2026Parser.parse（PDF 明细 + 还款符号推断）', () => {
-  // 模拟 PDF 提取文本：中文为自定义字体乱码，数字/卡号/ASCII 完好
-  const pdfText = [
-    '中国银行信用卡账单(2026年08月)',
-    'Current FCY Total Balance Due 2026-08-24 2026-08-04 5,534.55',
-    '6259 0611 **** 1831 2861.30 286.00',
-    ' Modi字卡(卡号：1831)ૃ',
-    '人ࡇ币/RMB 㺬࠮/DEBT 2710.40 2861.30 2710.40 㺬࠮/DEBT 2861.30 25738.70',
-    '2026-07-14 2026-07-15 1831 微信-便利店CHN 1085.00',
-    '2026-07-17 2026-07-18 1831ୣ ৻૴ૃ（云୺付） 2710.40',
-    '2026-08-04 2026-08-04 1831 已为您减免ߎ年度年ો',
-  ].join('\n');
-
-  const mail = {
-    from: 'boczhangdan@bankofchina.com',
-    subject: '中国银行信用卡电子账单',
-    date: new Date(),
-    text: '',
-    pdfText,
-  };
-
-  it('按卡分节解析明细：消费为正，还款（金额=存入合计）为负，无金额行跳过', () => {
-    const bills = boc2026Parser.parse(mail);
-    expect(bills).toHaveLength(1);
-    const bill = bills[0]!;
-    expect(bill.cardLast4).toBe('1831');
-    expect(bill.amount).toBeCloseTo(2861.3);
-    expect(bill.transactions).toHaveLength(2);
-    expect(bill.transactions![0]).toMatchObject({ date: '2026-07-14', amount: 1085 });
-    // 2710.40 与节内存入(还款)合计一致 → 记负数
-    expect(bill.transactions![1]).toMatchObject({ amount: -2710.4 });
-    // "已为您减免本年度年费"行无金额，不入明细
-  });
-
-  it('零账单（无还款日值）：还款日 = 账单日 + 20 天推算，0 元卡正常入账', () => {
-    // 实测样本：2022-05 合并账单"您本期无需还款"，摘要仅"账单日 欠款总计"两个值
-    const zeroPdf = [
-      '中国银行信用卡账单(2022年05月)',
-      'Current FCY Total Balance Due',
-      '2022-05-04 0.00',
-      '6253 3811 **** 3798 0.00 0.00',
-      '6259 0943 **** 7557 0.00 0.00',
-    ].join('\n');
-    const bills = boc2026Parser.parse({ ...mail, pdfText: zeroPdf });
-    expect(bills).toHaveLength(2);
-    expect(bills[0]).toMatchObject({ cardLast4: '3798', amount: 0, minAmount: 0 });
-    expect(bills[1]).toMatchObject({ cardLast4: '7557', amount: 0, minAmount: 0 });
-    expect(bills[0]!.statementDate.toISOString()).toBe(fromYmd('2022-05-04').toISOString());
-    expect(bills[0]!.dueDate.toISOString()).toBe(fromYmd('2022-05-24').toISOString());
+describe('boc2026Parser.parse（PDF 借贷列）', () => {
+  it('没有原附件位置时明确失败，不再按还款合计猜方向或静默丢行', () => {
+    expect(() => boc2026Parser.parse({ from: '', subject: '', date: new Date(), pdfText: [
+      'Current FCY Total Balance Due 2026-08-24 2026-08-04 5,534.55',
+      '6259 0611 **** 1831 2861.30 286.00',
+      '测试卡(卡号：1831)',
+      '2026-07-14 2026-07-15 1831 测试交易 1085.00',
+    ].join('\n') })).toThrow('原附件的表格位置');
   });
 });
 

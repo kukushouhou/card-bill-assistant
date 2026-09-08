@@ -7,6 +7,8 @@ import {
   httpFailure,
   httpUrlSchema,
   optionalTrimmedString,
+  readJsonObject,
+  serviceFailure,
 } from '../provider-utils';
 
 const ntfyConfigSchema = z.object({
@@ -43,7 +45,10 @@ export const ntfyProvider: NotificationProvider = {
         headers,
         body: JSON.stringify({ topic: parsed.topic, title: message.title, message: message.body }),
       });
-      return response.ok ? { ok: true } : httpFailure(response);
+      if (!response.ok) return httpFailure(response);
+      const result = await readJsonObject(response);
+      return typeof result?.id === 'string' && result.id.length > 0
+        ? { ok: true } : serviceFailure(result?.error, '通知服务未确认发送成功');
     } catch (error) {
       return connectionFailure(error);
     }

@@ -40,7 +40,9 @@ vi.mock('../src/jobs/scheduler', () => ({
 }));
 
 import { APP_VERSION } from '../src/version';
-import { initializeUpgradeState } from '../src/modules/upgrades/upgrade.service';
+import { getUpgradePlan, initializeUpgradeState, submitUpgradeDecisions } from '../src/modules/upgrades/upgrade.service';
+import { accountZeroBillsMigration } from '../src/modules/upgrades/migrations/backfill-account-zero-bills';
+import { cardBusinessRelationsMigration } from '../src/modules/upgrades/migrations/card-business-relations';
 
 function card(overrides: Record<string, unknown>) {
   return {
@@ -155,5 +157,84 @@ describe('版本升级协调器', () => {
       }),
     });
     expect(db.appSetting.upsert).not.toHaveBeenCalled();
+    const created = db.upgradePlan.create.mock.calls[0][0].data.manifest;
+    expect(created[0].summary).toBe('工商银行 · 共 1 封已识别的历史账单邮件');
+    expect(created[0].summary).not.toContain('平安银行');
+  });
+
+  function storedPlan() {
+    const tasks = [cardBusinessRelationsMigration, accountZeroBillsMigration].map((migration, index) => ({
+      id: index + 1, planId: 8, key: migration.key, mode: migration.mode, toVersion: migration.targetVersion,
+      migrationOrder: migration.order, title: '旧工程标题', description: '旧工程说明',
+      executeLabel: '现在执行', ignoreLabel: '忽略迁移', status: 'awaiting_decision',
+      payload: { banks: index === 0 ? ['工商银行'] : ['平安银行'] },
+      total: 4, processed: 1, succeeded: 1, unchanged: 0, failed: 0, error: null, approvedAt: null,
+    }));
+    return {
+      id: 8, fromVersion: '0.1.0', toVersion: APP_VERSION, status: 'awaiting_decision',
+      hasRequired: false, error: null, startedAt: null, tasks,
+      manifest: tasks.map((task) => ({ ...task, targetVersion: task.toVersion, order: task.migrationOrder, summary: null })),
+    };
+  }
+
+  it('已保存计划读取最新展示文案，保留旧快照和任务状态且不写库', async () => {
+    const stored = storedPlan();
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    db.upgradePlan.findUnique.mockResolvedValue(stored);
+    const result = await getUpgradePlan();
+    expect(result?.migrations[1].title).toBe(accountZeroBillsMigration.title);
+    expect(result?.migrations[0].summary).toBe('工商银行 · 共 4 封已识别的历史账单邮件');
+    expect(result?.migrations[1].summary).toBe('平安银行 · 共 4 张卡的本期账单');
+    expect(result?.tasks[1]).toEqual(expect.objectContaining({
+      title: accountZeroBillsMigration.title, description: accountZeroBillsMigration.description,
+      ignoreLabel: '忽略更新', status: 'awaiting_decision', total: 4, processed: 1, succeeded: 1,
+      ignoreWarning: accountZeroBillsMigration.ignoreWarning,
+    }));
+    expect(stored.tasks[1].title).toBe('旧工程标题');
+    expect(stored.manifest[1].title).toBe('旧工程标题');
+    expect(db.upgradeTask.update).not.toHaveBeenCalled();
+    expect(db.upgradePlan.update).not.toHaveBeenCalled();
+    expect(db.mailLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('一次保存所有选择后才启动整个计划', async () => {
+    const stored = storedPlan();
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
+    db.upgradePlan.findUnique.mockResolvedValue(stored);
+    await submitUpgradeDecisions(8, [
+      { key: stored.tasks[0].key, action: 'ignore' }, { key: stored.tasks[1].key, action: 'approve' },
+    ]);
+    expect(db.upgradeTask.update).toHaveBeenCalledTimes(2);
+    expect(db.upgradeTask.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: expect.objectContaining({ status: 'ignored' }) }));
+    expect(db.upgradeTask.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ data: expect.objectContaining({ status: 'approved' }) }));
+    expect(db.upgradePlan.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'executing' }) }));
+    expect(db.upgradePlan.update.mock.invocationCallOrder[0]).toBeGreaterThan(db.upgradeTask.update.mock.invocationCallOrder[1]);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
+  });
+
+  it('后项是不可忽略的必选项目时，前项也不能部分保存', async () => {
+    const stored = storedPlan();
+    stored.tasks[1].mode = 'required';
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
+    db.upgradePlan.findUnique.mockResolvedValue(stored);
+    await expect(submitUpgradeDecisions(8, stored.tasks.map((task) => ({ key: task.key, action: 'ignore' })))).rejects.toThrow('不能忽略');
+    expect(db.upgradeTask.update).not.toHaveBeenCalled();
+    expect(db.upgradePlan.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'duplicate', 'extra', 'past_cursor', 'already_executing', 'already_ignored'])('拒绝失效或不完整的整批选择：%s', async (scenario) => {
+    const stored = storedPlan();
+    let decisions: Array<{ key: string; action: 'approve' }> = stored.tasks.map((task) => ({ key: task.key, action: 'approve' }));
+    if (scenario === 'missing') decisions.pop();
+    if (scenario === 'duplicate') decisions = [decisions[0], decisions[0]];
+    if (scenario === 'extra') decisions.push({ key: 'unknown', action: 'approve' });
+    if (scenario === 'already_executing') stored.status = 'executing';
+    if (scenario === 'already_ignored') stored.tasks[1].status = 'ignored';
+    db.appSetting.findUnique.mockResolvedValue({ value: scenario === 'past_cursor' ? APP_VERSION : '0.1.0' });
+    db.upgradePlan.findUnique.mockResolvedValue(stored);
+    await expect(submitUpgradeDecisions(8, decisions)).rejects.toThrow();
+    expect(db.upgradeTask.update).not.toHaveBeenCalled();
+    expect(db.upgradePlan.update).not.toHaveBeenCalled();
   });
 });

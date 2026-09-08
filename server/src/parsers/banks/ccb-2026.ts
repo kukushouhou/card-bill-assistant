@@ -1,3 +1,4 @@
+import { htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { attachTransactions, buildBill, cardTailLine, dateLine, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
@@ -47,7 +48,9 @@ export const ccb2026Parser: BankParser = {
       });
       if (bill) bills.push(bill);
     }
-    attachCcbTransactions(text, bills);
+    const tableTransactions = htmlTransactions(mail, 'ccb');
+    if (tableTransactions) attachStatementTransactions(bills, tableTransactions);
+    else attachCcbTransactions(text, bills);
     return bills;
   },
 };
@@ -74,7 +77,7 @@ function attachCcbTransactions(text: string, bills: ParsedBill[]): void {
       j++;
       if (desc.length > 3) break;
     }
-    if (j + 4 >= lines.length || !/^[A-Z]{3}$/.test(lines[j] ?? '') || !/^[A-Z]{3}$/.test(lines[j + 2] ?? '')) continue;
+    if (j + 3 >= lines.length || !/^[A-Z]{3}$/.test(lines[j] ?? '') || !/^[A-Z]{3}$/.test(lines[j + 2] ?? '')) continue;
     const originalValue = parseAmount(lines[j + 1] ?? '');
     const value = parseAmount(lines[j + 3] ?? '');
     if (value == null || desc.length === 0) continue;
@@ -89,7 +92,5 @@ function attachCcbTransactions(text: string, bills: ParsedBill[]): void {
     });
     i = j + 3;
   }
-  for (const bill of bills) {
-    attachTransactions([bill], txns.filter((transaction) => transaction.currency === bill.currency));
-  }
+  attachStatementTransactions(bills, txns);
 }

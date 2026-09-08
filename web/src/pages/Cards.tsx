@@ -1,6 +1,7 @@
 import { displayDate } from '../lib/displayDate';
 import { useDraftGuard } from '../lib/draftGuard';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Alert,
   App,
@@ -1398,6 +1399,17 @@ export default function Cards() {
   const abnormalFlowSeq = useRef(0);
   const desktopConfirmDestroy = useRef<(() => void) | null>(null);
   const confirmMode = useRef(mode);
+
+  useEffect(() => {
+    // 页面进入浏览器返回缓存前同步清除明文与 PIN，返回时仍需重新验证。
+    const clearSecrets = () => flushSync(() => {
+      setPinModal(null);
+      setSecretCard(null);
+      setRevealed(null);
+    });
+    window.addEventListener('pagehide', clearSecrets);
+    return () => window.removeEventListener('pagehide', clearSecrets);
+  }, []);
 
   useEffect(
     () => () => {

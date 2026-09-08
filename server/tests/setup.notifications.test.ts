@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = vi.hoisted(() => ({
   appSetting: { findUnique: vi.fn(), create: vi.fn() },
   admin: { count: vi.fn(), create: vi.fn() },
-  notificationChannel: { upsert: vi.fn() },
+  notificationChannel: { create: vi.fn() },
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
@@ -49,7 +49,7 @@ describe('安装向导通知渠道', () => {
     prisma.admin.count.mockResolvedValue(0);
     prisma.admin.create.mockResolvedValue({});
     prisma.appSetting.create.mockResolvedValue({});
-    prisma.notificationChannel.upsert.mockResolvedValue({});
+    prisma.notificationChannel.create.mockResolvedValue({});
     prisma.$transaction.mockImplementation(async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
   });
 
@@ -66,10 +66,10 @@ describe('安装向导通知渠道', () => {
       expect(response.status).toBe(200);
     });
 
-    const upsert = prisma.notificationChannel.upsert.mock.calls[0][0];
-    expect(upsert.where).toEqual({ type: 'bark' });
-    expect(upsert.create).toEqual(expect.objectContaining({ type: 'bark', name: 'Bark', enabled: true }));
-    expect(unsealNotificationConfig(upsert.create.config)).toEqual({ url: 'https://api.day.app/setup-key' });
+    const create = prisma.notificationChannel.create.mock.calls[0][0];
+    expect(create.data.deliveryKey).toMatch(/^instance:/);
+    expect(create.data).toEqual(expect.objectContaining({ type: 'bark', name: 'Bark', enabled: true }));
+    expect(unsealNotificationConfig(create.data.config)).toEqual({ url: 'https://api.day.app/setup-key' });
   });
 
   it('缺少管理员密码时返回明确提示且不写入安装数据', async () => {
@@ -88,7 +88,7 @@ describe('安装向导通知渠道', () => {
     expect(prisma.appSetting.create).not.toHaveBeenCalled();
   });
 
-  it('安装时可以一次绑定多个通知渠道', async () => {
+  it('安装时可以一次绑定多个同类型通知渠道', async () => {
     await withServer(async (url) => {
       const response = await fetch(`${url}/api/setup/install`, {
         method: 'POST',
@@ -97,15 +97,15 @@ describe('安装向导通知渠道', () => {
           password: 'password123',
           notifications: [
             { type: 'bark', config: { url: 'https://api.day.app/setup-key' } },
-            { type: 'ntfy', config: { serverUrl: 'https://ntfy.sh', topic: 'private-topic' } },
+            { type: 'bark', name: '备用手机', config: { url: 'https://api.day.app/second' } },
           ],
         }),
       });
       expect(response.status).toBe(200);
     });
 
-    expect(prisma.notificationChannel.upsert).toHaveBeenCalledTimes(2);
-    expect(prisma.notificationChannel.upsert.mock.calls.map((call) => call[0].where.type)).toEqual(['bark', 'ntfy']);
+    expect(prisma.notificationChannel.create).toHaveBeenCalledTimes(2);
+    expect(prisma.notificationChannel.create.mock.calls.map((call) => call[0].data.type)).toEqual(['bark', 'bark']);
   });
 
   it('选择暂不配置时不创建渠道', async () => {
@@ -118,6 +118,6 @@ describe('安装向导通知渠道', () => {
       expect(response.status).toBe(200);
     });
 
-    expect(prisma.notificationChannel.upsert).not.toHaveBeenCalled();
+    expect(prisma.notificationChannel.create).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,14 @@
 import { Popup } from 'antd-mobile';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, App, Button, Dropdown, Empty, Pagination, Skeleton, Space, Table, Tag } from 'antd';
-import { BellOutlined, CreditCardOutlined, DownOutlined, FileTextOutlined, MoreOutlined, RightOutlined } from '../skins/icons';
+import { Alert, App, Button, Dropdown, Empty, Grid, Pagination, Skeleton, Space, Table, Tag } from 'antd';
+import { BellOutlined, ClockCircleOutlined, CreditCardOutlined, DownOutlined, ExclamationCircleFilled, FileTextOutlined, MoreOutlined, RightOutlined } from '../skins/icons';
 import type { AgendaItem, AgendaResult, AgendaSummary, BillRow, CardRow } from '../api/types';
 import { api } from '../api/client';
 import { useResponsive } from '../responsive';
 import { displayDate, displayPeriod } from '../lib/displayDate';
 import { formatMoney } from '../lib/money';
+import { billDueNotice, type BillDueNotice } from '../lib/billDue';
+import { hasMetMinimumPayment } from '../lib/billPayment';
 import { overdueText } from '../lib/overdue';
 import { paymentTarget, useBillNavigation } from '../lib/billNavigation';
 import { useResource } from '../lib/useResource';
@@ -48,16 +50,22 @@ function Status({ item }: { item: AgendaItem }) {
   const bill = item.bill;
   if (!bill) return item.completed ? <Tag color="green">已完成</Tag> : <Tag>{item.kind === 'general' ? '待完成' : kinds[item.kind]}</Tag>;
   if (bill.missing) return null;
+  if (hasMetMinimumPayment(bill)) return <Tag color="blue">已还最低</Tag>;
   const label = bill.paidStatus === 'paid'
     ? (bill.amount === 0 ? '无需还款' : '已还清')
     : bill.paidStatus === 'partial' ? '部分已还' : '待还';
   return <Tag color={bill.paidStatus === 'paid' ? 'green' : bill.paidStatus === 'partial' ? 'orange' : undefined}>{label}</Tag>;
 }
 
+function DueNotice({ notice }: { notice: BillDueNotice | null }) {
+  return notice && <span className="agenda-due-notice" data-tone={notice.tone}>
+    {notice.tone === 'overdue' ? <ExclamationCircleFilled aria-hidden="true" /> : <ClockCircleOutlined aria-hidden="true" />}<span>{notice.label}</span>
+  </span>;
+}
+
 function Dates({ item }: { item: AgendaItem }) {
   return <div className="agenda-dates">
     {item.bill ? <>{item.bill.statementDate && <span>出账 {displayDate(item.bill.statementDate)}</span>}<span>还款 {displayDate(item.bill.dueDate)}</span>{item.bill.minAmount != null && <span>最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</> : <span>{displayDate(item.date)}</span>}
-    {item.daysOverdue != null && <span className="agenda-overdue">{overdueText(item.daysOverdue)}</span>}
   </div>;
 }
 
@@ -76,6 +84,7 @@ function Notices({ item }: { item: AgendaItem }) {
 /** 两端各自排版，共用身份、金额和单笔操作。 */
 export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChanged: () => void }) {
   const { isMobile } = useResponsive();
+  const compactDesktop = !Grid.useBreakpoint().xl;
   const { message } = App.useApp();
   const openBill = useBillNavigation();
   const [paid, setPaid] = useState<MarkPaidTarget | null>(null);
@@ -90,38 +99,52 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
     try { await fn(); } catch (e) { message.error(e instanceof Error ? e.message : '操作失败，请重试'); }
     finally { lock.current = false; setBusy(null); }
   };
-  const canOpen = (item: AgendaItem) => item.bill?.recordType === 'card' && item.bill.id != null && !item.bill.missing;
+  const hasBill = (item: AgendaItem) => item.bill?.recordType === 'card' && item.bill.id != null && !item.bill.missing;
+  const canOpen = (item: AgendaItem) => item.bill?.recordType !== 'custom' && (hasBill(item) || item.cardId != null);
+  const openDetails = (item: AgendaItem) => {
+    if (hasBill(item)) openBill(item.bill!.id!);
+    else if (item.bill?.recordType !== 'custom' && item.cardId != null) openBill({ cardId: item.cardId });
+  };
+  const detailLabel = (item: AgendaItem) => `${item.title}（${item.cardTails.join(' / ')}）${displayPeriod(item.period)}，查看明细`;
+  const navigationCell = (item: AgendaItem) => ({ className: canOpen(item) ? 'agenda-navigable-cell' : undefined });
+  const dueNotices = new Map<string, BillDueNotice | null>(items.map(item => [item.key, item.completed ? null : item.bill
+    ? billDueNotice(item.bill) : item.daysOverdue != null ? { tone: 'overdue', label: overdueText(item.daysOverdue) } : null]));
+  const dueClass = (item: AgendaItem) => dueNotices.get(item.key) ? 'agenda-row-due-' + dueNotices.get(item.key)!.tone : '';
   const openStatus = (item: AgendaItem) => void execute(item.key, async () => {
     const cards = await api.get<CardRow[]>('/api/cards'); const card = cards.find(c => c.id === item.bill!.cardId);
     if (!card) throw new Error('卡片不存在，请刷新');
     setAbnormal({ cardId: card.id, bankName: card.bankName, cardLast4: card.displayLast4, status: card.status });
   });
   const actions = (item: AgendaItem) => <Space className="agenda-record-actions" size={isMobile ? 8 : 4} wrap onClick={event => event.stopPropagation()}>
+    {canOpen(item) && <Button className="agenda-details-action" size={isMobile ? 'middle' : 'small'} onClick={() => openDetails(item)}>明细</Button>}
     {item.bill && <Button size={isMobile ? 'middle' : 'small'} type={isMobile && !item.completed ? 'primary' : 'default'} onClick={() => setPaid(paymentTarget(item.bill!))}>{item.completed ? '调整还款' : '还款'}</Button>}
     {item.action === 'complete' && item.occurrenceId != null && <Button size={isMobile ? 'middle' : 'small'} type={isMobile ? 'primary' : 'default'} loading={busy === item.key} onClick={() => void execute(item.key, async () => { await api.post('/api/reminders/occurrences/' + item.occurrenceId + '/complete'); message.success('已完成'); onChanged(); })}>完成</Button>}
     {item.bill?.recordType === 'card' && (isMobile ? <Button type="text" onClick={() => setMoreItem(item)}>更多</Button> : <Dropdown trigger={['click']} menu={{ items: [
       { key: 'status', label: '标记异常', onClick: () => openStatus(item) },
-      ...(canOpen(item) ? [{ key: 'delete', label: '删除账单', danger: true, onClick: () => setDeleting(item.bill) }] : []),
+      ...(hasBill(item) ? [{ key: 'delete', label: '删除账单', danger: true, onClick: () => setDeleting(item.bill) }] : []),
     ] }}><Button className="agenda-more-button" size="small" type="text" aria-label="更多" title="更多" icon={<MoreOutlined />} loading={busy === item.key} /></Dropdown>)}
   </Space>;
   return <>
-    {isMobile ? <div className="agenda-mobile-list">{items.map(item => <article key={item.key} className="agenda-mobile-row" data-skin-slot="list-row">
-      <button type="button" className="agenda-row-body" disabled={!canOpen(item)} onClick={() => openBill(item.bill!.id!)} aria-label={canOpen(item) ? item.title + ' ' + displayPeriod(item.period) + '，查看明细' : undefined}>
-        <div className="agenda-mobile-top"><Identity item={item} /><span>{displayPeriod(item.period)}</span></div>
-        <div className="agenda-mobile-main"><BillAmount item={item} /><Status item={item} /></div>
+    {isMobile ? <div className="agenda-mobile-list">{items.map(item => <article key={item.key} data-row-key={item.key} className={'agenda-mobile-row ' + dueClass(item)} data-skin-slot="list-row">
+      <button type="button" className="agenda-row-body" disabled={!canOpen(item)} onClick={() => openDetails(item)} aria-label={canOpen(item) ? detailLabel(item) : undefined}>
+        <div className="agenda-mobile-top"><Identity item={item} /><span className="agenda-mobile-period">{displayPeriod(item.period)}{canOpen(item) && <RightOutlined aria-hidden="true" />}</span></div>
+        <div className="agenda-mobile-main"><BillAmount item={item} /><div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} /><Status item={item} /></div></div>
         <Dates item={item} /><Notices item={item} />
       </button>
-      {(item.bill || item.action === 'complete') && <div className="agenda-row-actions">{actions(item)}</div>}
-    </article>)}</div> : <Table<AgendaItem> className="agenda-table" rowKey="key" pagination={false} dataSource={items} size="middle" tableLayout="fixed" scroll={{ x: 740 }} columns={[
-      { title: '账单 / 提醒', key: 'identity', width: '21%', render: (_, item) => <div className="agenda-record-identity"><span className="agenda-record-mark" aria-hidden="true">{item.bill?.recordType === 'card' ? <CreditCardOutlined /> : item.bill ? <FileTextOutlined /> : <BellOutlined />}</span><div className="agenda-record-description"><Identity item={item} /><Notices item={item} /></div></div> },
-      { title: '账期', key: 'period', width: '12%', render: (_, item) => <span className="agenda-period">{canOpen(item) ? <Button className="agenda-period-link" type="link" onClick={() => openBill(item.bill!.id!)}>{displayPeriod(item.period)}</Button> : <span>{displayPeriod(item.period)}</span>}</span> },
-      { title: '日期', key: 'date', width: '21%', render: (_, item) => <DesktopDates item={item} /> },
-      { title: '金额', key: 'amount', width: '18%', align: 'right', render: (_, item) => <div className="agenda-money-cell"><BillAmount item={item} />{item.bill?.minAmount != null && <span className="agenda-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</div> },
-      { title: '状态', key: 'status', width: '11%', render: (_, item) => <div className="agenda-status-cell"><Status item={item} />{item.daysOverdue != null && <span className="agenda-overdue">{overdueText(item.daysOverdue)}</span>}</div> },
-      { title: '操作', key: 'actions', width: '17%', render: (_, item) => actions(item) },
+      {(canOpen(item) || item.bill || item.action === 'complete') && <div className="agenda-row-actions">{actions(item)}</div>}
+    </article>)}</div> : <Table<AgendaItem> className={'agenda-table' + (compactDesktop ? ' agenda-table-compact' : '')} rowKey="key" rowClassName={dueClass} pagination={false} dataSource={items} size="middle" tableLayout="fixed" scroll={{ x: compactDesktop ? 740 : 860 }} columns={[
+      { title: '账单 / 提醒', key: 'identity', width: 170, onCell: navigationCell, render: (_, item) => {
+        const identity = <div className="agenda-record-identity"><span className="agenda-record-mark" aria-hidden="true">{item.bill?.recordType === 'card' ? <CreditCardOutlined /> : item.bill ? <FileTextOutlined /> : <BellOutlined />}</span><div className="agenda-record-description"><Identity item={item} /><Notices item={item} /></div></div>;
+        return canOpen(item) ? <button type="button" className="agenda-cell-link" aria-label={detailLabel(item)} onClick={() => openDetails(item)}>{identity}</button> : identity;
+      } },
+      { title: '账期', key: 'period', width: 100, onCell: navigationCell, render: (_, item) => <span className="agenda-period">{canOpen(item) ? <button type="button" className="agenda-cell-link agenda-period-link" onClick={() => openDetails(item)}>{displayPeriod(item.period)}</button> : <span>{displayPeriod(item.period)}</span>}</span> },
+      { title: '日期', key: 'date', width: 150, render: (_, item) => <><DesktopDates item={item} />{compactDesktop && item.bill?.minAmount != null && <span className="agenda-compact-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</> },
+      { title: compactDesktop ? '金额 / 状态' : '金额', key: 'amount', width: 135, align: 'right', render: (_, item) => <div className="agenda-money-cell"><BillAmount item={item} />{compactDesktop && <div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} />{(!dueNotices.get(item.key) || item.bill?.paidStatus === 'partial') && <Status item={item} />}</div>}{!compactDesktop && item.bill?.minAmount != null && <span className="agenda-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</div> },
+      ...(!compactDesktop ? [{ title: '状态', key: 'status', width: 125, render: (_: unknown, item: AgendaItem) => <div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} /><Status item={item} /></div> }] : []),
+      { title: '操作', key: 'actions', width: 180, fixed: 'right', render: (_, item) => actions(item) },
     ]} />}
     <Popup visible={moreItem != null} position="bottom" closeOnMaskClick onClose={() => setMoreItem(null)} bodyClassName="agenda-more-sheet">
-      {moreItem && <section role="dialog" aria-label="账单操作"><Identity item={moreItem} /><Button block onClick={() => { openStatus(moreItem); setMoreItem(null); }}>标记异常</Button>{canOpen(moreItem) && <Button block danger onClick={() => { setDeleting(moreItem.bill); setMoreItem(null); }}>删除账单</Button>}<Button block onClick={() => setMoreItem(null)}>取消</Button></section>}
+      {moreItem && <section role="dialog" aria-label="账单操作"><Identity item={moreItem} /><Button block onClick={() => { openStatus(moreItem); setMoreItem(null); }}>标记异常</Button>{hasBill(moreItem) && <Button block danger onClick={() => { setDeleting(moreItem.bill); setMoreItem(null); }}>删除账单</Button>}<Button block onClick={() => setMoreItem(null)}>取消</Button></section>}
     </Popup>
     <MarkPaidModal target={paid} onClose={() => setPaid(null)} onDone={onChanged} />
     <MarkAbnormalModal target={abnormal} onClose={() => setAbnormal(null)} onDone={onChanged} />

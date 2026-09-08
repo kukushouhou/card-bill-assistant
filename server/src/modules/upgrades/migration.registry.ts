@@ -1,12 +1,14 @@
 import { cardBusinessRelationsMigration } from './migrations/card-business-relations';
 import { hideResolvedPlaceholdersMigration } from './migrations/hide-resolved-placeholders';
 import { accountZeroBillsMigration } from './migrations/backfill-account-zero-bills';
+import { repairStatements050Migration } from './migrations/repair-statements-050';
 import type { VersionMigration } from './migration.types';
 
 export const versionMigrations: VersionMigration[] = [
   cardBusinessRelationsMigration,
   hideResolvedPlaceholdersMigration,
   accountZeroBillsMigration,
+  repairStatements050Migration,
 ];
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

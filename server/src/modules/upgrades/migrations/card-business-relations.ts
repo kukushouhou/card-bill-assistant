@@ -6,6 +6,7 @@ import { applyParsedBills } from '../../../parsers/pipeline';
 import { listBusinessRelationshipParsers, tryParse } from '../../../parsers/registry';
 import { acquireEmailAccountLock, openAccountMailReader, type MailBodyResult } from '../../email/email.service';
 import type { MigrationInspection, TaskExecutionResult, VersionMigration } from '../migration.types';
+import { affectedBankNames } from '../migration-context';
 
 interface MailTaskPayload {
   accountId: number;
@@ -111,6 +112,7 @@ async function processItem(
       text: body.text ?? undefined,
       html: body.html ?? undefined,
       pdfText: body.pdfText ?? undefined,
+      pdfPages: body.pdfPages,
       attachText: body.attachText ?? undefined,
     }, payload.parserId);
     if (!result.matched || result.bills.length === 0) {
@@ -222,9 +224,14 @@ export const cardBusinessRelationsMigration: VersionMigration = {
   order: 10,
   mode: 'optional',
   title: '更新历史账单的卡片关系',
-  description: '系统可以重新识别历史账单中的主卡、副卡、附属卡和手机信用卡，减少重复账单和还款提醒。',
+  description: '旧版未完整识别这些账单中的主卡、副卡、附属卡和手机信用卡。将从已绑定邮箱重新读取上述邮件，更新卡片关系，减少重复账单和还款提醒。',
   executeLabel: '现在执行',
-  ignoreLabel: '忽略迁移',
+  ignoreLabel: '忽略更新',
+  ignoreWarning: '忽略后，未处理的历史账单会保留原有卡片关系；新账单仍会正常识别。系统将不再提供本次迁移服务。',
+  describeImpact({ total, payload }) {
+    const banks = affectedBankNames(payload);
+    return banks.length > 0 ? `${banks.join('、')} · 共 ${total} 封已识别的历史账单邮件` : null;
+  },
   inspect: inspectBusinessRelations,
   prepareTask: prepareBusinessTask,
   executeTask: executeBusinessTask,

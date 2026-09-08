@@ -35,8 +35,14 @@
 .agenda-summary-notice-count strong { color: var(--text); font-size: 18px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
 .agenda-summary-empty, .agenda-secondary { color: var(--text-secondary); }
 .agenda-period { display: flex; align-items: center; min-height: 36px; white-space: nowrap; }
-.agenda-period .agenda-period-link.ant-btn { height: 36px; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; font: inherit; justify-content: flex-start; text-underline-offset: .2em; }
-.agenda-period .agenda-period-link.ant-btn:hover, .agenda-period .agenda-period-link.ant-btn:focus-visible { text-decoration: underline; }
+.agenda-navigable-cell { position: relative; cursor: pointer; }
+.agenda-cell-link { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+/* 点击范围铺满整个单元格，文字与留白使用同一个入口。 */
+.agenda-cell-link::after { content: ''; position: absolute; inset: 0; }
+.agenda-cell-link:focus-visible { outline: 0; }
+.agenda-cell-link:focus-visible::after, .agenda-row-body:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.agenda-period .agenda-period-link { min-height: 36px; color: var(--primary); text-underline-offset: .2em; }
+.agenda-navigable-cell:hover .agenda-period-link, .agenda-period-link:focus-visible { text-decoration: underline; }
 .agenda-identity { display: grid; gap: 6px; }
 .agenda-identity > span { color: var(--text-secondary); font-size: 13px; }
 .agenda-amount { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
@@ -54,6 +60,20 @@
 .agenda-row-body:disabled { cursor: default; opacity: 1; color: inherit; }
 .agenda-mobile-top, .agenda-mobile-main { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .agenda-mobile-top > span { flex-shrink: 0; color: var(--text-secondary); }
+.agenda-mobile-period { display: inline-flex; align-items: center; gap: 8px; }
+.agenda-mobile-period .anticon { color: var(--primary); font-size: 12px; }
+.agenda-mobile-main { align-items: center; flex-wrap: wrap; }
+.agenda-mobile-main .agenda-status-cell { margin-left: auto; justify-items: end; }
+.agenda-status-cell { display: grid; justify-items: start; gap: 5px; }
+.agenda-status-cell .ant-tag { margin: 0; }
+.agenda-due-notice { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 7px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; }
+.agenda-due-notice[data-tone="today"], .agenda-due-notice[data-tone="overdue"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
+.agenda-due-notice[data-tone="soon"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--surface)); }
+.agenda-due-notice[data-tone="later"] { color: var(--text-secondary); font-weight: 400; padding-inline: 0; }
+.agenda-row-due-today, .agenda-row-due-overdue { --agenda-urgency-color: var(--danger); }
+.agenda-row-due-soon { --agenda-urgency-color: var(--warning); }
+.agenda-mobile-row:is(.agenda-row-due-today, .agenda-row-due-overdue, .agenda-row-due-soon) { box-shadow: inset 3px 0 var(--agenda-urgency-color); }
+.agenda-mobile-row:is(.agenda-row-due-today, .agenda-row-due-overdue) .agenda-row-body { background: color-mix(in srgb, var(--danger) 3%, transparent); }
 .agenda-mobile-main .agenda-amount, .agenda-mobile-main .agenda-amount-state { font-size: 23px; }
 .agenda-row-actions { padding: 8px 14px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
 .agenda-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
@@ -135,13 +155,14 @@
   .agenda-table .ant-table-thead > tr > th::before { display: none; }
   .agenda-workspace .ant-table-container table > thead > tr:first-child > th:first-child { border-start-start-radius: 0; }
   .agenda-workspace .ant-table-container table > thead > tr:first-child > th:last-child { border-start-end-radius: 0; }
-  .agenda-table .ant-table-tbody > tr > td { padding-block: 12px; vertical-align: middle; border-bottom-color: color-mix(in srgb, var(--border) 65%, var(--surface)); }
+  .agenda-table .ant-table.ant-table-medium .ant-table-tbody > tr > .ant-table-cell { padding-block: 10px; vertical-align: middle; border-bottom-color: color-mix(in srgb, var(--border) 65%, var(--surface)); }
   .agenda-table .ant-table-tbody > tr:last-child > td { border-bottom: 0; }
   .agenda-record-identity { display: flex; align-items: center; gap: 12px; }
   .agenda-record-mark { display: grid; place-items: center; flex: 0 0 34px; height: 38px; border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--border)); border-radius: 9px; color: var(--primary); background: color-mix(in srgb, var(--primary-soft) 60%, var(--surface)); font-size: 18px; }
   .agenda-record-description { min-width: 0; }
   .agenda-table .agenda-identity { gap: 4px; }
   .agenda-table .agenda-identity > strong { font-size: 14px; font-weight: 600; }
+  .agenda-navigable-cell:hover .agenda-identity > strong { color: var(--primary); }
   .agenda-table .agenda-identity > span { font-size: 12px; }
   .agenda-table .agenda-period { font-size: 13px; }
   .agenda-date-cell { display: grid; gap: 5px; margin: 0; font-size: 13px; }
@@ -159,6 +180,14 @@
   .agenda-table .agenda-record-actions .ant-btn { min-height: 32px; padding-inline: 7px; border-color: transparent; border-radius: 8px; color: var(--primary); background: var(--primary-soft); font-size: 13px; font-weight: 600; }
   .agenda-table .agenda-record-actions .agenda-more-button { width: 28px; min-width: 28px; padding: 0; color: var(--text-secondary); background: transparent; }
   .agenda-table .agenda-record-actions .agenda-more-button:hover { color: var(--text); background: var(--background); }
+  .agenda-table .agenda-record-actions .agenda-details-action { background: transparent; border-color: color-mix(in srgb, var(--primary) 25%, var(--border)); }
+  .agenda-table :is(.agenda-row-due-today, .agenda-row-due-overdue) > td { background: color-mix(in srgb, var(--danger) 3%, var(--surface)); }
+  .agenda-table :is(.agenda-row-due-today, .agenda-row-due-overdue, .agenda-row-due-soon) > td:first-child { box-shadow: inset 3px 0 var(--agenda-urgency-color); }
+  /* 窄桌面把到期提示并入金额列，避免被固定操作列遮住。 */
+  .agenda-table.agenda-table-compact .ant-table.ant-table-medium .ant-table-tbody > tr > .ant-table-cell { padding-block: 6px; }
+  .agenda-table-compact .agenda-date-cell { gap: 3px; line-height: 18px; }
+  .agenda-table-compact .agenda-status-cell { justify-items: end; }
+  .agenda-compact-minimum { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; line-height: 18px; }
   .bill-center .agenda-workspace > .agenda-history-group { margin: 0 12px 12px; box-shadow: none; }
   .agenda-workspace .agenda-history-group > .agenda-list { padding: 0; }
   .agenda-history-heading { padding: 16px; min-height: 56px; }

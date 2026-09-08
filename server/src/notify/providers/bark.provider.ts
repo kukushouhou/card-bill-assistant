@@ -1,18 +1,13 @@
 import { z } from 'zod';
-import { optionalTrimmedString } from '../provider-utils';
+import { fetchNotification, httpFailure, httpUrlSchema, optionalTrimmedString, readJsonObject } from '../provider-utils';
 import type {
   NotificationChannelConfig,
-  NotificationMessage,
   NotificationProvider,
   NotificationSendResult,
 } from '../types';
 
 const barkConfigSchema = z.object({
-  url: z
-    .string()
-    .trim()
-    .url('推送地址格式错误，应形如 https://api.day.app/YourKey')
-    .max(500, '推送地址不能超过 500 个字符'),
+  url: httpUrlSchema('推送地址格式错误，应形如 https://api.day.app/YourKey', 500),
   group: optionalTrimmedString(100),
   sound: optionalTrimmedString(100),
   level: z.preprocess(
@@ -41,6 +36,19 @@ interface BarkConfig extends NotificationChannelConfig {
 
 const DEFAULT_BARK_ICON = 'https://assets.bark.day.app/card.png';
 
+// Bark 官方 Sounds 目录的内置名称；离线部署也能选择，不在设置页面临时请求外网。
+// https://github.com/Finb/Bark/tree/master/Sounds
+export const BARK_SOUNDS = [
+  ['alarm', '闹钟'], ['anticipate', '期待'], ['bell', '铃铛'], ['birdsong', '鸟鸣'],
+  ['bloom', '绽放'], ['calypso', '卡利普索'], ['chime', '钟声'], ['choo', '汽笛'],
+  ['descent', '下降'], ['electronic', '电子音'], ['fanfare', '号角齐鸣'], ['glass', '玻璃'],
+  ['gotosleep', '入睡'], ['healthnotification', '健康提醒'], ['horn', '喇叭'], ['ladder', '阶梯'],
+  ['mailsent', '邮件发出'], ['minuet', '小步舞曲'], ['multiwayinvitation', '多人邀请'], ['newmail', '新邮件'],
+  ['newsflash', '快讯'], ['noir', '黑色电影'], ['paymentsuccess', '支付成功'], ['shake', '摇动'],
+  ['sherwoodforest', '舍伍德森林'], ['silence', '无声'], ['spell', '咒语'], ['suspense', '悬念'],
+  ['telegraph', '电报'], ['tiptoes', '轻步'], ['typewriters', '打字机'], ['update', '更新'],
+].map(([value, label]) => ({ value, label: label + ' · ' + value }));
+
 async function sendBark(
   config: BarkConfig,
   title: string,
@@ -48,7 +56,7 @@ async function sendBark(
   group: string,
 ): Promise<NotificationSendResult> {
   try {
-    const response = await fetch(config.url.replace(/\/+$/, ''), {
+    const response = await fetchNotification(config.url.replace(/\/+$/, ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
@@ -60,12 +68,14 @@ async function sendBark(
         ...(config.level ? { level: config.level } : {}),
       }),
     });
-    if (!response.ok) return { ok: false, error: `通知服务返回 HTTP ${response.status}` };
+    if (!response.ok) return httpFailure(response);
+    const result = await readJsonObject(response);
+    if (result?.code !== 200) return { ok: false, error: 'Bark 未接受通知，请检查推送地址' };
     return { ok: true };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      error: error instanceof Error ? `无法连接通知服务：${error.message}` : '无法连接通知服务',
+      error: '无法连接通知服务，请检查推送地址或稍后重试',
     };
   }
 }
@@ -87,17 +97,16 @@ export const barkProvider: NotificationProvider = {
         key: 'group',
         label: '推送分组',
         type: 'text',
-        placeholder: '留空使用“还款提醒”',
-        description: 'Bark 会按此名称归类通知；测试通知也会使用这里填写的分组。',
+        placeholder: '还款提醒',
         required: false,
         advanced: true,
       },
       {
         key: 'sound',
         label: '通知铃声',
-        type: 'text',
-        placeholder: '留空使用 Bark 默认铃声',
-        description: '填写 Bark 内置铃声或自定义铃声的名称。',
+        type: 'bark-sound',
+        placeholder: '默认铃声',
+        options: BARK_SOUNDS,
         required: false,
         advanced: true,
       },
@@ -105,14 +114,13 @@ export const barkProvider: NotificationProvider = {
         key: 'level',
         label: '通知级别',
         type: 'select',
-        placeholder: '使用 Bark 默认设置',
-        description: '重要警报需要在 Bark 与系统设置中授予相应权限。',
+        placeholder: '普通通知',
         required: false,
         advanced: true,
         options: [
-          { value: 'active', label: '主动通知' },
+          { value: 'active', label: '普通通知' },
           { value: 'timeSensitive', label: '时效性通知' },
-          { value: 'passive', label: '静默通知' },
+          { value: 'passive', label: '仅通知列表' },
           { value: 'critical', label: '重要警报' },
         ],
       },
@@ -121,7 +129,7 @@ export const barkProvider: NotificationProvider = {
         label: '通知图标',
         type: 'url',
         placeholder: DEFAULT_BARK_ICON,
-        description: '留空使用小管家默认图标；自定义图标需要填写可公开访问的图片地址。',
+        description: '填写可公开访问的图片地址，留空使用默认图标。',
         required: false,
         advanced: true,
       },

@@ -3,61 +3,41 @@ import { z } from 'zod';
 import { config } from '../config';
 import { ApiError, asyncHandler } from '../lib/errors';
 import {
-  getNotificationSettings,
-  removeNotificationChannel,
-  saveNotificationChannel,
-  testNotificationChannel,
+  createNotificationChannel, getNotificationSettings, notificationCreateSchema, notificationUpdateSchema,
+  removeNotificationChannel, testNotificationChannel, testNotificationConfig, updateNotificationChannel,
 } from '../notify/notification.service';
+import type { NotificationSendResult } from '../notify/types';
 import { requireAuth } from './middleware';
 
 const router = Router();
 router.use(requireAuth);
-
-router.get(
-  '/',
-  asyncHandler(async (_req, res) => {
-    const notifications = await getNotificationSettings();
-    res.json({
-      reminderHour: config.reminderHour,
-      notifications,
-    });
-  }),
-);
-
-router.get(
-  '/notification-channels',
-  asyncHandler(async (_req, res) => {
-    res.json(await getNotificationSettings());
-  }),
-);
-
-router.put(
-  '/notification-channels/:type',
-  asyncHandler(async (req, res) => {
-    const type = z.string().trim().min(1).max(50).parse(req.params.type);
-    const input = z.object({ enabled: z.boolean().optional(), config: z.unknown() }).parse(req.body);
-    res.json({ ok: true, channel: await saveNotificationChannel(type, input) });
-  }),
-);
-
-router.delete(
-  '/notification-channels/:type',
-  asyncHandler(async (req, res) => {
-    const type = z.string().trim().min(1).max(50).parse(req.params.type);
-    await removeNotificationChannel(type);
-    res.json({ ok: true });
-  }),
-);
-
-router.post(
-  '/notification-channels/:type/test',
-  asyncHandler(async (req, res) => {
-    const type = z.string().trim().min(1).max(50).parse(req.params.type);
-    const body = z.object({ config: z.unknown().optional() }).parse(req.body ?? {});
-    const result = await testNotificationChannel(type, body.config);
-    if (!result.ok) throw new ApiError(502, result.error || '测试通知发送失败');
-    res.json({ ok: true });
-  }),
-);
-
+const channelId = z.coerce.number().int().positive();
+function ensureSent(result: NotificationSendResult) {
+  if (!result.ok) throw new ApiError(502, result.error || '测试通知发送失败');
+}
+router.get('/', asyncHandler(async (_req, res) => {
+  res.json({ reminderHour: config.reminderHour, notifications: await getNotificationSettings() });
+}));
+router.get('/notification-channels', asyncHandler(async (_req, res) => {
+  res.json(await getNotificationSettings());
+}));
+router.post('/notification-channels', asyncHandler(async (req, res) => {
+  res.status(201).json({ ok: true, channel: await createNotificationChannel(notificationCreateSchema.parse(req.body)) });
+}));
+router.put('/notification-channels/:id', asyncHandler(async (req, res) => {
+  res.json({ ok: true, channel: await updateNotificationChannel(channelId.parse(req.params.id), notificationUpdateSchema.parse(req.body)) });
+}));
+router.delete('/notification-channels/:id', asyncHandler(async (req, res) => {
+  await removeNotificationChannel(channelId.parse(req.params.id));
+  res.json({ ok: true });
+}));
+router.post('/notification-channels/test', asyncHandler(async (req, res) => {
+  const values = notificationCreateSchema.parse(req.body);
+  ensureSent(await testNotificationConfig(values.type, values.config, values.name));
+  res.json({ ok: true });
+}));
+router.post('/notification-channels/:id/test', asyncHandler(async (req, res) => {
+  ensureSent(await testNotificationChannel(channelId.parse(req.params.id)));
+  res.json({ ok: true });
+}));
 export default router;

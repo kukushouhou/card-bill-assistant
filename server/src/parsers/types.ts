@@ -11,12 +11,26 @@ export interface MailContext {
   html?: string;
   /** PDF 附件提取的文本（账单正文在附件里的银行，如中国银行） */
   pdfText?: string;
+  /** PDF 表格坐标，仅在解析期间使用，不持久化附件或原文。 */
+  pdfPages?: PdfTextPage[];
   /** HTML 附件提取的文本（GBK 解码后原文，如工商银行 2018-2019 对账单附件） */
   attachText?: string;
 }
 
+export interface PdfTextPage {
+  attachment: number;
+  page: number;
+  width: number;
+  height: number;
+  items: Array<{ text: string; x: number; y: number; width: number; height: number }>;
+}
+
 /** 单笔交易明细；解析完成后由账单流水线持久化。 */
 export interface ParsedTransaction {
+  /** 同封邮件、同币种账户共享明细，不分摊到任一张卡的应还账单。 */
+  statementShared?: boolean;
+  /** 原文已明确该行属于当前账单账户；交易卡尾可以是旧卡，不代表新的还款义务。 */
+  statementAccountCardLast4?: string;
   /** 交易日文本原样（如 '08-14' / '2026/08/14'），不强制解析避免跨年误判 */
   date?: string | null;
   description: string;
@@ -62,6 +76,8 @@ export interface ParsedBusinessCards {
 }
 
 export interface ParsedBill {
+  /** 明确的旧解析器漏单证据，供版本迁移区分漏单和用户主动删除。 */
+  legacyOmission?: 'citic-short-tail';
   bankName: string;
   /** 卡号后 4 位，匹配卡档案的关键；无法提取时用 '----' */
   cardLast4: string;

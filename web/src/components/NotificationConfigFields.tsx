@@ -1,4 +1,5 @@
 import { MinusCircleOutlined, PlusOutlined } from '../skins/icons';
+import BarkSoundSelect from './BarkSoundSelect';
 import { Alert, Button, Col, Collapse, Form, Input, Row, Select, Space, Typography } from 'antd';
 import type { NotificationProviderDefinition, NotificationProviderField } from '../api/types';
 
@@ -197,13 +198,15 @@ export function NotificationConfigFields({
           <Form.Item
             name={path(prefix, field.key)}
             label={field.label}
-            extra={field.description}
+            tooltip={field.description}
             rules={[
               ...(field.required ? [{ required: true, message: `请输入${field.label}` }] : []),
               ...(field.type === 'url' ? [{ type: 'url' as const, message: `${field.label}格式不正确` }] : []),
             ]}
           >
-            {field.type === 'password' ? (
+            {field.type === 'bark-sound' ? (
+              <BarkSoundSelect options={field.options ?? []} />
+            ) : field.type === 'password' ? (
               <Input.Password placeholder={field.placeholder} autoComplete="new-password" />
             ) : field.type === 'select' ? (
               <Select
@@ -230,6 +233,7 @@ export function NotificationConfigFields({
           items={[{
             key: 'advanced',
             label: '高级设置',
+            forceRender: true,
             children: renderFields(advancedFields),
           }]}
         />

@@ -1,9 +1,11 @@
+import { APP_VERSION } from './version';
 import 'dotenv/config';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
+import { apiSecurity, securityHeaders } from './routes/security.middleware';
 import { config } from './config';
 import { ApiError, formatValidationIssues } from './lib/errors';
 import { prisma } from './lib/prisma';
@@ -32,6 +34,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 async function main(): Promise<void> {
   const app = express();
   app.disable('x-powered-by');
+  app.use(securityHeaders);
+  app.use('/api', apiSecurity);
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
@@ -48,7 +52,7 @@ async function main(): Promise<void> {
 
   // 应用信息（免认证：登录页/安装向导需在登录前显示应用名）
   app.get('/api/app', async (_req, res) => {
-    res.set('Cache-Control', 'no-store').json({ name: config.appName, skin: await activeSkin() });
+    res.set('Cache-Control', 'no-store').json({ name: config.appName, version: APP_VERSION, skin: await activeSkin() });
   });
 
   // API 路由（安装、认证和升级在业务门禁前，便于必选迁移期间完成登录与确认）
@@ -87,6 +91,10 @@ async function main(): Promise<void> {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.too.large') {
       res.status(413).json({ error: '上传文件超过容量限制' });
+      return;
+    }
+    if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.parse.failed') {
+      res.status(400).json({ error: '请求正文格式不正确' });
       return;
     }
     if (err instanceof ApiError) {

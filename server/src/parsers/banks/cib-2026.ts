@@ -1,3 +1,4 @@
+import { htmlTransactions, attachStatementTransactions } from '../statement-rows';
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { buildBill, cycleEnd, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
@@ -65,6 +66,8 @@ export const cib2026Parser: BankParser = {
       }
       if (txns.length > 0) bill.transactions = txns;
     }
+    const tableTransactions = htmlTransactions(mail, 'cib');
+    if (tableTransactions) attachStatementTransactions([bill], tableTransactions);
     return [bill];
   },
 };

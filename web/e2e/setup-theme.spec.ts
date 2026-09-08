@@ -62,7 +62,8 @@ for (const width of [1440, 390]) test('安装返回、失败重试和主题切�
   await page.getByLabel('PIN 码', { exact: true }).fill('123456');
   await page.getByLabel('确认 PIN', { exact: true }).fill('123456');
   await page.getByRole('button', { name: '下一步', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Bark', exact: true }).check();
+  await page.getByRole('button', { name: '添加渠道', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Bark', exact: true }).click();
   await page.getByLabel('推送地址', { exact: true }).fill('https://example.test/setup-notify');
   await page.getByRole('button', { name: '下一步', exact: true }).click();
   await page.getByText('温润账本', { exact: true }).click();

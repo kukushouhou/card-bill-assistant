@@ -59,12 +59,17 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
       await expect(page.locator('.parser-bill-summary').first()).toBeVisible();
       await capture('parser-result', page.locator('.parser-bill-summary').first());
 
-      await page.goto('/settings'); await expect(page.locator('.settings-channel-section')).toBeAttached();
+      await request.post('/api/settings/notification-channels', { data: { type: 'bark', name: '我的 iPhone', config: { url: 'https://example.test/phone' } } });
+      await page.goto('/settings'); await expect(page.locator('.notification-channel-name')).toHaveText('我的 iPhone');
       await capture('notifications', page.locator('.settings-grid-notifications'));
-      const sections = await page.locator('.settings-notification-form > section').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
-      if (width >= 1024) expect(Math.abs(sections[0].y - sections[1].y)).toBeLessThan(1);
-      else expect(sections[1].y - sections[0].bottom).toBeGreaterThanOrEqual(15);
       await capture('pin-settings', page.locator('.settings-grid-pin'));
+      await page.locator('.notification-channel-list').getByRole('button', { name: '编辑', exact: true }).click();
+      const channelEditor = page.getByRole(width < 1024 ? 'region' : 'dialog', { name: '编辑通知渠道', exact: true });
+      const fields = await channelEditor.locator('.notification-basic-fields .ant-form-item').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
+      if (width >= 1024) expect(Math.abs(fields[0].y - fields[1].y)).toBeLessThan(1);
+      else expect(fields[1].y - fields[0].bottom).toBeGreaterThanOrEqual(15);
+      await capture('notification-editor', channelEditor);
+      await channelEditor.getByRole('button', { name: '取消', exact: true }).click();
 
       await page.goto('/cards'); await page.locator('.bank-card').first().locator('.bank-card-settings').click();
       if (width < 1024) await page.locator('.cards-mobile-action-list').getByRole('button', { name: /编辑/ }).click();

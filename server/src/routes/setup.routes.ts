@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { config } from '../config';
 import { derivePinKey, makePinVerifier, randomBytes } from '../lib/crypto';
-import { getNotificationProvider, listNotificationProviderDefinitions } from '../notify/registry';
-import { sealNotificationConfig } from '../notify/notification-config';
+import { listNotificationProviderDefinitions } from '../notify/registry';
+import { notificationCreateSchema, prepareNotificationChannel } from '../notify/notification.service';
 import { APP_VERSION } from '../version';
 import { APPLIED_SKIN_KEY, BUILTIN_IDS, DEFAULT_SKIN } from '../modules/skins/manifest';
 import { skins } from '../modules/skins/service';
+import { SESSION_VERSION_KEY } from '../modules/auth/session';
 
 /**
  * 安装向导路由（免认证）：
@@ -49,31 +50,23 @@ router.get(
 
 const installSchema = z.object({
   skinId: z.string().optional(),
-  password: z.string({ error: '请输入密码' }).min(8, '密码长度至少 8 位').max(72, '密码过长'),
+  password: z.string({ error: '请输入密码' }).min(8, '密码长度至少 8 位').max(72, '密码过长')
+    .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, '密码不能超过 72 个字节'),
   // PIN 可跳过；填写则必须为 6 位数字
   pin: z.union([z.literal(''), z.string().regex(/^\d{6}$/, 'PIN 必须为 6 位数字')]).optional(),
-  notifications: z.array(z.object({
-    type: z.string().trim().min(1).max(50),
-    config: z.unknown().optional(),
-  })).max(20).optional(),
+  notifications: z.array(notificationCreateSchema).max(20).optional(),
 });
 
 router.post(
   '/install',
   asyncHandler(async (req, res) => {
+    // 已安装时先拒绝，避免匿名请求反复触发通知配置处理和皮肤读取。
+    if (await getInstalledAt()) throw new ApiError(403, '系统已安装，如需重置请查阅部署文档');
     const { password, pin: rawPin, notifications = [], skinId } = installSchema.parse(req.body ?? {});
     if (skinId && !BUILTIN_IDS.has(skinId)) throw new ApiError(400, '请选择可用的内置皮肤');
     if (skinId) await skins.read(skinId, DEFAULT_SKIN.version);
     const pin = rawPin || null;
-    const uniqueTypes = new Set<string>();
-    const parsedNotifications = notifications.map((item) => {
-      if (uniqueTypes.has(item.type)) throw new ApiError(400, '同一种通知渠道只能配置一次');
-      uniqueTypes.add(item.type);
-      const provider = getNotificationProvider(item.type);
-      if (!provider) throw new ApiError(400, '不支持所选通知渠道');
-      return { provider, config: provider.parseConfig(item.config) };
-    });
-    if (await getInstalledAt()) throw new ApiError(403, '系统已安装，如需重置请查阅部署文档');
+    const parsedNotifications = notifications.map(prepareNotificationChannel);
 
     const adminCount = await prisma.admin.count();
     if (adminCount > 0) {
@@ -98,22 +91,10 @@ router.post(
         data: { key: INSTALLED_AT_KEY, value: new Date().toISOString() },
       });
       await tx.appSetting.create({ data: { key: 'installedVersion', value: APP_VERSION } });
+      await tx.appSetting.create({ data: { key: SESSION_VERSION_KEY, value: randomUUID() } });
       if (skinId) await tx.appSetting.create({ data: { key: APPLIED_SKIN_KEY, value: JSON.stringify({ id: skinId, version: DEFAULT_SKIN.version }) } });
-      for (const item of parsedNotifications) {
-        await tx.notificationChannel.upsert({
-          where: { type: item.provider.definition.type },
-          create: {
-            type: item.provider.definition.type,
-            name: item.provider.definition.name,
-            config: sealNotificationConfig(item.config) as Prisma.InputJsonObject,
-            enabled: true,
-          },
-          update: {
-            name: item.provider.definition.name,
-            config: sealNotificationConfig(item.config) as Prisma.InputJsonObject,
-            enabled: true,
-          },
-        });
+      for (const data of parsedNotifications) {
+        await tx.notificationChannel.create({ data });
       }
     });
 

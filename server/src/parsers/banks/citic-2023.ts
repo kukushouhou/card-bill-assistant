@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill } from '../types';
+import { htmlTransactions } from '../statement-rows';
 import {
   attachTransactions,
   buildBill,
@@ -46,8 +47,13 @@ export const citic2023Parser: BankParser = {
     if (!statementDate || !dueDate) return [];
 
     const holderName = pickHolder(text);
-    const txns = citicTransactions(text);
-    const txnTails = txns.map((t) => t.cardLast4);
+    const txns = htmlTransactions(mail, 'citic') ?? citicTransactions(text);
+    const txnTails = txns.map((t) => t.cardLast4).filter((tail): tail is string => !!tail);
+    // 0.4 仅识别两列均为 CNY 的八行记录；只有旧版确定取不到四位尾号时才允许迁移补单。
+    const legacyLines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+    const legacyTails = new Set(legacyLines.flatMap((line, index) => /^\d{8}$/.test(line)
+      && /^\d{8}$/.test(legacyLines[index + 1] ?? '') && legacyLines[index + 4] === 'CNY' && legacyLines[index + 6] === 'CNY'
+      && parseAmount(legacyLines[index + 7] ?? '') != null ? [legacyLines[index + 2]] : []));
     const bills: ParsedBill[] = [];
     // 卡表 7 行组（分行）：卡号 / RMB / 上期应还 / 上期已还 / 本期新增 / 账户账单金额 / 最低还款额
     for (const m of text.matchAll(
@@ -68,7 +74,10 @@ export const citic2023Parser: BankParser = {
         statementDate,
         dueDate,
       });
-      if (bill) bills.push(bill);
+      if (bill) {
+        if (m[2]!.length === 3 && !legacyTails.has(cardLast4)) bill.legacyOmission = 'citic-short-tail';
+        bills.push(bill);
+      }
     }
     attachTransactions(bills, txns);
     return bills;
