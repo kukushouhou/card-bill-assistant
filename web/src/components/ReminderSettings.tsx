@@ -3,6 +3,7 @@ import { Alert, App, Button, Skeleton } from 'antd';
 import { api } from '../api/client';
 import type { CustomReminder, CustomReminderInput } from '../api/types';
 import { useResource } from '../lib/useResource';
+import { notifyDataChanged } from '../lib/dataChanged';
 import { CustomForm, CustomReminderManager } from '../pages/Reminders';
 import BusinessFlow from './BusinessFlow';
 
@@ -20,6 +21,8 @@ export default function ReminderSettings({ onClose, onChanged }: { onClose: () =
     try {
       if (editing) await api.put('/api/reminders/custom/' + editing.id, values);
       else await api.post('/api/reminders/custom', values);
+      // 自定义提醒直接影响今日待办与账单中心，挂载中的其他页面同步刷新。
+      notifyDataChanged();
       message.success('已保存'); setEditing(undefined); void refresh(); onChanged();
     } catch (e) { message.error(e instanceof Error ? e.message : '保存失败'); }
     finally { lock.current = false; setSaving(false); }
@@ -27,7 +30,7 @@ export default function ReminderSettings({ onClose, onChanged }: { onClose: () =
   const remove = async (item: CustomReminder) => {
     if (lock.current) return;
     lock.current = true; setDeleting(true);
-    try { await api.delete('/api/reminders/custom/' + item.id); setDeleteTarget(null); message.success('已删除'); void refresh(); onChanged(); }
+    try { await api.delete('/api/reminders/custom/' + item.id); setDeleteTarget(null); notifyDataChanged(); message.success('已删除'); void refresh(); onChanged(); }
     catch (e) { message.error(e instanceof Error ? e.message : '删除失败'); }
     finally { lock.current = false; setDeleting(false); }
   };

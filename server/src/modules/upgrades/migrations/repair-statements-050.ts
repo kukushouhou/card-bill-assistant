@@ -136,8 +136,18 @@ async function updateCounts(taskId: number) {
   return counts;
 }
 
+/**
+ * 最近一次完成的升级计划中，历史账单修复的结果。
+ * 结果只属于本次升级：最近完成的计划没有执行该修复（未含、被忽略或未完成）时返回 null，
+ * 不得把历史上其他升级的修复结果兜底展示。
+ */
 export async function latestStatementRepairResult() {
-  const task = await prisma.upgradeTask.findFirst({ where: { key: STATEMENT_REPAIR_KEY, status: 'completed' }, include: { items: true } });
+  const plan = await prisma.upgradePlan.findFirst({
+    where: { status: 'completed' },
+    orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
+    include: { tasks: true },
+  });
+  const task = plan?.tasks.find((item) => item.key === STATEMENT_REPAIR_KEY && item.status === 'completed');
   if (!task) return null;
   const counts = emptyRepairCounts();
   const incomplete: Array<{ bankName: string; billCount: number; reason: string }> = [];

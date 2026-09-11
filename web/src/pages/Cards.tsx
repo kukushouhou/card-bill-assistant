@@ -1,4 +1,5 @@
 import { displayDate } from '../lib/displayDate';
+import { useDataChanged } from '../lib/dataChanged';
 import { useDraftGuard } from '../lib/draftGuard';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -1581,6 +1582,11 @@ export default function Cards() {
   }, []);
 
   const load = useCoalescedRefresh(loadCards);
+
+  // 升级迁移等全局流程改写业务数据后，挂载中的卡片列表重新加载。
+  useDataChanged(() => {
+    void load({ freshAfterInFlight: true }).catch(() => undefined);
+  });
 
   const beginWrite = useCallback(() => {
     writeEpoch.current += 1;

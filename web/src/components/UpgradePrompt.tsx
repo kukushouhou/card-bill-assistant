@@ -7,6 +7,7 @@ import OverdueBasisRadio from './OverdueBasisRadio';
 import UpgradeResultSummary from './UpgradeResultSummary';
 import UpgradeMailboxSettings from './UpgradeMailboxSettings';
 import { ExclamationCircleFilled, LockOutlined } from '../skins/icons';
+import { notifyDataChanged } from '../lib/dataChanged';
 import './upgrade-prompt.css';
 
 function taskStatusText(task: UpgradeTask): string | null {
@@ -30,6 +31,8 @@ export default function UpgradePrompt() {
   const hadExecution = useRef(false);
 
   const showResult = async () => {
+    // 升级迁移可能改写了账单、卡片等业务数据，挂载中的页面必须重新加载。
+    notifyDataChanged();
     const report = await api.get<StatementRepairResult | null>('/api/upgrades/latest-result').catch(() => null);
     if (report?.counts) setResult(report);
     else message.success('系统升级已完成');

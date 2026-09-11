@@ -16,6 +16,7 @@ import { api, ApiError } from '../api/client';
 import type { AnnualFeeNotice, PagedTransactions, BillsTrend, DashboardSummary, TodoItem, UpcomingItem } from '../api/types';
 import { overdueText } from '../lib/overdue';
 import { hasMetMinimumPayment } from '../lib/billPayment';
+import { useDataChanged } from '../lib/dataChanged';
 import { Page } from '../components/Layout';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
 import { useBillNavigation, useSourceSnapshot } from '../lib/billNavigation';
@@ -295,6 +296,16 @@ export default function Dashboard() {
       }
     });
   };
+
+  // 升级迁移等全局流程改写业务数据后，挂载中的首页各分区全部重新加载。
+  useDataChanged(() => {
+    void Promise.allSettled([
+      refreshStats({ freshAfterInFlight: true }),
+      refreshTodos({ freshAfterInFlight: true }),
+      refreshUpcoming({ freshAfterInFlight: true }),
+      refreshTrend({ freshAfterInFlight: true }),
+    ]);
+  });
 
   const acknowledgeAnnualFeeNotice = async (notice = summary?.annualFeeNotice): Promise<boolean> => {
     if (!notice || annualFeeAcknowledging) return false;

@@ -5,6 +5,7 @@ import { FilterOutlined } from '../skins/icons';
 import { Popup } from 'antd-mobile';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useResource } from '../lib/useResource';
+import { useDataChanged } from '../lib/dataChanged';
 import { displayDate, displayPeriod } from '../lib/displayDate';
 import type { CardRow, PagedTransactions, TransactionRow } from '../api/types';
 import { Page } from '../components/Layout';
@@ -109,6 +110,12 @@ export function TransactionsContent({ params, onParamsChange, sourceCardId, onPa
   const data = resource.data ?? { total: 0, page: 1, pageSize: 20, items: [] };
   const { loading, error } = resource;
   const cardsResource = useResource<CardRow[]>('/api/cards');
+
+  // 升级迁移等全局流程改写业务数据后，挂载中的明细页重新加载。
+  useDataChanged(() => {
+    void resource.refresh();
+    void cardsResource.refresh();
+  });
   const cards = cardsResource.data ?? [];
   const billId = params.get('billId') ?? params.get('scopeBillId');
   const history = params.has('scopeBillId');

@@ -10,6 +10,7 @@ import { AgendaPage } from '../components/AgendaList';
 import ReminderSettings from '../components/ReminderSettings';
 import BillStatistics from '../components/BillStatistics';
 import { useResource } from '../lib/useResource';
+import { useDataChanged } from '../lib/dataChanged';
 import { useResponsive } from '../responsive';
 import { useHistoryGate } from '../historyGate';
 
@@ -27,11 +28,17 @@ export default function Bills() {
   const [stats, setStats] = useState(false);
   const [filters, setFilters] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [cardsRevision, setCardsRevision] = useState(0);
+  // 升级迁移等全局流程改写业务数据后，账单清单与筛选用卡片列表全部重新加载。
+  useDataChanged(() => {
+    setRevision(current => current + 1);
+    setCardsRevision(current => current + 1);
+  });
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<{ pushed: number; skipped: number; failed: number }>();
   const [runError, setRunError] = useState('');
   const lock = useRef(false);
-  const cards = useResource<CardRow[]>('/api/cards');
+  const cards = useResource<CardRow[]>('/api/cards', cardsRevision);
   const update = (values: Record<string, string | undefined>) => {
     const next = new URLSearchParams(params);
     Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
