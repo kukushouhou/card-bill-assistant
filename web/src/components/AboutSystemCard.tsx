@@ -1,38 +1,33 @@
-import { useEffect, useState } from 'react';
-import { Alert, Button, Space, Typography } from 'antd';
-import { CreditCardOutlined, ExportOutlined, GithubOutlined } from '@ant-design/icons';
+import { Button, Card, Typography } from 'antd';
+import { ExportOutlined, GithubOutlined, InfoCircleOutlined, QuestionCircleOutlined, SafetyOutlined } from '../skins/icons';
 import { useAppName, useAppVersion } from '../appName';
-import { api } from '../api/client';
-import type { StatementRepairResult } from '../api/types';
-import UpgradeResultSummary from './UpgradeResultSummary';
+
+const projectUrl = 'https://github.com/kukushouhou/card-bill-assistant';
 
 export default function AboutSystemCard() {
   const name = useAppName(), version = useAppVersion();
-  const [result, setResult] = useState<StatementRepairResult | null>(null);
-  const [error, setError] = useState(false);
-  const load = () => { setError(false); void api.get<StatementRepairResult | null>('/api/upgrades/latest-result')
-    .then((value) => setResult(value?.counts ? value : null)).catch(() => setError(true)); };
-  useEffect(load, []);
   return <section className="settings-about" aria-labelledby="settings-about-title">
-    <h2 id="settings-about-title">关于本系统</h2>
-    <div className="settings-about-brand">
-      <CreditCardOutlined className="settings-about-mark" aria-hidden="true" />
-      <div>
-        <h3>{name}</h3>
-        <Typography.Paragraph className="settings-about-tagline">自己的信用卡账单与还款提醒助手</Typography.Paragraph>
+    <Card className="settings-card" title={<span id="settings-about-title">关于本系统</span>}
+      extra={<Typography.Text type="secondary" className="settings-about-version">{version ? `版本 v${version}` : '版本信息暂未获取'}</Typography.Text>}>
+      <div className="settings-about-intro">
+        <div className="settings-about-brand">
+          <h3>{name}</h3>
+          <Typography.Paragraph className="settings-about-tagline">信用卡账单与还款提醒助手</Typography.Paragraph>
+        </div>
+        <div className="settings-about-actions">
+          <Button icon={<GithubOutlined aria-hidden="true" />} href={projectUrl} target="_blank" rel="noopener noreferrer">GitHub 项目</Button>
+          <Button icon={<ExportOutlined aria-hidden="true" />} href={`${projectUrl}/releases`} target="_blank" rel="noopener noreferrer">检查更新</Button>
+        </div>
       </div>
-    </div>
-    <Typography.Paragraph className="settings-about-version">{version ? `版本 v${version}` : '版本信息暂未获取'}</Typography.Paragraph>
-    <Typography.Paragraph className="settings-about-description">从银行邮件导入账单，整理交易明细，提醒每一次还款。支持多张卡片与多种通知方式，数据保存在自己的服务器中。</Typography.Paragraph>
-    <Space wrap>
-      <Button icon={<GithubOutlined aria-hidden="true" />} href="https://github.com/kukushouhou/card-bill-assistant" target="_blank" rel="noopener noreferrer">GitHub 项目</Button>
-      <Button icon={<ExportOutlined aria-hidden="true" />} href="https://github.com/kukushouhou/card-bill-assistant/releases" target="_blank" rel="noopener noreferrer">检查更新</Button>
-    </Space>
-    <footer className="settings-about-footer">
-      <span>© 2026 kukushouhou</span>
-      <span>本项目基于 <Typography.Link href="https://github.com/kukushouhou/card-bill-assistant/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT 许可证</Typography.Link>开源。</span>
-    </footer>
-    {result && <div className="settings-about-upgrade"><UpgradeResultSummary result={result} /></div>}
-    {error && <Alert style={{ marginTop: 16 }} type="info" title="最近升级结果暂未读取" action={<Button size="small" onClick={load}>重试</Button>} />}
+      <div className="settings-about-notes">
+        <p><InfoCircleOutlined className="settings-about-notice" aria-hidden="true" /><span>本系统不会代扣还款，请以银行账单为准。</span></p>
+        <p><SafetyOutlined className="settings-about-security" aria-hidden="true" /><span>卡信息加密保存，PIN 不留存，请妥善保管。</span></p>
+        <p><QuestionCircleOutlined aria-hidden="true" /><span>需要帮助？<Typography.Link href={`${projectUrl}#readme`} target="_blank" rel="noopener noreferrer">查看使用文档</Typography.Link>，或<Typography.Link href={`${projectUrl}/issues`} target="_blank" rel="noopener noreferrer">反馈问题</Typography.Link>。</span></p>
+      </div>
+      <footer className="settings-about-footer">
+        <span>© 2026 kukushouhou</span>
+        <span>本项目基于 <Typography.Link href={`${projectUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">MIT 许可证</Typography.Link>开源。</span>
+      </footer>
+    </Card>
   </section>;
 }

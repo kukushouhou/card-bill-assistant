@@ -226,19 +226,23 @@
   }
 }
 
-.settings-about { grid-column: 1 / -1; min-width: 0; margin-top: 16px; padding: 28px 8px 12px; border-top: 1px solid var(--border); }
-.settings-about > h2 { margin: 0 0 24px; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
-.settings-about-brand { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-.settings-about-mark { flex: none; font-size: 46px; color: var(--primary); }
-.settings-about-brand h3 { margin: 0 0 4px; font-size: 24px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.settings-about { grid-column: 1 / -1; min-width: 0; }
+.settings-about-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 20px; }
+.settings-about-brand h3 { margin: 0 0 6px; font-family: var(--font-family); font-size: 18px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .settings-about .settings-about-tagline { margin: 0; color: var(--text-secondary); }
-.settings-about .settings-about-version { margin-bottom: 12px; font-size: 13px; color: var(--text-secondary); }
-.settings-about .settings-about-description { max-width: 640px; margin-bottom: 20px; line-height: 1.8; }
-.settings-about-footer { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 28px; font-size: 12px; line-height: 1.8; color: var(--text-secondary); }
-.settings-about-upgrade { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
-@media (max-width: 767px) {
-  .settings-about { padding: 24px 4px 8px; }
-  .settings-about-brand { gap: 12px; }
-  .settings-about-mark { font-size: 36px; }
-  .settings-about-brand h3 { font-size: 21px; }
+.settings-about .settings-about-version { font-size: 12px; font-weight: 400; }
+.settings-about-actions { display: grid; gap: 8px; min-width: 144px; }
+.settings-about-notes { display: grid; gap: 8px; margin-top: 20px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.settings-about-notes p { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: baseline; gap: 8px; margin: 0; }
+.settings-about-notice { color: var(--warning); }
+.settings-about-security { color: var(--success); }
+.settings-about-footer { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 32px; font-size: 12px; line-height: 1.8; color: var(--text-secondary); }
+@media (max-width: 1023px) {
+  .settings-about-intro { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .settings-about-brand h3 { margin-bottom: 4px; font-size: 17px; }
+  .settings-about .settings-about-tagline { font-size: 13px; }
+  .settings-about-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; width: 100%; }
+  .settings-about-actions .ant-btn { min-width: 0; padding-inline: 8px; }
+  .settings-about-notes { gap: 6px; margin-top: 16px; }
+  .settings-about-footer { display: grid; gap: 2px; margin-top: 20px; }
 }
