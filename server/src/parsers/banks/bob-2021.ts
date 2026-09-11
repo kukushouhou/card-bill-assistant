@@ -13,6 +13,7 @@ import { buildBill, mailText, parseAmount, parseDate, pick, pickHolder, UNKNOWN_
 export const bob2021Parser: BankParser = {
   id: 'bob2021',
   bankName: '北京银行',
+  billScope: 'account',
   priority: 90,
   senderPatterns: ['service@ebill.bankofbeijing.com.cn'],
   subjectPatterns: [/北京银行.*电子账单/],

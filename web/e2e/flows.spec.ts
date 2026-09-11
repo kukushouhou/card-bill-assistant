@@ -29,8 +29,8 @@ test('电脑套卡打开共用明细弹窗，手机进入明细页并返回原�
 test('提醒编辑保留管理来源与取消草稿，两端可用', async ({ page }) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 }); await page.goto('/bills');
-    await page.getByRole('button', { name: '提醒设置', exact: false }).click();
-    const manager = width === 390 ? page.locator('section[aria-label="提醒设置"]') : page.locator('.custom-reminder-manager-modal');
+    await page.getByRole('button', { name: '自定义账单/提醒', exact: false }).click();
+    const manager = width === 390 ? page.locator('section[aria-label="自定义账单/提醒"]') : page.locator('.custom-reminder-manager-modal');
     await expect(manager).toBeVisible();
     await manager.getByRole('button', { name: '编辑', exact: true }).first().click();
     const form = page.locator('.custom-reminder-form');

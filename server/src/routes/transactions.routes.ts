@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import type { Prisma } from '../generated/prisma/client';
 import { addDays, daysBetween, fromYmd, today } from '../lib/dates';
-import { isOverdue, remainingOf } from '../modules/bills/paid';
+import { isOverdue, readOverdueBasis, remainingOf } from '../modules/bills/paid';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
 
@@ -43,6 +43,7 @@ router.get(
       paidStatus: contextBill.paidStatus, dueDate: contextBill.dueDate,
     } : null;
     const now = today();
+    const overdueBasis = await readOverdueBasis(prisma);
     const relatedCards = contextBill ? [...new Map([
       contextBill.card, ...contextBill.cards.map((link) => link.card),
     ].map((card) => [card.id, { id: card.id, cardLast4: card.displayLast4 || card.cardLast4 }])).values()] : [];
@@ -99,7 +100,7 @@ router.get(
         bankName: contextBill.card.bankName, period: contextBill.period,
         currency: contextBill.currency, ...payment,
         remainingAmount: payment.amount == null ? null : remainingOf(payment),
-        daysOverdue: isOverdue(payment, now) ? daysBetween(payment.dueDate, now) : null,
+        daysOverdue: isOverdue(payment, now, overdueBasis) ? daysBetween(payment.dueDate, now) : null,
         statementDate: contextBill.statementDate, paidAt: contextBill.paidAt,
         mode: input.scopeBillId ? 'history' : 'bill', cards: relatedCards,
       } } : {}),

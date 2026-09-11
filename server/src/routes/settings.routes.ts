@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { ApiError, asyncHandler } from '../lib/errors';
+import { OVERDUE_BASIS_KEY, readOverdueBasis } from '../modules/bills/paid';
 import {
   createNotificationChannel, getNotificationSettings, notificationCreateSchema, notificationUpdateSchema,
   removeNotificationChannel, testNotificationChannel, testNotificationConfig, updateNotificationChannel,
@@ -12,11 +14,21 @@ import { requireAuth } from './middleware';
 const router = Router();
 router.use(requireAuth);
 const channelId = z.coerce.number().int().positive();
+const overdueBasisSchema = z.object({ basis: z.enum(['all', 'minimum']) });
 function ensureSent(result: NotificationSendResult) {
   if (!result.ok) throw new ApiError(502, result.error || '测试通知发送失败');
 }
 router.get('/', asyncHandler(async (_req, res) => {
-  res.json({ reminderHour: config.reminderHour, notifications: await getNotificationSettings() });
+  res.json({ reminderHour: config.reminderHour, overdueBasis: await readOverdueBasis(prisma), notifications: await getNotificationSettings() });
+}));
+router.put('/overdue-basis', asyncHandler(async (req, res) => {
+  const { basis } = overdueBasisSchema.parse(req.body);
+  await prisma.appSetting.upsert({
+    where: { key: OVERDUE_BASIS_KEY },
+    create: { key: OVERDUE_BASIS_KEY, value: basis },
+    update: { value: basis },
+  });
+  res.json({ ok: true, overdueBasis: basis });
 }));
 router.get('/notification-channels', asyncHandler(async (_req, res) => {
   res.json(await getNotificationSettings());

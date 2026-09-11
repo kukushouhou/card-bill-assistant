@@ -12,6 +12,7 @@ import { APP_VERSION } from '../version';
 import { APPLIED_SKIN_KEY, BUILTIN_IDS, DEFAULT_SKIN } from '../modules/skins/manifest';
 import { skins } from '../modules/skins/service';
 import { SESSION_VERSION_KEY } from '../modules/auth/session';
+import { DEFAULT_OVERDUE_BASIS, OVERDUE_BASIS_KEY } from '../modules/bills/paid';
 
 /**
  * 安装向导路由（免认证）：
@@ -55,6 +56,7 @@ const installSchema = z.object({
   // PIN 可跳过；填写则必须为 6 位数字
   pin: z.union([z.literal(''), z.string().regex(/^\d{6}$/, 'PIN 必须为 6 位数字')]).optional(),
   notifications: z.array(notificationCreateSchema).max(20).optional(),
+  overdueBasis: z.enum(['all', 'minimum']).optional(),
 });
 
 router.post(
@@ -62,7 +64,7 @@ router.post(
   asyncHandler(async (req, res) => {
     // 已安装时先拒绝，避免匿名请求反复触发通知配置处理和皮肤读取。
     if (await getInstalledAt()) throw new ApiError(403, '系统已安装，如需重置请查阅部署文档');
-    const { password, pin: rawPin, notifications = [], skinId } = installSchema.parse(req.body ?? {});
+    const { password, pin: rawPin, notifications = [], skinId, overdueBasis } = installSchema.parse(req.body ?? {});
     if (skinId && !BUILTIN_IDS.has(skinId)) throw new ApiError(400, '请选择可用的内置皮肤');
     if (skinId) await skins.read(skinId, DEFAULT_SKIN.version);
     const pin = rawPin || null;
@@ -92,6 +94,7 @@ router.post(
       });
       await tx.appSetting.create({ data: { key: 'installedVersion', value: APP_VERSION } });
       await tx.appSetting.create({ data: { key: SESSION_VERSION_KEY, value: randomUUID() } });
+      await tx.appSetting.create({ data: { key: OVERDUE_BASIS_KEY, value: overdueBasis ?? DEFAULT_OVERDUE_BASIS } });
       if (skinId) await tx.appSetting.create({ data: { key: APPLIED_SKIN_KEY, value: JSON.stringify({ id: skinId, version: DEFAULT_SKIN.version }) } });
       for (const data of parsedNotifications) {
         await tx.notificationChannel.create({ data });

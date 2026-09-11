@@ -9,6 +9,8 @@ import { attachTransactions, buildBill, cycleEnd, mailText, parseAmount, parseDa
  *   正文: 卡号 Card No 625998******9164 账单周期 Statement Cycle 2026/07/20-2026/08/19
  *         到期还款日 Payment Due Date 2026/09/13
  *         本期应还款额(欠款为-) New Balance 人民币(CNY) -1,399.80（银行负数表示欠款）
+ *   「欠款为-」栏偶见正数或 0.00 印法（小额账单最低还款额为 0.00），
+ *   金额按欠款额语义取绝对值，避免产生负的应还/最低额。
  */
 export const abc2026Parser: BankParser = {
   id: 'abc2026',
@@ -31,18 +33,20 @@ export const abc2026Parser: BankParser = {
     if (!statementDate || !dueDate) return [];
 
     const amountRaw = pick(text, [/本期应还款额\(欠款为-\)\s*New Balance\s*人民币\(CNY\)\s*(-?[\d,]+\.\d{2})/]);
-    const amount = amountRaw ? parseAmount(amountRaw) : null;
+    const parsedAmount = amountRaw ? parseAmount(amountRaw) : null;
+    const amount = parsedAmount == null ? null : Math.abs(parsedAmount);
     if (amount == null) return [];
 
     const minRaw = pick(text, [/最低还款额\(欠款为-\)\s*Min Payment\s*人民币\(CNY\)\s*(-?[\d,]+\.\d{2})/]);
-    const minAmount = minRaw ? parseAmount(minRaw) : null;
+    const parsedMin = minRaw ? parseAmount(minRaw) : null;
+    const minAmount = parsedMin == null ? null : Math.abs(parsedMin);
 
     const bill = buildBill({
       bankName: '农业银行',
       cardLast4: cardM[2],
       holderName: pickHolder(text),
-      amount: -amount,
-      minAmount: minAmount == null ? null : -minAmount,
+      amount,
+      minAmount,
       currency: 'CNY',
       statementDate,
       dueDate,

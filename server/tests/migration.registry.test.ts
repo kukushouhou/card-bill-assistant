@@ -50,4 +50,13 @@ describe('版本迁移注册表', () => {
       { mode: 'required' },
     ])).toBe('required_wait');
   });
+
+  it('notice 仅告知新选项，等待模式与可选迁移一致且不阻碍业务', () => {
+    expect(classifyUpgradePreflight([{ mode: 'notice' }])).toBe('optional_wait');
+    expect(classifyUpgradePreflight([{ mode: 'notice' }, { mode: 'silent' }])).toBe('optional_wait');
+    expect(classifyUpgradePreflight([{ mode: 'notice' }, { mode: 'required' }])).toBe('required_wait');
+    expect(() => validateMigrationRegistry([
+      migration({ mode: 'notice', key: 'notice-v1', title: '新增选项', description: '告知新选项' }),
+    ])).not.toThrow();
+  });
 });

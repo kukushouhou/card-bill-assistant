@@ -175,7 +175,7 @@ async function scanAccountZeroBillTargets(db: PrismaClient | Prisma.TransactionC
   return targets.sort((a, b) => a.bankName.localeCompare(b.bankName, 'zh-CN') || a.cardId - b.cardId);
 }
 
-async function inspectAccountZeroBills(db: PrismaClient | Prisma.TransactionClient): Promise<MigrationInspection | null> {
+export async function inspectAccountZeroBills(db: PrismaClient | Prisma.TransactionClient): Promise<MigrationInspection | null> {
   const targets = await scanAccountZeroBillTargets(db);
   if (targets.length === 0) return null;
   const byBank = new Map<string, number>();
@@ -188,7 +188,7 @@ async function inspectAccountZeroBills(db: PrismaClient | Prisma.TransactionClie
 }
 
 /** 可选迁移等待期间邮件可继续同步；真正执行前在这里重新扫描最新目标。 */
-async function prepareZeroBillTask(taskId: number): Promise<void> {
+export async function prepareZeroBillTask(taskId: number): Promise<void> {
   const targets = await scanAccountZeroBillTargets(prisma);
   const existing = await prisma.upgradeTaskItem.findMany({ where: { taskId }, select: { itemKey: true } });
   const known = new Set(existing.map((item) => item.itemKey));
@@ -227,7 +227,7 @@ async function markItem(
   await updateTaskCounts(item.taskId);
 }
 
-async function executeZeroBillTask(taskId: number): Promise<TaskExecutionResult> {
+export async function executeZeroBillTask(taskId: number): Promise<TaskExecutionResult> {
   await prepareZeroBillTask(taskId);
   const rows = await prisma.upgradeTaskItem.findMany({
     where: { taskId, status: { in: ['pending', 'failed'] } },

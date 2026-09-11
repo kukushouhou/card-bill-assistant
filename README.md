@@ -9,8 +9,8 @@
 
 一个面向个人自托管的信用卡账单与到期提醒工具。自动读取银行账单邮件，将信用卡账单、日常账单和到期提醒集中在「账单中心」，支持还款登记、交易查询、年费提醒及多渠道推送。电脑端与手机端分别设计交互，提供完整皮肤包和浅色、深色模式。
 
-- 当前稳定版本：`v0.5.1`（[查看本版本完整发布说明](./docs/releases/v0.5.1.md)）
-- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.5.1`
+- 当前稳定版本：`v0.5.2`（[查看本版本完整发布说明](./docs/releases/v0.5.2.md)）
+- 官方容器镜像：`ghcr.io/kukushouhou/card-bill-assistant:0.5.2`
 
 > 该项目处理邮箱授权码和信用卡信息，建议仅部署在可信设备上，使用 HTTPS，并定期备份数据库与 `.env`。不要将应用或 MySQL 端口直接暴露到公网。
 
@@ -48,7 +48,7 @@
 - **每笔账单归属清楚**：未还和部分已还账单逐笔显示银行、卡尾、账期、待还金额与还款日；合并账单列出涉及的卡尾，只显示和统计一次。
 - **同一账单不重复提醒**：提前提醒、到期提醒附在对应账单上，不重复增加账单行或累计金额。
 - **到期时间一眼可见**：今天应还、明天应还及未来三天到期分别突出显示，逾期保留明确天数；已还清或已履行最低还款的账单不再作到期警示。
-- **汇总与状态分开呈现**：人民币直接显示 `¥` 金额，外币标识置于金额前，不同币种分别汇总。未取得账单与金额待填写单独标明；常规提醒、出账提醒和年费提醒不计入待还金额。
+- **汇总与状态分开呈现**：人民币直接显示 `¥` 金额，外币标识置于金额前，不同币种分别汇总。未取得账单与金额待填写单独标明；按户发账单的银行本期无应还的卡直接显示「无需还款」，不再计入待还数量；常规提醒、出账提醒和年费提醒不计入待还金额。
 - **历史按账期整理**：已还清账单折叠归组，显示完整账期的笔数和分币种合计；同月尚未还清的账单继续逐笔显示。
 - **快速定位记录**：可按银行、卡片和记录类型筛选，或搜索银行、卡尾与提醒名称。
 - **处理后留在原处**：还款或完成提醒后更新记录与汇总；提醒的新增、编辑、停用和删除集中在「提醒设置」，金额走势收在「账单统计」。
@@ -259,6 +259,8 @@
 
 一封邮件只有在发件人、标题和模板特征命中解析器后才会进入账单流程。不匹配的营销邮件不会被当成账单。
 
+**按户发账单的银行**：招商银行、民生银行、平安银行、华夏银行、北京银行、长沙银行、湖南银行、南京银行、浦发银行每期对每个账户只发一封合并账单。本期账单到达后，同账户下未出现在账单上的卡即确认无需还款，系统自动标记为「无需还款」并同步户内出账日与还款日；这些卡不再显示「未取得账单」，也不计入待还数量和还款提醒。真实账单之后到达时按实际金额恢复。
+
 ## 安全与数据边界
 
 - 完整卡号、有效期和 CVV 使用「环境主密钥 + 用户 PIN」双密钥 AES-256-GCM 加密。
@@ -308,10 +310,10 @@ https://github.com/kukushouhou/card-bill-assistant
 
 使用 [docker-compose.yml](./docker-compose.yml)，点击链接可直接查看或复制完整配置。
 
-先克隆 `v0.5.1` 的部署文件：
+先克隆 `v0.5.2` 的部署文件：
 
 ```bash
-git clone --branch v0.5.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.5.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 ```
 
@@ -361,7 +363,7 @@ MySQL 密码中的特殊字符必须进行 URL 编码。例如 `@` 为 `%40`、`
 
 | 变量 | 必填 | 默认值 | 用途 |
 | --- | :---: | --- | --- |
-| `APP_VERSION` | 否 | `0.5.1` | GHCR 镜像版本；生产环境建议固定版本 |
+| `APP_VERSION` | 否 | `0.5.2` | GHCR 镜像版本；生产环境建议固定版本 |
 | `DATABASE_URL` | 外置模式 | 无 | MySQL 连接串 |
 | `MYSQL_ROOT_PASSWORD` | 内置模式 | 脚本随机生成 | MySQL root 密码 |
 | `MYSQL_PASSWORD` | 内置模式 | 脚本随机生成 | 应用数据库账号密码 |
@@ -397,7 +399,7 @@ docker compose -f docker-compose.external.yml -f docker-compose.build.yml up -d 
 适合已经自行维护 Node.js 进程、MySQL、HTTPS 反向代理和系统服务的环境。需要 Node.js 24 与 MySQL 8：
 
 ```bash
-git clone --branch v0.5.1 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
+git clone --branch v0.5.2 --depth 1 https://github.com/kukushouhou/card-bill-assistant.git
 cd card-bill-assistant
 
 cd web

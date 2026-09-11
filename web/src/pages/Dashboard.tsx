@@ -434,6 +434,8 @@ export default function Dashboard() {
       return <Tag color="blue">已还最低</Tag>;
     }
     const daysLeft = dayjs(t.dueDate).startOf('day').diff(dayjs().startOf('day'), 'day');
+    // 服务端口径下未逾期的过期项不进待办；这里只做本地日历的防御兜底，不显示负数天数。
+    if (daysLeft < 0) return <Tag>已过期</Tag>;
     if (t.action === 'complete') return <Tag color="purple">{daysLeft === 0 ? '今天' : daysLeft === 1 ? '明天' : `${daysLeft} 天后`}</Tag>;
     if (daysLeft === 0) return <Tag color="red">今天还款日</Tag>;
     return <Tag color="orange">{daysLeft === 1 ? '明天' : `${daysLeft} 天后`}还款</Tag>;

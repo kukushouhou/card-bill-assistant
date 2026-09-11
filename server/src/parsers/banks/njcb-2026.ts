@@ -11,6 +11,7 @@ import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, parse
 export const njcb2026Parser: BankParser = {
   id: 'njcb2026',
   bankName: '南京银行',
+  billScope: 'account',
   senderPatterns: ['@message.njcb.com.cn'],
   subjectPatterns: [/南京银行.*电子账单/],
 

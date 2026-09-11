@@ -16,6 +16,7 @@ const prisma = vi.hoisted(() => ({
     updateMany: vi.fn(),
     deleteMany: vi.fn(),
   },
+  appSetting: { findUnique: vi.fn() },
 }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma }));
@@ -78,6 +79,7 @@ describe('账单卡片范围', () => {
     prisma.bill.findMany.mockResolvedValue([]);
     prisma.bill.findFirst.mockResolvedValue(null);
     prisma.bill.create.mockResolvedValue({ id: 100 });
+    prisma.appSetting.findUnique.mockResolvedValue(null);
   });
 
   it('列表筛选始终排除 hidden 卡', async () => {

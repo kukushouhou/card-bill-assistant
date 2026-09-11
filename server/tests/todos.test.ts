@@ -127,7 +127,7 @@ describe('collectTodoItems 今日待办', () => {
     expect(items[0]).toMatchObject({ billId: 100, cardId: 1, missing: false });
   });
 
-  it('部分已还达到最低还款额时仍在待办，但不误标逾期', () => {
+  it('默认口径下过期已还最低仍进待办并按逾期标记', () => {
     const card = makeCard();
     const partial = makeBill({
       dueDate: fromYmd('2026-08-20'),
@@ -138,6 +138,28 @@ describe('collectTodoItems 今日待办', () => {
 
     const items = collectTodoItems([card], [card], [partial], fromYmd('2026-08-24'));
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ paidStatus: 'partial', daysOverdue: null });
+    expect(items[0]).toMatchObject({ paidStatus: 'partial', daysOverdue: 4 });
+  });
+
+  it('未还最低口径下过期已还最低的期次不进待办', () => {
+    const card = makeCard();
+    const partial = makeBill({
+      dueDate: fromYmd('2026-08-20'),
+      paidStatus: 'partial',
+      paidAmount: 100,
+      minAmount: 100,
+    });
+    const belowMinimum = makeBill({
+      id: 101,
+      cardId: 1,
+      dueDate: fromYmd('2026-08-21'),
+      paidStatus: 'partial',
+      paidAmount: 50,
+      minAmount: 100,
+    });
+
+    const items = collectTodoItems([card], [card], [partial, belowMinimum], fromYmd('2026-08-24'), 'minimum');
+    expect(items.map((item) => item.billId)).toEqual([101]);
+    expect(items[0]).toMatchObject({ daysOverdue: 3 });
   });
 });

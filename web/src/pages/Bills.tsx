@@ -61,7 +61,7 @@ export default function Bills() {
     catch (e) { setRunError(e instanceof Error ? e.message : '推送失败，请重试'); }
     finally { lock.current = false; setRunning(false); }
   };
-  const settingsActions = <Space wrap className="agenda-settings-launch"><Button type={isMobile ? 'default' : 'text'} icon={<ProfileOutlined />} onClick={() => setStats(true)}>账单统计</Button><Button type={isMobile ? 'default' : 'text'} icon={<SettingOutlined />} onClick={() => setSettings(true)}>提醒设置</Button></Space>;
+  const settingsActions = <Space wrap className="agenda-settings-launch"><Button type={isMobile ? 'default' : 'text'} icon={<ProfileOutlined />} onClick={() => setStats(true)}>账单统计</Button><Button type={isMobile ? 'default' : 'text'} icon={<SettingOutlined />} onClick={() => setSettings(true)}>自定义账单/提醒</Button></Space>;
   const controls = <>
     <div className="agenda-toolbar agenda-navigation">
       <Segmented block={isMobile} options={views} value={view} onChange={value => update({ view: String(value) })} />

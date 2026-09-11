@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
 import { buildLedger, buildTrend, type LedgerBillInput, type LedgerCard } from '../modules/bills/ledger';
-import { remainingOf } from '../modules/bills/paid';
+import { readOverdueBasis, remainingOf } from '../modules/bills/paid';
 import { computeCycle, type CardLike } from '../modules/reminders/reminder.engine';
 import { today } from '../lib/dates';
 import { materializeCustomReminderOccurrences } from '../modules/reminders/custom-occurrences';
@@ -121,7 +121,8 @@ router.get(
       businessPrimaryId: c.businessPrimaryId,
     }));
 
-    const cardRows = buildLedger(scopeCards, allLedgerCards, bills).map((row) => ({
+    const overdueBasis = await readOverdueBasis(prisma);
+    const cardRows = buildLedger(scopeCards, allLedgerCards, bills, undefined, overdueBasis).map((row) => ({
       ...row,
       recordType: 'card' as const,
       customOccurrenceId: null,

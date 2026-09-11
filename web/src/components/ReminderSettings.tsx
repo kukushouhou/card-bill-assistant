@@ -32,7 +32,7 @@ export default function ReminderSettings({ onClose, onChanged }: { onClose: () =
     finally { lock.current = false; setDeleting(false); }
   };
   return <>
-    {!data ? <BusinessFlow title="提醒设置" onClose={onClose}>{error ? <Alert type="error" title={error} action={<Button onClick={() => void refresh()}>重试</Button>} /> : <Skeleton active />}</BusinessFlow> : <CustomReminderManager open items={data} deleteTarget={deleteTarget} deleting={deleting} onClose={onClose}
+    {!data ? <BusinessFlow title="自定义账单/提醒" onClose={onClose}>{error ? <Alert type="error" title={error} action={<Button onClick={() => void refresh()}>重试</Button>} /> : <Skeleton active />}</BusinessFlow> : <CustomReminderManager open items={data} deleteTarget={deleteTarget} deleting={deleting} onClose={onClose}
       onCreate={() => setEditing(null)} onEdit={setEditing} onDelete={item => void remove(item)} onDeleteStart={setDeleteTarget} onDeleteCancel={() => setDeleteTarget(null)} onDeleteConfirm={() => { if (deleteTarget) void remove(deleteTarget); }} />}
     {editing !== undefined && <CustomForm initial={editing} confirmLoading={saving} onCancel={() => setEditing(undefined)} onOk={values => void submit(values)} />}
   </>;

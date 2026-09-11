@@ -12,6 +12,7 @@ import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, parse
 export const cscb2026Parser: BankParser = {
   id: 'cscb2026',
   bankName: '长沙银行',
+  billScope: 'account',
   senderPatterns: ['@ebill.cscb.cn'],
   subjectPatterns: [/长沙银行.*电子账单/],
 

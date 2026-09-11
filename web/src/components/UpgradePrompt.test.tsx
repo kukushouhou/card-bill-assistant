@@ -70,6 +70,28 @@ describe('整批确认升级选择', () => {
     });
   });
 
+  it('notice 项目内嵌口径选择，确认时先保存设置再 approve', async () => {
+    const current = plan([task('overdue-basis-notice-v1', '新增逾期提醒设置', 'notice')]);
+    apiMocks.get.mockResolvedValue(current);
+    apiMocks.put.mockResolvedValue({ ok: true });
+    apiMocks.post.mockResolvedValue({ ...current, status: 'executing' });
+    const user = userEvent.setup();
+    render(<App><UpgradePrompt /></App>);
+    await screen.findByText('新增逾期提醒设置');
+    expect(screen.getByText('新选项')).toBeTruthy();
+    // notice 只告知新选项，不提供忽略/执行二选一，也没有忽略警告。
+    expect(screen.queryByText('忽略')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('radio', { name: /未全额还清/ }) as HTMLInputElement).checked).toBe(true);
+    await user.click(screen.getByText('未还最低还款额'));
+    await user.click(screen.getByRole('button', { name: '确认并继续' }));
+    expect(apiMocks.put).toHaveBeenCalledWith('/api/settings/overdue-basis', { basis: 'minimum' });
+    expect(apiMocks.put.mock.invocationCallOrder[0]).toBeLessThan(apiMocks.post.mock.invocationCallOrder[0]);
+    expect(apiMocks.post).toHaveBeenCalledWith('/api/upgrades/decisions', {
+      planId: 8, decisions: [{ key: 'overdue-basis-notice-v1', action: 'approve' }],
+    });
+  });
+
   it('必选项目不提供忽略，混合计划同一次确认', async () => {
     const current = plan([task('required', '修正必要数据', 'required'), task('optional', '修正本期账单状态')]);
     current.migrations.push({ key: 'silent', mode: 'silent', title: '后台静默修正', description: '不需要用户关心', targetVersion: '0.4.2', order: 2, total: 2, summary: '静默影响范围' });

@@ -6,6 +6,7 @@ import { requireAuth } from './middleware';
 import { addDays, fromYmd, today, ymd } from '../lib/dates';
 import { buildBillsByCard, collectTodayEvents, collectUpcoming, type CardLike, type CustomReminderLike } from '../modules/reminders/reminder.engine';
 import { collectTodoItems } from '../modules/reminders/todos';
+import { readOverdueBasis } from '../modules/bills/paid';
 import type { LedgerBillInput, LedgerCard } from '../modules/bills/ledger';
 import {
   customOccurrenceDaysOverdue,
@@ -281,6 +282,7 @@ router.put('/occurrences/:id/paid', asyncHandler(async (req, res) => {
 
 router.get('/todos', asyncHandler(async (_req, res) => {
   const now = today();
+  const overdueBasis = await readOverdueBasis(prisma);
   await materializeCustomReminderOccurrences(now);
   const [cards, billRows, customRows] = await Promise.all([
     prisma.card.findMany({ where: { hidden: false } }),
@@ -322,7 +324,7 @@ router.get('/todos', asyncHandler(async (_req, res) => {
     ),
   }));
 
-  const cardItems = collectTodoItems(ledgerCards, ledgerCards, ledgerBills, now).map((item) => ({
+  const cardItems = collectTodoItems(ledgerCards, ledgerCards, ledgerBills, now, overdueBasis).map((item) => ({
     ...item,
     recordType: 'card' as const,
     action: 'card_payment' as const,

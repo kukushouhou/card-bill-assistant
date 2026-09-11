@@ -65,6 +65,7 @@ describe('安装向导', () => {
         password: 'password123',
         pin: '123456',
         notifications: [],
+        overdueBasis: 'all',
       });
     });
   });
@@ -102,7 +103,7 @@ describe('安装向导', () => {
     await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(2));
     for (const [url, payload] of apiMocks.post.mock.calls) {
       expect(url).toBe('/api/setup/install');
-      expect(payload).toEqual({ skinId: 'modern', password: 'password123', pin: undefined, notifications: [{ type: 'webhook', name: 'Webhook', enabled: true, config: { url: 'https://example.test/updated' } }] });
+      expect(payload).toEqual({ skinId: 'modern', password: 'password123', pin: undefined, notifications: [{ type: 'webhook', name: 'Webhook', enabled: true, config: { url: 'https://example.test/updated' } }], overdueBasis: 'all' });
     }
   }, 30_000);
 });

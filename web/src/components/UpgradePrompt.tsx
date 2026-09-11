@@ -2,7 +2,8 @@ import { useResponsive } from '../responsive';
 import { App, Button, Modal, Progress, Segmented, theme } from 'antd';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api } from '../api/client';
-import type { UpgradePlan, UpgradeTask, StatementRepairResult } from '../api/types';
+import type { OverdueBasis, UpgradePlan, UpgradeTask, StatementRepairResult } from '../api/types';
+import OverdueBasisRadio from './OverdueBasisRadio';
 import UpgradeResultSummary from './UpgradeResultSummary';
 import UpgradeMailboxSettings from './UpgradeMailboxSettings';
 import { ExclamationCircleFilled, LockOutlined } from '../skins/icons';
@@ -24,6 +25,7 @@ export default function UpgradePrompt() {
   const [result, setResult] = useState<StatementRepairResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [choices, setChoices] = useState<Record<string, 'approve' | 'ignore'>>({});
+  const [noticeBasis, setNoticeBasis] = useState<Record<string, OverdueBasis>>({});
   const [mailboxSettingsOpen, setMailboxSettingsOpen] = useState(false);
   const hadExecution = useRef(false);
 
@@ -79,6 +81,11 @@ export default function UpgradePrompt() {
   const confirm = async () => {
     setSubmitting(true);
     try {
+      // notice 项不迁移数据：确认前先把弹窗内选择的新选项值保存为系统设置。
+      for (const task of pendingTasks) {
+        if (task.mode !== 'notice') continue;
+        await api.put('/api/settings/overdue-basis', { basis: noticeBasis[task.key] ?? 'all' });
+      }
       const next = await api.post<UpgradePlan | null>('/api/upgrades/decisions', {
         planId: plan.id,
         decisions: pendingTasks.map((task) => ({
@@ -89,6 +96,7 @@ export default function UpgradePrompt() {
       if (!next) await showResult();
       hadExecution.current = next?.status === 'executing';
       setChoices({});
+      setNoticeBasis({});
       setPlan(next);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '升级操作失败，请重试');
@@ -138,8 +146,19 @@ export default function UpgradePrompt() {
               <p className="upgrade-item-description">{migration.description}</p>
               <div className="upgrade-item-scope">
                 {migration.mode === 'optional' && <span className="upgrade-optional">可选更新</span>}
+                {migration.mode === 'notice' && <span className="upgrade-optional">新选项</span>}
                 {migration.summary && <span>{migration.summary}</span>}
               </div>
+              {actionable && task.mode === 'notice' && (
+                <div className="upgrade-item-notice-option">
+                  <OverdueBasisRadio
+                    value={noticeBasis[task.key] ?? 'all'}
+                    disabled={submitting}
+                    onChange={(value) => setNoticeBasis((current) => ({ ...current, [task.key]: value }))}
+                    name={`upgrade-overdue-${plan.id}-${task.key}`}
+                  />
+                </div>
+              )}
               <div className="upgrade-item-action">
               {actionable && task.mode === 'optional' && (
                 <Segmented<'approve' | 'ignore'> block motionName=""

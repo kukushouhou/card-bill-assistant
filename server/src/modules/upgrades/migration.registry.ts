@@ -1,14 +1,18 @@
 import { cardBusinessRelationsMigration } from './migrations/card-business-relations';
 import { hideResolvedPlaceholdersMigration } from './migrations/hide-resolved-placeholders';
 import { accountZeroBillsMigration } from './migrations/backfill-account-zero-bills';
+import { accountZeroBillsMigrationV2 } from './migrations/backfill-account-zero-bills-v2';
 import { repairStatements050Migration } from './migrations/repair-statements-050';
+import { overdueBasisNoticeMigration } from './migrations/overdue-basis-notice';
 import type { VersionMigration } from './migration.types';
 
 export const versionMigrations: VersionMigration[] = [
   cardBusinessRelationsMigration,
   hideResolvedPlaceholdersMigration,
   accountZeroBillsMigration,
+  accountZeroBillsMigrationV2,
   repairStatements050Migration,
+  overdueBasisNoticeMigration,
 ];
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -72,6 +76,8 @@ export type UpgradePreflightMode = 'none' | 'silent' | 'optional_wait' | 'requir
 export function classifyUpgradePreflight(migrations: Array<Pick<VersionMigration, 'mode'>>): UpgradePreflightMode {
   if (migrations.some((migration) => migration.mode === 'required')) return 'required_wait';
   if (migrations.some((migration) => migration.mode === 'optional')) return 'optional_wait';
+  // notice 只告知新选项、不阻碍业务，等待模式与可选迁移一致。
+  if (migrations.some((migration) => migration.mode === 'notice')) return 'optional_wait';
   if (migrations.some((migration) => migration.mode === 'silent')) return 'silent';
   return 'none';
 }

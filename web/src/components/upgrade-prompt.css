@@ -7,7 +7,8 @@
 .upgrade-gate-notice { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 4px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
 .upgrade-gate-notice > .anticon { color: var(--primary); }
 .upgrade-progress { display: grid; gap: 8px; padding: 16px 0 4px; }
-.upgrade-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title action" "description description" "scope scope" "error error" "warning warning"; column-gap: 20px; align-items: start; padding: 22px 0; }
+.upgrade-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title action" "description description" "scope scope" "option option" "error error" "warning warning"; column-gap: 20px; align-items: start; padding: 22px 0; }
+.upgrade-item-notice-option { grid-area: option; margin-top: 14px; max-width: 560px; }
 .upgrade-item + .upgrade-item { border-top: 1px solid var(--border); }
 .upgrade-item:last-child { padding-bottom: 4px; }
 .upgrade-flow .upgrade-item-title { grid-area: title; align-self: center; margin: 0; color: var(--text); font: 600 16px/1.55 var(--font-family); }

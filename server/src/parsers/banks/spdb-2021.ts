@@ -16,6 +16,7 @@ import { addDays } from '../../lib/dates';
 export const spdb2021Parser: BankParser = {
   id: 'spdb2021',
   bankName: '浦发银行',
+  billScope: 'account',
   priority: 90,
   senderPatterns: ['estmtservice@eb.spdbccc.com.cn'],
   subjectPatterns: [/浦发银行.*电子账单/, /浦发.*信用卡.*对账单/],

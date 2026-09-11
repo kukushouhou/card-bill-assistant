@@ -37,6 +37,18 @@ vi.mock('../src/lib/card-groups', async (importOriginal) => {
 vi.mock('../src/jobs/scheduler', () => ({
   waitForScheduledJobs: schedulerMocks.wait,
 }));
+// 框架用例与 notice 迁移解耦：默认隔离 notice（inspect 不命中），notice 行为单独用例覆盖。
+const noticeState = vi.hoisted(() => ({ enabled: false }));
+vi.mock('../src/modules/upgrades/migrations/overdue-basis-notice', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/modules/upgrades/migrations/overdue-basis-notice')>();
+  return {
+    overdueBasisNoticeMigration: {
+      ...actual.overdueBasisNoticeMigration,
+      inspect: async (db: Parameters<typeof actual.overdueBasisNoticeMigration.inspect>[0]) =>
+        noticeState.enabled ? actual.overdueBasisNoticeMigration.inspect(db) : null,
+    },
+  };
+});
 
 import { APP_VERSION } from '../src/version';
 import { getUpgradePlan, initializeUpgradeState, submitUpgradeDecisions } from '../src/modules/upgrades/upgrade.service';
@@ -62,6 +74,7 @@ function card(overrides: Record<string, unknown>) {
 describe('版本升级协调器', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    noticeState.enabled = false;
     db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
     db.appSetting.findUnique.mockResolvedValue({ value: APP_VERSION });
     db.emailAccount.count.mockResolvedValue(0);
@@ -208,6 +221,25 @@ describe('版本升级协调器', () => {
     expect(db.mailLog.findMany).not.toHaveBeenCalled();
     expect(db.upgradePlan.create).not.toHaveBeenCalled();
     expect(db.upgradeTask.create).not.toHaveBeenCalled();
+  });
+
+  it('notice 迁移入盘时创建不阻碍业务的提醒任务', async () => {
+    noticeState.enabled = true;
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.5.1' });
+    db.upgradeTask.create.mockResolvedValue({ id: 21 });
+
+    const result = await initializeUpgradeState(true);
+
+    expect(result.runtimeMode).toBe('optional_wait');
+    expect(isUpgradeBusinessBlocked()).toBe(false);
+    expect(db.upgradeTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        key: 'overdue-basis-notice-v1',
+        mode: 'notice',
+        status: 'awaiting_decision',
+      }),
+    });
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
   });
 
   it('已生成的 0.5 必选历史修复计划改回可选，保留执行窗口与用户决定', async () => {

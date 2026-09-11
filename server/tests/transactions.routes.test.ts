@@ -8,6 +8,7 @@ import { fromYmd } from '../src/lib/dates';
 const prisma = vi.hoisted(() => ({
   billTransaction: { count: vi.fn(), findMany: vi.fn() },
   bill: { findUnique: vi.fn() },
+  appSetting: { findUnique: vi.fn() },
 }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma }));
@@ -25,6 +26,7 @@ describe('统一账单明细来源', () => {
     vi.clearAllMocks();
     prisma.billTransaction.count.mockResolvedValue(0);
     prisma.billTransaction.findMany.mockResolvedValue([]);
+    prisma.appSetting.findUnique.mockResolvedValue(null);
     prisma.bill.findUnique.mockResolvedValue({ id: 11, period: '2026-08', currency: 'CNY', amount: 43.4,
       paidStatus: 'unpaid', paidAmount: null, minAmount: 4.34, paidAt: null, dueDate: fromYmd('2026-09-08'), statementDate: fromYmd('2026-08-10'),
       card: { id: 1, bankName: '交通银行', cardLast4: '0988', displayLast4: '0988' },
@@ -88,12 +90,14 @@ describe('统一账单明细来源', () => {
     });
     expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: { not: null }, cardId: { in: [1, 2] } }] }, sharedActive], cardId: { in: [] } } });
   });
-  it('部分还款概况取账单余额，已还最低不再算逾期', async () => {
+  it('部分还款概况取账单余额，默认口径下过期即按逾期返回', async () => {
     const source = await prisma.bill.findUnique();
     prisma.bill.findUnique.mockResolvedValue({ ...source, paidStatus: 'partial', paidAmount: 10, dueDate: fromYmd('2025-01-01') });
     await withServer('/api/transactions', transactionsRouter, async url => {
       const response = await fetch(url + '/api/transactions?billId=11');
-      expect(await response.json()).toMatchObject({ total: 0, context: { amount: 43.4, paidStatus: 'partial', paidAmount: 10, remainingAmount: 33.4, daysOverdue: null } });
+      const body = (await response.json()) as { context: { daysOverdue: number | null } };
+      expect(body).toMatchObject({ total: 0, context: { amount: 43.4, paidStatus: 'partial', paidAmount: 10, remainingAmount: 33.4 } });
+      expect(body.context.daysOverdue).toBeGreaterThan(0);
     });
   });
   it('已还清保留原账单总额而非当前交易小计，剩余待还为零', async () => {

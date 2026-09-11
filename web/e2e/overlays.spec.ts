@@ -11,7 +11,7 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
     const payment = width < 1024 ? page.locator('.mobile-payment-flow') : page.getByRole('dialog');
     await expect(payment).toBeVisible(); await page.screenshot({ path: directory + '/payment.png', fullPage: true, animations: 'disabled' });
     if (width < 1024) await page.locator('.mobile-nav-back-button').click(); else await page.getByRole('button', { name: '取消', exact: true }).click();
-    await page.getByRole('button', { name: '提醒设置', exact: false }).click();
+    await page.getByRole('button', { name: '自定义账单/提醒', exact: false }).click();
     await page.getByRole('button', { name: '新增提醒', exact: false }).click();
     await expect(page.locator('.custom-reminder-form')).toBeVisible(); await page.screenshot({ path: directory + '/reminder-editor.png', fullPage: true, animations: 'disabled' });
     await page.goto('/cards'); await page.locator('.bank-card').first().locator('.bank-card-eye').click();

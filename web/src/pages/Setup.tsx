@@ -5,10 +5,11 @@ import { Alert, App, Button, Card, Col, Divider, Form, Input, Row, Steps, Tag, T
 import { ApiOutlined, BellOutlined, CheckCircleOutlined, ReloadOutlined } from '../skins/icons';
 import { api, ApiError } from '../api/client';
 import { useAppName } from '../appName';
-import type { SetupStatus } from '../api/types';
+import type { OverdueBasis, SetupStatus } from '../api/types';
 import { useResponsive } from '../responsive';
 import { useDraftGuard } from '../lib/draftGuard';
 import SetupNotificationFields from '../components/SetupNotificationFields';
+import OverdueBasisRadio from '../components/OverdueBasisRadio';
 import type { NotificationDraft } from '../components/NotificationChannelEditor';
 
 interface SetupAccountValues {
@@ -38,6 +39,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const { isMobile } = useResponsive();
   const [step, setStep] = useState(0);
   const [skinId, setSkinId] = useState('modern');
+  const [overdueBasis, setOverdueBasis] = useState<OverdueBasis>('all');
   const appearance = useSkin();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(false);
@@ -92,6 +94,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         password: accountValues.password,
         pin: accountValues.pin || undefined,
         notifications: values.notificationEntries ?? [],
+        overdueBasis,
       });
       void appearance.refresh().catch(() => undefined);
       message.success('安装完成');
@@ -304,6 +307,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             }}>
             <Typography.Title className="setup-section-title" level={5}><BellOutlined /><span>选择通知渠道</span></Typography.Title>
             <SetupNotificationFields providers={status?.notificationProviders ?? []} />
+            <Typography.Title className="setup-section-title" level={5}><BellOutlined /><span>逾期提醒</span></Typography.Title>
+            <Typography.Text type="secondary">过了还款日之后，按哪种口径把账单当作逾期</Typography.Text>
+            <div style={{ marginTop: 12 }}>
+              <OverdueBasisRadio value={overdueBasis} onChange={setOverdueBasis} disabled={installing} name="setup-overdue-basis" />
+            </div>
             <div className="setup-actions">
               <Button onClick={() => { notificationValuesRef.current = { notificationEntries: structuredClone(form.getFieldValue('notificationEntries') ?? []) }; setStep(1); }}>上一步</Button>
               <Button type="primary" htmlType="submit">下一步</Button>

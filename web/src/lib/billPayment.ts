@@ -21,10 +21,11 @@ interface PaymentStatusLike extends PaymentProgressLike {
   amount?: number | null;
 }
 
-/** 已还金额达到最低还款额只代表本期不再逾期，不代表已经结清。 */
+/** 已还金额达到最低还款额只代表本期履约达标（最低额需为正数），不代表已经结清。 */
 export function hasMetMinimumPayment(row: PaymentProgressLike): boolean {
   return row.paidStatus === 'partial'
     && row.minAmount != null
+    && row.minAmount > 0
     && (row.paidAmount ?? 0) >= row.minAmount;
 }
 
@@ -42,6 +43,8 @@ export function remainingAmountOf(row: BillRow): number | null {
 
  /**
  * 还款状态只描述履约进度：结清、已还最低、逾期、部分已还或待还。
+ * 逾期（服务端按「逾期提醒」口径计算的 daysOverdue）优先于「已还最低」：
+ * 「未全额还清」口径下已还最低的过期账单也按逾期展示。
  * 「无需还款」= 0 元已结清账单；「未取得账单」只在金额位展示，不占用还款状态。
  */
 export function paymentStatusOf(row: PaymentStatusLike): BillPaymentStatusPresentation {
@@ -51,12 +54,12 @@ export function paymentStatusOf(row: PaymentStatusLike): BillPaymentStatusPresen
       : { kind: 'paid', label: '已还清', color: 'green' };
   }
 
-  if (hasMetMinimumPayment(row)) {
-    return { kind: 'minimum', label: '已还最低', color: 'blue' };
-  }
-
   if (row.daysOverdue != null) {
     return { kind: 'overdue', label: overdueText(row.daysOverdue), color: 'red' };
+  }
+
+  if (hasMetMinimumPayment(row)) {
+    return { kind: 'minimum', label: '已还最低', color: 'blue' };
   }
 
   if (row.paidStatus === 'partial') {

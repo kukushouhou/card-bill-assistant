@@ -123,7 +123,7 @@ describe('buildLedger 完整台账', () => {
       ]);
   });
 
-  it('部分还款返回剩余待还金额，并按最低还款额判定逾期', () => {
+  it('部分还款返回剩余待还金额，逾期按口径判定', () => {
     const card = makeCard();
     const belowMinimum = buildLedger(
       [card],
@@ -141,8 +141,20 @@ describe('buildLedger 完整台账', () => {
       fromYmd('2026-08-24'),
     ).find((row) => !row.missing)!;
     expect(minimumMet.remainingAmount).toBe(900);
-    expect(minimumMet.daysOverdue).toBeNull();
+    // 默认「未全额还清」口径：已还最低的过期账单仍算逾期。
+    expect(minimumMet.daysOverdue).toBe(1);
     expect(minimumMet.paidStatus).toBe('partial');
+
+    // 「未还最低还款额」口径：已履行最低还款不算逾期。
+    const minimumMetLegacy = buildLedger(
+      [card],
+      [card],
+      [makeBill({ paidStatus: 'partial', paidAmount: 100 })],
+      fromYmd('2026-08-24'),
+      'minimum',
+    ).find((row) => !row.missing)!;
+    expect(minimumMetLegacy.daysOverdue).toBeNull();
+    expect(minimumMetLegacy.paidStatus).toBe('partial');
   });
 
   it('出账日未到的下一期不生成占位行', () => {

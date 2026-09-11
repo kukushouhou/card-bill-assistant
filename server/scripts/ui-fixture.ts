@@ -140,7 +140,8 @@ app.get('/api/email/accounts/:id/messages/:uid', (req, res) => res.json({ uid: N
 let channels: any[] = [];
 let channelSequence = 0;
 let notificationSends: any[] = [];
-app.get('/api/settings', (_req, res) => res.json({ notifications: { providers: listNotificationProviderDefinitions(), channels }, reminderHour: 8 }));
+app.get('/api/settings', (_req, res) => res.json({ notifications: { providers: listNotificationProviderDefinitions(), channels }, reminderHour: 8, overdueBasis: stored['overdue.basis'] ?? 'all' }));
+app.put('/api/settings/overdue-basis', async (req, res) => { await delegates.appSetting.upsert({ where: { key: 'overdue.basis' }, create: { key: 'overdue.basis', value: req.body.basis }, update: { value: req.body.basis } }); res.json({ ok: true, overdueBasis: req.body.basis }); });
 app.post('/api/settings/notification-channels', (req, res) => { const channel = { ...req.body, id: ++channelSequence, configured: true }; channels.push(channel); res.status(201).json({ ok: true, channel }); });
 app.put('/api/settings/notification-channels/:id', (req, res) => { const channel = channels.find(item => item.id === Number(req.params.id)); if (!channel) { res.status(404).json({ error: '通知渠道不存在' }); return; } Object.assign(channel, req.body); res.json({ ok: true, channel }); });
 app.delete('/api/settings/notification-channels/:id', (req, res) => { channels = channels.filter(item => item.id !== Number(req.params.id)); res.json({ ok: true }); });

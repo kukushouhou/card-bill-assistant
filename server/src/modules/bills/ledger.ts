@@ -4,7 +4,7 @@
  * 2. buildTrend：按期次聚合金额走势（无数据月份 total=null 断线）
  */
 import { addDays, dayOfMonthClamped, daysBetween, monthParts, today as todayOf, ymd } from '../../lib/dates';
-import { isOverdue, remainingOf } from './paid';
+import { DEFAULT_OVERDUE_BASIS, isOverdue, remainingOf, type OverdueBasis } from './paid';
 
 export interface LedgerCard {
   id: number;
@@ -77,6 +77,7 @@ export interface LedgerRow {
 function ledgerDaysOverdue(
   row: Pick<LedgerRow, 'dueDate' | 'amount' | 'minAmount' | 'paidStatus' | 'paidAmount' | 'missing'>,
   now: Date,
+  basis: OverdueBasis,
 ): number | null {
   const overdue = isOverdue(
     {
@@ -87,6 +88,7 @@ function ledgerDaysOverdue(
       paidAmount: row.paidAmount,
     },
     now,
+    basis,
   );
   return overdue ? daysBetween(row.dueDate, now) : null;
 }
@@ -176,6 +178,7 @@ export function buildLedger(
   allCards: LedgerCard[],
   bills: LedgerBillInput[],
   now: Date = todayOf(),
+  basis: OverdueBasis = DEFAULT_OVERDUE_BASIS,
 ): LedgerRow[] {
   const cardById = new Map(allCards.map((c) => [c.id, c] as const));
   const rows: LedgerRow[] = [];
@@ -209,7 +212,7 @@ export function buildLedger(
       missing: false,
       daysOverdue: null,
     };
-    row.daysOverdue = ledgerDaysOverdue(row, now);
+    row.daysOverdue = ledgerDaysOverdue(row, now, basis);
     rows.push(row);
   }
 
@@ -258,7 +261,7 @@ export function buildLedger(
       missing: true,
       daysOverdue: null,
     };
-    row.daysOverdue = ledgerDaysOverdue(row, now);
+    row.daysOverdue = ledgerDaysOverdue(row, now, basis);
     rows.push(row);
   }
 

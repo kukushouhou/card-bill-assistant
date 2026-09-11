@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { buildLedger, type LedgerBillInput, type LedgerCard } from './ledger';
+import { readOverdueBasis } from './paid';
 import { today } from '../../lib/dates';
 
 export interface LedgerScope {
@@ -36,7 +37,8 @@ export async function loadLedgerData(scope: LedgerScope = {}, now = today()) {
   }));
   const cardById = new Map(allCards.map((card) => [card.id, card]));
   const billById = new Map(ledgerBills.map((bill) => [bill.id, bill]));
-  const rows = buildLedger(scopeCards.map(toCard), allCards.map(toCard), ledgerBills, now).map((row) => {
+  const overdueBasis = await readOverdueBasis(prisma);
+  const rows = buildLedger(scopeCards.map(toCard), allCards.map(toCard), ledgerBills, now, overdueBasis).map((row) => {
     const linkedIds = row.id == null ? [row.cardId] : billById.get(row.id)?.linkedCardIds ?? [row.cardId];
     const tails = linkedIds.map((id) => cardById.get(id)).filter((card) => card != null)
       .map((card) => card.displayLast4 || card.cardLast4);

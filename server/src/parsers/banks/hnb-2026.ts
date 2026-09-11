@@ -14,6 +14,7 @@ import { amountLine, applyTransactionTails, buildBill, dateLine, mailText, parse
 export const hnb2026Parser: BankParser = {
   id: 'hnb2026',
   bankName: '湖南银行',
+  billScope: 'account',
   senderPatterns: ['@hunan-bank.com', '@hrxjbank.com.cn'],
   subjectPatterns: [/湖南银行.*电子账单/, /华融湘江银行.*电子账单/],
 

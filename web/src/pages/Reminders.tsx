@@ -404,7 +404,7 @@ export function CustomReminderManager({
   if (isMobile) {
     return (
       <MobileFlow
-        title="提醒设置"
+        title="自定义账单/提醒"
         onBack={onClose}
         footer={(
           <Button type="primary" block icon={<PlusOutlined />} onClick={onCreate}>
@@ -413,7 +413,7 @@ export function CustomReminderManager({
         )}
       >
         {items.length === 0 ? (
-          <Empty description="暂无提醒设置" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description="暂无自定义账单/提醒" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <div className="custom-reminder-manager-mobile-list">
             {items.map((item) => {
@@ -461,7 +461,7 @@ export function CustomReminderManager({
   return (
     <Modal
       className="custom-reminder-manager-modal"
-      title="提醒设置"
+      title="自定义账单/提醒"
       open
       width="min(1080px, calc(100vw - 48px))"
       onCancel={onClose}
@@ -475,7 +475,7 @@ export function CustomReminderManager({
         dataSource={items}
         pagination={items.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
         size="middle"
-        locale={{ emptyText: <Empty description="暂无提醒设置" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+        locale={{ emptyText: <Empty description="暂无自定义账单/提醒" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
         columns={[
           { title: '名称', dataIndex: 'name' },
           {

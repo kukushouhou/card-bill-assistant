@@ -1352,8 +1352,17 @@ describe('applyParsedBill 户级零账单（billScope account）', () => {
 
   it('isAccountBillParser 按 billScope 识别', () => {
     expect(isAccountBillParser('cmb2026')).toBe(true);
+    expect(isAccountBillParser('bob2026')).toBe(true);
+    expect(isAccountBillParser('bob2021')).toBe(true);
+    expect(isAccountBillParser('cscb2026')).toBe(true);
+    expect(isAccountBillParser('hnb2026')).toBe(true);
+    expect(isAccountBillParser('njcb2026')).toBe(true);
+    expect(isAccountBillParser('njcb2023')).toBe(true);
+    expect(isAccountBillParser('spdb2026')).toBe(true);
+    expect(isAccountBillParser('spdb2021')).toBe(true);
     expect(isAccountBillParser('cmbdaily2026')).toBe(false);
     expect(isAccountBillParser('citic2023')).toBe(false);
+    expect(isAccountBillParser('hnnxs2026')).toBe(false);
     expect(isAccountBillParser('不存在')).toBe(false);
   });
 

@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
 import { monthParts, today } from '../lib/dates';
-import { remainingOf } from '../modules/bills/paid';
+import { readOverdueBasis, remainingOf } from '../modules/bills/paid';
 import { buildLedger, type LedgerBillInput, type LedgerCard } from '../modules/bills/ledger';
 import {
   ANNUAL_FEE_NOTICE_CURSOR_KEY,
@@ -93,7 +93,8 @@ router.get(
         (id, idx, arr) => arr.indexOf(id) === idx,
       ),
     }));
-    const unpaidLedger = buildLedger(ledgerCards, ledgerCards, ledgerBills, now)
+    const overdueBasis = await readOverdueBasis(prisma);
+    const unpaidLedger = buildLedger(ledgerCards, ledgerCards, ledgerBills, now, overdueBasis)
       .filter((row) => row.paidStatus !== 'paid');
     const unpaidCustomBills = customOccurrenceRows.filter((row) =>
       (row.businessType === 'fixed_bill' || row.businessType === 'dynamic_bill')

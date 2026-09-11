@@ -50,6 +50,8 @@ function Status({ item }: { item: AgendaItem }) {
   const bill = item.bill;
   if (!bill) return item.completed ? <Tag color="green">已完成</Tag> : <Tag>{item.kind === 'general' ? '待完成' : kinds[item.kind]}</Tag>;
   if (bill.missing) return null;
+  // 与账单列表 paymentStatusOf 口径一致：服务端判定的逾期优先于「已还最低」。
+  if (bill.daysOverdue != null) return <Tag color="red">{overdueText(bill.daysOverdue)}</Tag>;
   if (hasMetMinimumPayment(bill)) return <Tag color="blue">已还最低</Tag>;
   const label = bill.paidStatus === 'paid'
     ? (bill.amount === 0 ? '无需还款' : '已还清')

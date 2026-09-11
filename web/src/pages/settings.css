@@ -8,7 +8,8 @@
 }
 
 .settings-grid-skins,
-.settings-grid-notifications {
+.settings-grid-notifications,
+.settings-grid-overdue {
   grid-column: 1 / -1;
 }
 

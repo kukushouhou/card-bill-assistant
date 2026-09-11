@@ -128,7 +128,7 @@ test('窄桌面邮箱操作、执行结果与提醒表单完整可见', async ({
       await page.screenshot({ path: directory + '/parser-result-' + skin + '-' + width + '-scrolled.png', fullPage: true, animations: 'disabled' });
     }
 
-    await page.goto('/bills'); await page.getByRole('button', { name: '提醒设置', exact: false }).click();
+    await page.goto('/bills'); await page.getByRole('button', { name: '自定义账单/提醒', exact: false }).click();
     await page.getByRole('button', { name: '新增提醒', exact: false }).click();
     const form = page.locator('.custom-reminder-form'); await expect(form).toBeVisible();
     const sections = await form.locator('.custom-reminder-form-layout > section').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));

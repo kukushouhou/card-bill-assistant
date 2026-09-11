@@ -16,6 +16,7 @@ import { buildBill, mailText, parseAmount, parseDate, pick, pickHolder, UNKNOWN_
 export const spdb2026Parser: BankParser = {
   id: 'spdb2026',
   bankName: '浦发银行',
+  billScope: 'account',
   senderPatterns: ['estmtservice@eb.spdb.com.cn', 'estmtservice@eb.spdbccc.com.cn'],
   subjectPatterns: [/浦发银行.*电子账单/, /浦发.*信用卡.*对账单/],
 

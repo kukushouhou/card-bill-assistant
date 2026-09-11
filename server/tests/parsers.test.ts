@@ -4,6 +4,7 @@ import { cmb2026Parser } from '../src/parsers/banks/cmb-2026';
 import { cmb2020Parser } from '../src/parsers/banks/cmb-2020';
 import { cmbdaily2026Parser } from '../src/parsers/banks/cmbdaily-2026';
 import { abc2019Parser } from '../src/parsers/banks/abc-2019';
+import { abc2026Parser } from '../src/parsers/banks/abc-2026';
 import { cmbc2026Parser } from '../src/parsers/banks/cmbc-2026';
 import { bob2026Parser } from '../src/parsers/banks/bob-2026';
 import { boc2026Parser } from '../src/parsers/banks/boc-2026';
@@ -377,6 +378,33 @@ describe('abc2019Parser.parse（旧模板抬头卡与明细卡套卡归属）', 
     expect(bills[0]!.transactions).toEqual([
       expect.objectContaining({ date: '20210401', cardLast4: '5446', amount: 12 }),
     ]);
+  });
+});
+
+describe('abc2026Parser.parse（欠款额符号归一）', () => {
+  const baseText = (amount: string, min: string) => [
+    '卡号 Card No 625998******9164',
+    '账单周期 Statement Cycle 2026/07/20-2026/08/19',
+    '到期还款日 Payment Due Date 2026/09/13',
+    `本期应还款额(欠款为-) New Balance 人民币(CNY) ${amount}`,
+    `最低还款额(欠款为-) Min Payment 人民币(CNY) ${min}`,
+  ].join('\n');
+  const mail = {
+    from: 'e-statement@creditcard.abchina.com.cn',
+    subject: '中国农业银行金穗信用卡电子对账单',
+    date: new Date(),
+  };
+
+  it('标准负数记法按欠款额转正入库', () => {
+    const bills = abc2026Parser.parse({ ...mail, text: baseText('-1,399.80', '-69.98') });
+    expect(bills).toHaveLength(1);
+    expect(bills[0]).toMatchObject({ cardLast4: '9164', period: '2026-08', amount: 1399.8, minAmount: 69.98 });
+  });
+
+  it('正数与 0.00 印法同样得到非负金额', () => {
+    const bills = abc2026Parser.parse({ ...mail, text: baseText('50.25', '0.00') });
+    expect(bills).toHaveLength(1);
+    expect(bills[0]).toMatchObject({ amount: 50.25, minAmount: 0 });
   });
 });
 

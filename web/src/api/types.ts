@@ -11,7 +11,10 @@ export interface AppInfo {
   name: string;
 }
 
-export type UpgradeMigrationMode = 'silent' | 'optional' | 'required';
+/** 逾期提醒口径：all=未全额还清即逾期（默认）；minimum=未还够最低还款额才算逾期。 */
+export type OverdueBasis = 'all' | 'minimum';
+
+export type UpgradeMigrationMode = 'silent' | 'optional' | 'required' | 'notice';
 
 export interface UpgradeMigrationSummary {
   key: string;
@@ -646,6 +649,7 @@ export interface SyncSummary {
 
 export interface SettingsInfo {
   reminderHour: number;
+  overdueBasis: OverdueBasis;
   notifications: NotificationSettingsInfo;
 }
 

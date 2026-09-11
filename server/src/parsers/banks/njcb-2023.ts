@@ -17,6 +17,7 @@ import { addDays } from '../../lib/dates';
 export const njcb2023Parser: BankParser = {
   id: 'njcb2023',
   bankName: '南京银行',
+  billScope: 'account',
   priority: 90,
   senderPatterns: ['@message.njcb.com.cn'],
   subjectPatterns: [/南京银行.*电子账单/],

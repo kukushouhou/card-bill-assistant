@@ -3,13 +3,14 @@ import { useDraftGuard } from '../lib/draftGuard';
 import SkinManager from '../skins/SkinManager';
 import NotificationChannelsCard from '../components/NotificationChannelsCard';
 import NotificationChannelEditor, { type NotificationDraft } from '../components/NotificationChannelEditor';
+import OverdueBasisRadio from '../components/OverdueBasisRadio';
 import '../components/info-fields.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App, Alert, Button, Card, Checkbox, Form, Input, Modal, Popover, Space, Spin, Tag, Typography } from 'antd';
 import { InfoCircleOutlined, SafetyOutlined } from '../skins/icons';
 import { Popup } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
-import type { MeInfo, NotificationChannelInfo, SettingsInfo } from '../api/types';
+import type { MeInfo, NotificationChannelInfo, OverdueBasis, SettingsInfo } from '../api/types';
 import { Page } from '../components/Layout';
 import { useResponsive, useResetOnModeChange } from '../responsive';
 import {
@@ -478,6 +479,55 @@ function MobilePinDestroyFlow({ controller }: { controller: PinSettingsControlle
   );
 }
 
+/** 「逾期提醒」口径卡片：选择项由共享的 OverdueBasisRadio 提供，保存走设置接口。 */
+function OverdueBasisCard({ settings, reading, readError, onRetry }: {
+  settings: SettingsInfo | null;
+  reading: boolean;
+  readError: string | null;
+  onRetry: () => Promise<void>;
+}) {
+  const { message } = App.useApp();
+  const [basis, setBasis] = useState<OverdueBasis>('all');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (settings) setBasis(settings.overdueBasis ?? 'all');
+  }, [settings]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put('/api/settings/overdue-basis', { basis });
+      message.success('已保存');
+      await onRetry().catch(() => undefined);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : '保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Card size="small" variant="outlined" className="settings-card" title="逾期提醒">
+      {readError ? (
+        <Alert
+          type="error"
+          showIcon
+          title={readError}
+          action={<Button size="small" onClick={() => void onRetry()}>重试</Button>}
+        />
+      ) : (
+        <>
+          <Typography.Text type="secondary">过了还款日之后，按哪种口径把账单当作逾期</Typography.Text>
+          <div style={{ marginTop: 12 }}>
+            <OverdueBasisRadio value={basis} onChange={setBasis} disabled={saving || reading} />
+          </div>
+          <div className="settings-form-actions" style={{ marginTop: 16 }}>
+            <Button type="primary" loading={saving} onClick={() => void save()}>保存</Button>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings() {
   const { message } = App.useApp();
   const { isMobile } = useResponsive();
@@ -620,6 +670,14 @@ export default function Settings() {
                   endWrite={endNotificationWrite}
                   refreshSettings={refreshSettings}
                   onEdit={setEditingChannel}
+                />
+              </div>
+              <div className="settings-grid-overdue">
+                <OverdueBasisCard
+                  settings={settingsFact.value}
+                  reading={settingsFact.loading}
+                  readError={settingsFact.error}
+                  onRetry={refreshSettings}
                 />
               </div>
               <AboutSystemCard />

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountZeroBillsMigration } from '../src/modules/upgrades/migrations/backfill-account-zero-bills';
+import { accountZeroBillsMigrationV2 } from '../src/modules/upgrades/migrations/backfill-account-zero-bills-v2';
 
 // mock db 结构对齐扫描所需子集，调用处以 as never 满足 PrismaClient 形参
 const inspect = accountZeroBillsMigration.inspect;
@@ -179,5 +180,30 @@ describe('account-zero-bills 可选迁移', () => {
       data: expect.objectContaining({ status: 'unchanged' }),
     }));
     expect(tx.bill.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('account-zero-bills v2 可选迁移（0.5.2 锚点）', () => {
+  it('定义与新银行扩容语义一致', () => {
+    expect(accountZeroBillsMigrationV2.key).toBe('account-zero-bills-current-v2');
+    expect(accountZeroBillsMigrationV2.targetVersion).toBe('0.5.2');
+    expect(accountZeroBillsMigrationV2.mode).toBe('optional');
+    expect(accountZeroBillsMigrationV2.ignoreLabel).toBe('忽略更新');
+    expect(accountZeroBillsMigrationV2.ignoreWarning).toContain('不再提供');
+    // 盘点与执行复用 v1 的动态扫描与落库口径
+    expect(accountZeroBillsMigrationV2.inspect).toBe(accountZeroBillsMigration.inspect);
+    expect(accountZeroBillsMigrationV2.prepareTask).toBe(accountZeroBillsMigration.prepareTask);
+    expect(accountZeroBillsMigrationV2.executeTask).toBe(accountZeroBillsMigration.executeTask);
+  });
+
+  it('describeImpact 只列盘点出的实际银行', () => {
+    const impact = accountZeroBillsMigrationV2.describeImpact!({
+      total: 3,
+      payload: { banks: ['浦发银行', '北京银行', '浦发银行'] },
+    });
+    expect(impact).toBe('北京银行、浦发银行 · 共 3 张卡的本期账单');
+
+    expect(accountZeroBillsMigrationV2.describeImpact!({ total: 0, payload: {} })).toBeNull();
+    expect(accountZeroBillsMigrationV2.describeImpact!({ total: 0, payload: { banks: [] } })).toBeNull();
   });
 });

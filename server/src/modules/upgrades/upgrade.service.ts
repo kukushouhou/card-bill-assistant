@@ -95,7 +95,7 @@ function parseManifest(value: unknown): ManifestEntry[] {
       typeof row.key !== 'string'
       || typeof row.targetVersion !== 'string'
       || typeof row.order !== 'number'
-      || !['silent', 'optional', 'required'].includes(String(row.mode))
+      || !['silent', 'optional', 'required', 'notice'].includes(String(row.mode))
       || typeof row.title !== 'string'
       || typeof row.description !== 'string'
     ) return [];
@@ -461,7 +461,7 @@ export async function submitUpgradeDecisions(
     for (const task of pending) {
       if (compareVersions(cursor, task.toVersion) >= 0) throw new ApiError(409, '这项更新已结束，无法再次执行');
       if (!migrationByKey(task.key)) throw new ApiError(409, '更新项目不可用，请刷新后重试');
-      if (task.mode !== 'optional' && selected.get(task.key) === 'ignore') {
+      if (!['optional', 'notice'].includes(task.mode) && selected.get(task.key) === 'ignore') {
         throw new ApiError(400, '必须更新的项目不能忽略');
       }
     }
@@ -513,7 +513,7 @@ export async function approveUpgradeTask(key: string): Promise<UpgradePlanView> 
 
 export async function ignoreUpgradeTask(key: string): Promise<UpgradePlanView> {
   const task = await requireActionableTask(key);
-  if (task.mode !== 'optional') throw new ApiError(400, '必选迁移不允许忽略');
+  if (!['optional', 'notice'].includes(task.mode)) throw new ApiError(400, '必选迁移不允许忽略');
   if (task.status === 'running') throw new ApiError(409, '该迁移正在执行');
   await prisma.upgradeTask.update({
     where: { id: task.id },

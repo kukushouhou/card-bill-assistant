@@ -15,8 +15,10 @@ import type { Prisma, PrismaClient } from '../../generated/prisma/client';
  *   后续按已配置的每日通知时刻催办，两者共用模板并说明“因为未迁移所以无法正常通知”。
  *   用户确认开始迁移后停止催办，可选迁移不触发此类通知。
  * - 修订程序版本不能更换现役迁移的任务键或版本锚点，已完成/忽略的迁移不能重复执行。
+ * - notice 仅用于告知新版本新增的设置选项：不执行数据迁移、等待期间不阻碍任何业务，
+ *   弹窗中内嵌选项控件由用户当场修改并确认；确认与忽略都会照常推进版本游标，不再重现。
  */
-export type MigrationMode = 'silent' | 'optional' | 'required';
+export type MigrationMode = 'silent' | 'optional' | 'required' | 'notice';
 
 export interface MigrationInspection {
   total: number;

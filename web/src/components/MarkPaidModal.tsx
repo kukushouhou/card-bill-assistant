@@ -263,7 +263,7 @@ export default function MarkPaidModal({
               title="部分已还"
               desc={
                 target.minAmount != null
-                  ? `已还 ≥ 最低还款 ${formatMoney(target.minAmount, currency)} 不视为逾期`
+                  ? `最低还款 ${formatMoney(target.minAmount, currency)}，剩余金额继续待还`
                   : '填写累计已还金额'
               }
               selected={choice === 'partial'}

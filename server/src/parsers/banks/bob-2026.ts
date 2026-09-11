@@ -12,6 +12,7 @@ import { applyTransactionTails, buildBill, fiveLineTransactions, mailText, parse
 export const bob2026Parser: BankParser = {
   id: 'bob2026',
   bankName: '北京银行',
+  billScope: 'account',
   senderPatterns: ['service@ebill.bankofbeijing.com.cn'],
   subjectPatterns: [/北京银行.*电子账单/],
 
