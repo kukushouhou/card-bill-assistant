@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import { Alert, Button, Card, DatePicker, Empty, Input, Segmented, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import { FilterOutlined } from '../skins/icons';
@@ -6,12 +6,12 @@ import { Popup } from 'antd-mobile';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useResource } from '../lib/useResource';
 import { displayDate, displayPeriod } from '../lib/displayDate';
-import { useSourceReturn } from '../lib/billNavigation';
 import type { CardRow, PagedTransactions, TransactionRow } from '../api/types';
 import { Page } from '../components/Layout';
 import { formatMoney } from '../lib/money';
 import { useResponsive } from '../responsive';
 import TransactionBillSummary from '../components/TransactionBillSummary';
+import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
 import './transactions.css';
 
 const { RangePicker } = DatePicker;
@@ -54,15 +54,40 @@ function transactionAmount(row: TransactionRow) {
 }
 
 export default function Transactions() {
-  const { isMobile } = useResponsive();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  const back = useSourceReturn();
+  return <Page title="账单明细"><TransactionsContent params={params}
+    onParamsChange={next => setParams(next, { replace: true, state: location.state })}
+    sourceCardId={location.state?.billSource?.cardId} /></Page>;
+}
+
+interface TransactionsContentProps {
+  params: URLSearchParams;
+  onParamsChange: (params: URLSearchParams) => void;
+  sourceCardId?: number;
+  onPaid?: () => void;
+  onPaymentActiveChange?: (active: boolean) => void;
+}
+
+/** 独立页面与桌面弹窗共用查询、概况、筛选、分页及还款状态。 */
+export function TransactionsContent({ params, onParamsChange, sourceCardId, onPaid, onPaymentActiveChange }: TransactionsContentProps) {
+  const { isMobile } = useResponsive();
+  const [markTarget, setMarkTarget] = useState<MarkPaidTarget | null>(null);
+  const [paymentSaved, setPaymentSaved] = useState(false);
+  useEffect(() => {
+    onPaymentActiveChange?.(markTarget !== null);
+    return () => onPaymentActiveChange?.(false);
+  }, [markTarget, onPaymentActiveChange]);
+  const replaceParams = (values: Record<string, string>) => {
+    setPaymentSaved(false);
+    setKeyword('');
+    onParamsChange(new URLSearchParams(values));
+  };
   const update = (values: Record<string, string | undefined>) => {
     const next = new URLSearchParams(params);
     next.delete('page');
     Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
-    setParams(next, { replace: true, state: location.state });
+    onParamsChange(next);
   };
   const bank = params.get('bank') ?? undefined;
   const cardId = params.get('cardId') ? Number(params.get('cardId')) : undefined;
@@ -104,7 +129,7 @@ export default function Transactions() {
     [cards, draftBank, billId, scopedIds],
   );
   const activeCard = useMemo(() => cards.find((card) => card.id === cardId), [cardId, cards]);
-  const cardHistory = !billId && cardId != null && location.state?.billSource?.cardId === cardId;
+  const cardHistory = !billId && cardId != null && sourceCardId === cardId;
   const activeFilterCount = Number(Boolean(bank)) + Number(Boolean(cardId)) + Number(Boolean(dates?.[0] || dates?.[1]));
 
   const resetPage = () => {};
@@ -235,23 +260,32 @@ export default function Transactions() {
   );
 
   return (
-    <Page title="账单明细">
+    <div className="transaction-content">
       {cardHistory && <section className="transaction-context" data-skin-slot="summary">
-        <div className="transaction-context-heading"><div><h3>{activeCard ? activeCard.bankName + ' · 历史明细' : '卡片历史明细'}</h3>{activeCard && <span>卡尾 {activeCard.displayLast4}</span>}</div><Button onClick={back}>返回来源</Button></div>
-        <div className="transaction-context-controls"><Button onClick={() => setParams({}, { replace: true, state: location.state })}>查看全部明细</Button></div>
+        <div className="transaction-context-heading"><div><h3>{activeCard ? activeCard.bankName + ' · 历史明细' : '卡片历史明细'}</h3>{activeCard && <span>卡尾 {activeCard.displayLast4}</span>}</div></div>
+        <div className="transaction-context-controls"><Button onClick={() => replaceParams({})}>查看全部明细</Button></div>
       </section>}
-      {!billId && !cardHistory && location.state?.billSource && <div className="transaction-return"><Button onClick={back}>返回来源</Button></div>}
       {billId && <section className="transaction-context" data-skin-slot="summary">
-        <div className="transaction-context-heading"><div><h3>{context ? context.bankName + ' · ' + (history ? '历史明细' : displayPeriod(context.period)) : '账单明细'}</h3>{context && <span>卡尾 {context.cards.map(card => card.cardLast4).join(' / ')}</span>}</div><Button onClick={back}>返回来源</Button></div>
+        <div className="transaction-context-heading">
+          <div><h3>{context ? context.bankName + ' · ' + (history ? '历史明细' : displayPeriod(context.period)) : '账单明细'}</h3>{context && <span>卡尾 {context.cards.map(card => card.cardLast4).join(' / ')}</span>}</div>
+          <div className="transaction-context-actions">
+            {context && !history && <Button type={context.paidStatus === 'paid' ? 'default' : 'primary'} disabled={loading || !!error}
+              onClick={() => setMarkTarget({ billId: context.billId, cardId: context.cardId, bankName: context.bankName,
+                cardLast4: context.cardLast4, period: context.period, currency: context.currency, amount: context.amount,
+                minAmount: context.minAmount, paidStatus: context.paidStatus, paidAmount: context.paidAmount })}>
+              {context.paidStatus === 'paid' ? '调整还款' : '还款'}
+            </Button>}
+          </div>
+        </div>
         {context && !history && <TransactionBillSummary bill={context} />}
         <div className="transaction-context-controls">
-        <Segmented value={history ? 'history' : 'bill'} options={[{ value: 'bill', label: '本账单' }, { value: 'history', label: '历史明细' }]} onChange={value => setParams({ [value === 'bill' ? 'billId' : 'scopeBillId']: billId }, { replace: true, state: location.state })} />
+        <Segmented value={history ? 'history' : 'bill'} options={[{ value: 'bill', label: '本账单' }, { value: 'history', label: '历史明细' }]} onChange={value => replaceParams({ [value === 'bill' ? 'billId' : 'scopeBillId']: billId })} />
         {history && <DatePicker picker="month" aria-label="账期" placeholder="全部账期" value={params.get('period') ? dayjs(params.get('period')) : null} onChange={value => update({ period: value?.format('YYYY-MM') })} />}
-        <Button onClick={() => setParams({}, { replace: true, state: location.state })}>查看全部明细</Button>
+        <Button onClick={() => replaceParams({})}>查看全部明细</Button>
         </div>
       </section>}
       {(!billId || history) && (isMobile ? mobileFilters : desktopFilters)}
-      {error && <Alert type="error" showIcon title="账单明细加载失败" description={error} action={<Button onClick={() => void resource.refresh()}>重试</Button>} />}
+      {error && <Alert type="error" showIcon title={paymentSaved ? '还款已保存，账单明细刷新失败' : '账单明细加载失败'} description={error} action={<Button onClick={() => void resource.refresh()}>重试</Button>} />}
       {(!error || resource.data) && (isMobile ? (
         <div className="transaction-mobile-list">
           {loading && data.items.length === 0 ? <Spin /> : data.items.length === 0 ? <Empty description={noRecords} /> : data.items.map((row) => (
@@ -303,6 +337,11 @@ export default function Transactions() {
           ]}
         />
       ))}
-    </Page>
+      <MarkPaidModal target={markTarget} onClose={() => setMarkTarget(null)} onDone={() => {
+        setPaymentSaved(true);
+        void resource.refresh();
+        onPaid?.();
+      }} />
+    </div>
   );
 }

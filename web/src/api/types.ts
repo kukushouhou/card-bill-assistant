@@ -481,6 +481,8 @@ export interface PagedTransactions {
 
 export interface TransactionContext {
   billId: number;
+  cardId: number;
+  cardLast4: string;
   bankName: string;
   period: string;
   currency: string;

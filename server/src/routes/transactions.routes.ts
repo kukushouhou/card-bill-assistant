@@ -94,7 +94,9 @@ router.get(
       page: input.page,
       pageSize: input.pageSize,
       ...(contextBill && payment ? { context: {
-        billId: contextBill.id, bankName: contextBill.card.bankName, period: contextBill.period,
+        billId: contextBill.id, cardId: contextBill.card.id,
+        cardLast4: contextBill.card.displayLast4 || contextBill.card.cardLast4,
+        bankName: contextBill.card.bankName, period: contextBill.period,
         currency: contextBill.currency, ...payment,
         remainingAmount: payment.amount == null ? null : remainingOf(payment),
         daysOverdue: isOverdue(payment, now) ? daysBetween(payment.dueDate, now) : null,

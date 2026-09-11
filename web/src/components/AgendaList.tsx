@@ -86,7 +86,7 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
   const { isMobile } = useResponsive();
   const compactDesktop = !Grid.useBreakpoint().xl;
   const { message } = App.useApp();
-  const openBill = useBillNavigation();
+  const openBill = useBillNavigation(onChanged);
   const [paid, setPaid] = useState<MarkPaidTarget | null>(null);
   const [abnormal, setAbnormal] = useState<MarkAbnormalTarget | null>(null);
   const [deleting, setDeleting] = useState<BillRow | null>(null);

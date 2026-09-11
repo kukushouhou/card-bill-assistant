@@ -43,7 +43,7 @@ test('换肤保留在途还款锁，失败保留输入且只提交一次', async
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let calls = 0;
   await page.route('**/api/bills/101/paid', async route => { calls++; await gate; await route.fulfill({ status: 503, json: { error: '还款保存失败，请重试' } }); });
   await page.goto('/bills');
-  await page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).getByRole('button', { name: '还款', exact: true }).click();
+  await page.locator('[data-row-key="bill:101"]').getByRole('button', { name: '还款', exact: true }).click();
   const dialog = page.getByRole('dialog'); await dialog.getByText('部分已还', { exact: true }).click();
   await dialog.getByPlaceholder('累计已还金额').fill('3'); await dialog.getByRole('button', { name: '确定', exact: true }).dblclick();
   await request.put('/api/skins/active', { data: { id: 'warm-ledger', version: '1.0.0' } }); await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -84,7 +84,7 @@ test('历史摘要来自完整范围，组内分页与不存在账单保持边�
 test('两端还款金额退出确认，取消退出保留输入', async ({ page }) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 }); await page.goto('/bills');
-    const row = width < 1024 ? page.locator('.agenda-mobile-row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }) : page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' });
+    const row = page.locator('[data-row-key="bill:101"]');
     await row.getByRole('button', { name: '还款', exact: true }).click();
     await page.getByText(width < 1024 ? '记录部分还款' : '部分已还', { exact: width >= 1024 }).click();
     const input = width < 1024 ? page.getByLabel('累计已还金额', { exact: true }) : page.getByPlaceholder('累计已还金额'); await input.fill('3');

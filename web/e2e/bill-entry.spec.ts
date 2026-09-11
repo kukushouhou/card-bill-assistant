@@ -2,9 +2,17 @@ import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
 import type { AgendaResult } from '../src/api/types';
 
-const output = '../.ui-fixture/bill-flow-review/screenshots';
+const output = (process.env.UI_FIXTURE_OUTPUT || '../.ui-fixture/test-results') + '/screenshots';
 test.use({ reducedMotion: 'reduce' });
-const rowFor = (page: Page, tail: string) => page.locator('.agenda-table .ant-table-row, .agenda-mobile-row').filter({ has: page.getByText('卡尾 ' + tail, { exact: true }) });
+const rowFor = (page: Page, tail: string) => page.locator(tail === '6677'
+  ? '.agenda-table .ant-table-row, .agenda-mobile-row'
+  : `[data-row-key="bill:${({ '0988': 101, '2233': 102, '8855': 104 } as Record<string, number>)[tail]}"]`)
+  .filter({ has: page.getByText('卡尾 ' + tail, { exact: true }) });
+const detailDialog = (page: Page) => page.getByRole('dialog', { name: '账单明细', exact: true });
+async function closeDetail(page: Page, width: number) {
+  if (width < 1024) await page.locator('.mobile-nav-back-button').click();
+  else { await detailDialog(page).locator('.ant-modal-close').click(); await expect(detailDialog(page)).toBeHidden(); }
+}
 test.beforeEach(async ({ request }) => {
   const reset = await request.post('/__fixture', { data: { reset: true, authed: true, installed: true, upgrade: null, failNext: null } });
   expect(await reset.json()).toEqual({ ok: true });
@@ -34,13 +42,15 @@ for (const width of [1024, 1440, 390]) test('整格点击与缺账卡片历史 '
     // 特意点击单元格左上角留白，不能只验证文字按钮。
     await cell.click({ position: { x: 4, y: 4 } });
     if (tail === '6677') {
-      await expect(page).toHaveURL(/transactions\?cardId=3$/);
+      if (width < 1024) await expect(page).toHaveURL(/transactions\?cardId=3$/);
+      else await expect(detailDialog(page)).toBeVisible();
       await expect(page.locator('.transaction-context')).toContainText('历史明细');
       await expect(page.getByText('交通银行（6677）').first()).toBeVisible();
       await expect(page.getByText('交通银行（0988）')).toHaveCount(0);
       await expect(page.getByRole('region', { name: '本账单还款概况' })).toHaveCount(0);
     } else {
-      await expect(page).toHaveURL(new RegExp('transactions\\?billId=' + (tail === '0988' ? '101' : '102') + '$'));
+      if (width < 1024) await expect(page).toHaveURL(new RegExp('transactions\\?billId=' + (tail === '0988' ? '101' : '102') + '$'));
+      else await expect(detailDialog(page)).toBeVisible();
       const summary = page.getByRole('region', { name: '本账单还款概况' });
       await expect(summary).toContainText(tail === '0988' ? '¥8.80' : '¥34.60');
       await expect(summary.getByText('待还', { exact: true })).toBeVisible();
@@ -50,8 +60,10 @@ for (const width of [1024, 1440, 390]) test('整格点击与缺账卡片历史 '
       await expect(page.getByRole('region', { name: '本账单还款概况' })).toHaveCount(0);
     }
     await page.getByRole('button', { name: '查看全部明细', exact: true }).click();
-    await expect(page).toHaveURL(/\/transactions$/);
-    await page.getByRole('button', { name: '返回来源', exact: true }).click();
+    await expect(page.getByRole('button', { name: '返回来源', exact: true })).toHaveCount(0);
+    if (width < 1024) await expect(page).toHaveURL(/\/transactions$/);
+    else expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(source);
+    await closeDetail(page, width);
     expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(source);
     await expect(rowFor(page, tail)).toBeVisible();
   }
@@ -61,11 +73,11 @@ test('前两列键盘操作与还款菜单互不干扰', async ({ page }) => {
   await page.goto('/bills');
   let row = rowFor(page, '6677');
   await row.locator('td').first().getByRole('button').focus(); await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/cardId=3$/);
-  await page.getByRole('button', { name: '返回来源' }).click();
+  await expect(detailDialog(page)).toContainText('卡尾 6677');
+  await closeDetail(page, 1440);
   await rowFor(page, '0988').locator('td').nth(1).getByRole('button').focus(); await page.keyboard.press('Space');
-  await expect(page).toHaveURL(/billId=101$/);
-  await page.getByRole('button', { name: '返回来源' }).click();
+  await expect(detailDialog(page)).toContainText('卡尾 0988');
+  await closeDetail(page, 1440);
   row = rowFor(page, '0988');
   await row.getByRole('button', { name: '还款', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible(); await expect(page).toHaveURL(/\/bills$/);
@@ -81,8 +93,9 @@ for (const width of [1440, 390]) test('卡片范围与历史展开返回 ' + wid
   await page.goto('/cards'); await page.locator('.bank-card').first().click();
   const detail = width < 1024 ? page.locator('.mobile-card-detail') : page.getByRole('dialog').filter({ hasText: '交通银行 · 4 张卡' });
   await detail.getByText('卡尾 6677', { exact: true }).click();
-  await expect(page).toHaveURL(/cardId=3$/);
-  await page.getByRole('button', { name: '返回来源' }).click(); await expect(detail).toBeVisible();
+  if (width < 1024) await expect(page).toHaveURL(/cardId=3$/);
+  else { await expect(page).toHaveURL(/\/cards$/); await expect(detailDialog(page)).toContainText('卡尾 6677'); }
+  await closeDetail(page, width); await expect(detail).toBeVisible();
   await expect(detail.getByText('卡尾 6677', { exact: true })).toBeVisible();
   await page.goto('/bills?view=history&pageSize=1');
   await page.getByTitle('2', { exact: true }).click();
@@ -90,7 +103,7 @@ for (const width of [1440, 390]) test('卡片范围与历史展开返回 ' + wid
   const row = page.locator('.agenda-table .ant-table-row, .agenda-mobile-row').first();
   await row.getByRole('button', { name: '明细', exact: true }).click();
   await expect(page.getByRole('region', { name: '本账单还款概况' })).toContainText('已还清');
-  await page.getByRole('button', { name: '返回来源' }).click();
+  await closeDetail(page, width);
   await expect(group).toHaveAttribute('aria-expanded', 'true');
   await expect(group).toContainText('7月');
   const pagination = page.locator('.bill-center .agenda-list').first().locator(':scope > .agenda-workspace > .ant-pagination, :scope > .agenda-results > .ant-pagination');

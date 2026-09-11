@@ -183,7 +183,7 @@ function AnnualFeeNoticeList({
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const openBill = useBillNavigation();
+  const openBill = useBillNavigation(() => reloadPaid());
   const location = useLocation();
   const { message } = App.useApp();
   const { isMobile } = useResponsive();

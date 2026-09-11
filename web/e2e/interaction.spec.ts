@@ -8,20 +8,22 @@ test.beforeEach(async ({ request }) => {
 
 test('统一明细空态、相关卡片历史和返回来源', async ({ page }) => {
   await page.goto('/bills');
-  await page.getByRole('row').filter({ hasText: '卡尾 2233' }).getByRole('button', { name: /^\d+月$/ }).click();
-  await expect(page).toHaveURL(/billId=102/);
+  await page.locator('[data-row-key="bill:102"]').getByRole('button', { name: /^\d+月$/ }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+  const detail = page.getByRole('dialog', { name: '账单明细', exact: true });
+  await expect(detail).toBeVisible();
   await expect(page.getByText('该账单暂无明细', { exact: true })).toBeVisible();
   await page.getByText('历史明细', { exact: true }).click();
-  await expect(page).toHaveURL(/scopeBillId=102/);
+  await expect(page).toHaveURL(/\/bills$/);
   await expect(page.getByText('交通银行（2233）').first()).toBeVisible();
   await expect(page.getByText('交通银行（0988）')).toHaveCount(0);
-  await page.getByRole('button', { name: '返回来源' }).click();
+  await detail.locator('.ant-modal-close').click();
   await expect(page).toHaveURL(/\/bills$/);
-  await page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).getByRole('button', { name: /^\d+月$/ }).click();
+  await page.locator('[data-row-key="bill:101"]').getByRole('button', { name: /^\d+月$/ }).click();
   await expect(page.getByText('账单调整', { exact: true })).toBeVisible();
   await expect(page.getByText('7月28日', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '查看全部明细' }).click();
-  await expect(page).toHaveURL(/\/transactions$/);
+  await expect(page).toHaveURL(/\/bills$/);
   await page.getByRole('searchbox', { name: '搜索交易描述' }).fill('未出账消费');
   await page.getByRole('searchbox', { name: '搜索交易描述' }).press('Enter');
   await expect(page.getByText('未出账消费')).toBeVisible();
@@ -55,8 +57,8 @@ test('账单中心两端加载与卡片身份', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/bills');
   await expect(page.locator('html')).toHaveAttribute('data-skin', /@1.0.0/);
-  await expect(page.getByText('卡尾 0988', { exact: true })).toBeVisible();
-  await expect(page.getByText('卡尾 2233', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-row-key="bill:101"]').getByText('卡尾 0988', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-row-key="bill:102"]').getByText('卡尾 2233', { exact: true })).toBeVisible();
   await fs.mkdir('../.ui-fixture/screenshots', { recursive: true });
   await page.screenshot({ path: '../.ui-fixture/screenshots/desktop-bills.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

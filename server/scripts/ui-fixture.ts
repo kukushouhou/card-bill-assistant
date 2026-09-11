@@ -51,7 +51,11 @@ let occurrences: any[] = [
 ].map(item => ({ ...item, reminderId: item.id, targetDate: date(todayText), availableDate: date(todayText), daysBefore: [0], completedAt: item.status === 'completed' ? date(todayText) : null, suspended: false, note: null, reminder: { enabled: true } }));
 let reminders = occurrences.map(item => ({ id: item.id, name: item.name, businessType: item.businessType, type: 'monthly', interval: 1, dayOfMonth: 5, dayOfWeek: null, monthOfYear: null, specificDate: null, daysBefore: [3, 0], fixedAmount: item.amount, enabled: true, note: null, nextDates: [todayText], nextOccurrences: [], openOccurrenceCount: 1 }));
 const stored: Record<string, string> = JSON.parse(await fs.readFile(path.join(storage, 'settings.json'), 'utf8').catch(() => '{}'));
-const transactionMatch = (where: any = {}) => transactions.filter(row => {
+const matchesTransaction = (row: typeof transactions[number], where: any): boolean => {
+  if (where.AND && !where.AND.every((condition: any) => matchesTransaction(row, condition))) return false;
+  if (where.OR && !where.OR.some((condition: any) => matchesTransaction(row, condition))) return false;
+  // 此合成样本没有账户共享行，空关联条件仍须参与 AND / OR 筛选。
+  if (where.statementMailLogId != null || where.statementMailLog) return false;
   if (typeof where.billId === 'number' && row.billId !== where.billId) return false;
   if (where.billId?.not === null && row.billId == null) return false;
   if (where.cardId?.in && !where.cardId.in.includes(row.cardId)) return false;
@@ -62,7 +66,8 @@ const transactionMatch = (where: any = {}) => transactions.filter(row => {
   if (where.transactionDate?.gte && (!row.transactionDate || row.transactionDate < where.transactionDate.gte)) return false;
   if (where.transactionDate?.lt && (!row.transactionDate || row.transactionDate >= where.transactionDate.lt)) return false;
   return true;
-});
+};
+const transactionMatch = (where: any = {}) => transactions.filter(row => matchesTransaction(row, where));
 const delegates: Record<string, any> = {
   admin: { findUnique: async ({ where }: any) => where.id === 1 ? { id: 1, username: 'admin' } : null },
   card: { findMany: async () => cardRows },

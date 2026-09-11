@@ -1,6 +1,7 @@
 import { NavigationGuard } from '../lib/draftGuard';
 import { ColorModeSwitch, SkinDecorations } from '../skins/SkinProvider';
 import { useSourceReturn } from '../lib/billNavigation';
+import { BillDetailsProvider } from './BillDetailsProvider';
 import { useSourceScroll } from '../lib/useSourceScroll';
 import {
   useCallback,
@@ -606,7 +607,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
             )}
 
             <div className={moreOpen ? 'route-outlet route-outlet-hidden' : 'route-outlet'}>
-              {outletReady && <Outlet />}
+              <BillDetailsProvider>{outletReady && <Outlet />}</BillDetailsProvider>
             </div>
 
             {moreOpen && (

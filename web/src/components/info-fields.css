@@ -21,6 +21,7 @@
 .payment-input-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .payment-input-field { margin-bottom: 0; }
 .payment-input-field > .ant-form-item-row { flex-direction: column; }
+.payment-input-field .ant-form-item-control { flex: none; }
 .payment-input-field .ant-form-item-label { padding-bottom: 8px; text-align: left; }
 .payment-input-after-choice { margin-top: 20px; }
 @media(max-width:1023px) {

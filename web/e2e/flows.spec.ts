@@ -5,7 +5,7 @@ test.beforeEach(async ({ request }) => {
   await request.put('/api/skins/active', { data: { id: 'modern', version: '1.0.0' } });
 });
 
-test('两端卡片详情进入统一明细并返回原套卡', async ({ page }) => {
+test('电脑套卡打开共用明细弹窗，手机进入明细页并返回原套卡', async ({ page }, testInfo) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/cards');
@@ -13,14 +13,16 @@ test('两端卡片详情进入统一明细并返回原套卡', async ({ page }) 
     const detail = width === 390 ? page.locator('.mobile-card-detail') : page.getByRole('dialog').filter({ hasText: '交通银行 · 4 张卡' });
     await expect(detail).toBeVisible();
     await expect(detail.getByRole('button', { name: '标记已还', exact: true })).toHaveCount(0);
-    if (width === 390) await detail.locator('.agenda-row-body').filter({ hasText: '卡尾 2233' }).click();
-    else await detail.getByRole('row').filter({ hasText: '卡尾 2233' }).getByRole('button', { name: /^\d+月$/ }).click();
-    await expect(page).toHaveURL(/billId=102/);
+    if (width === 390) await detail.locator('[data-row-key="bill:102"] .agenda-row-body').click();
+    else await detail.locator('[data-row-key="bill:102"]').getByRole('button', { name: /^\d+月$/ }).click();
+    if (width === 390) await expect(page).toHaveURL(/billId=102/);
+    else await expect(page).toHaveURL(/\/cards$/);
     await expect(page.getByText('该账单暂无明细', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '返回来源', exact: true }).click();
+    if (width === 390) await page.locator('.mobile-nav-back-button').click();
+    else await page.getByRole('dialog', { name: '账单明细', exact: true }).locator('.ant-modal-close').click();
     await expect(detail).toBeVisible();
-    await expect(detail.getByText('卡尾 2233', { exact: true })).toBeVisible();
-    await page.screenshot({ path: '../.ui-fixture/screenshots/card-detail-' + width + '.png', fullPage: true });
+    await expect(detail.locator('[data-row-key="bill:102"]').getByText('卡尾 2233', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('card-detail-' + width + '.png'), fullPage: true });
   }
 });
 
@@ -50,7 +52,7 @@ test('还款按钮不跳转，连续确认只写一次，已还进入历史组',
   await page.goto('/bills');
   let calls = 0;
   await page.route('**/api/bills/101/paid', async route => { calls++; await new Promise(resolve => setTimeout(resolve, 250)); await route.continue(); });
-  const row = page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' });
+  const row = page.locator('[data-row-key="bill:101"]');
   const period = await row.getByRole('button', { name: /^\d+月$/ }).innerText();
   await row.getByRole('button', { name: '还款', exact: true }).click();
   await expect(page).toHaveURL(/\/bills$/);

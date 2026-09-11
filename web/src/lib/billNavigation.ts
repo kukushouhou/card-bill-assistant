@@ -3,6 +3,8 @@ import { useLayoutEffect } from 'react';
 import { useMobileFlowNavigation } from '../components/MobilePrimitives';
 import type { BillRow } from '../api/types';
 import type { MarkPaidTarget } from '../components/MarkPaidModal';
+import { useBillDetails } from '../components/BillDetailsProvider';
+import { useResponsive } from '../responsive';
 
 const sourceSnapshots = new Map<string, unknown>();
 /** 只登记筛选与展开状态，禁止登记卡片明文、PIN 或表单内容。 */
@@ -29,10 +31,16 @@ export function paymentTarget(row: BillRow): MarkPaidTarget {
   };
 }
 
-export function useBillNavigation() {
+export function useBillNavigation(onPaid?: () => void) {
   const location = useLocation();
   const navigate = useMobileFlowNavigation();
+  const openDetails = useBillDetails();
+  const { isMobile } = useResponsive();
   return (target: number | { cardId: number }) => {
+    if (!isMobile && openDetails) {
+      openDetails(target, onPaid);
+      return;
+    }
     const state = { ...location.state, sourceSnapshot: sourceSnapshots.get(location.pathname), sourceScrollTop: document.getElementById('root')?.scrollTop || window.scrollY };
     // 同时保存到原浏览器记录，让浏览器返回与页面内返回使用相同来源。
     window.history.replaceState({ ...window.history.state, usr: state }, '');

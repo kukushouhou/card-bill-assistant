@@ -35,7 +35,7 @@ describe('统一账单明细来源', () => {
     await withServer('/api/transactions', transactionsRouter, async url => {
       const response = await fetch(url + '/api/transactions?billId=11');
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, mode: 'bill', amount: 43.4, remainingAmount: 43.4, paidStatus: 'unpaid', minAmount: 4.34, dueDate: '2026-09-07T16:00:00.000Z', cards: [{ id: 1 }, { id: 2 }] } });
+      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, cardId: 1, cardLast4: '0988', mode: 'bill', amount: 43.4, remainingAmount: 43.4, paidStatus: 'unpaid', minAmount: 4.34, dueDate: '2026-09-07T16:00:00.000Z', cards: [{ id: 1 }, { id: 2 }] } });
     });
     expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: 11 }] }, sharedActive] } });
   });
@@ -45,6 +45,18 @@ describe('统一账单明细来源', () => {
     });
     expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: { not: null }, cardId: { in: [1, 2] } }] }, { OR: [{ bill: { period: '2026-07' } }, { statementMailLog: { bills: { some: { period: '2026-07' } } } }] }, sharedActive] } });
     expect(prisma.bill.findUnique).toHaveBeenCalledTimes(1);
+  });
+  it('合并账单明确返回承接卡及展示尾号，不以关联卡作为还款目标', async () => {
+    const source = await prisma.bill.findUnique();
+    prisma.bill.findUnique.mockResolvedValue({ ...source,
+      card: { ...source.card, cardLast4: '----', displayLast4: '5566' },
+      cards: [{ card: { id: 9, cardLast4: '9999', displayLast4: '9999' } }, ...source.cards],
+    });
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11');
+      expect(await response.json()).toMatchObject({ context: { billId: 11, cardId: 1, cardLast4: '5566',
+        cards: [{ id: 1, cardLast4: '5566' }, { id: 9 }, { id: 2 }] } });
+    });
   });
   it('账单不存在明确返回 404，不能扩大成全量明细', async () => {
     prisma.bill.findUnique.mockResolvedValue(null);
