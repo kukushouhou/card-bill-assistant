@@ -59,6 +59,7 @@ import { api, ApiError } from '../api/client';
 import type { CardInput, CardRow } from '../api/types';
 import { Page } from '../components/Layout';
 import BusinessRoleRibbon from '../components/BusinessRoleRibbon';
+import BankCardSurface from '../components/BankCardSurface/BankCardSurface';
 import MarkAbnormalModal, { type MarkAbnormalTarget } from '../components/MarkAbnormalModal';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
 import {
@@ -957,9 +958,11 @@ function BankCardItem({
   ) : null;
 
   return (
-    <div className={stacked ? 'bank-card-stack-wrap' : undefined}>
-      <div
-        className={`bank-card bank-card-p${card.id % 5}${stacked ? ' bank-card-stack' : ''}${isMobile ? ' cards-mobile-bank-card' : ''}${showBusinessRole ? ' bank-card-with-role' : ''}`}
+      <BankCardSurface
+        palette={card.id % 5}
+        stacked={stacked}
+        mobile={isMobile}
+        className={`${isMobile ? 'cards-mobile-bank-card' : ''}${showBusinessRole ? ' bank-card-with-role' : ''}`}
         onClick={onCardClick}
         onKeyDown={(event) => {
           if (!onCardClick || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -1093,8 +1096,7 @@ function BankCardItem({
             )}
           </div>
         </div>}
-      </div>
-    </div>
+      </BankCardSurface>
   );
 }
 
@@ -2145,6 +2147,7 @@ export default function Cards() {
             mobileScrollParent ? (
                 <Virtuoso
                   className="cards-mobile-virtuoso"
+                  data-card-flow="block"
                   aria-label="卡片列表"
                   customScrollParent={mobileScrollParent}
                   data={mobileVirtualRows}

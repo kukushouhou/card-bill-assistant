@@ -14,7 +14,7 @@ export default function MobileCardDetail({ cards, main, focusCardId, reloadKey, 
     if (item && track.current) track.current.scrollLeft = item.offsetLeft - track.current.offsetLeft;
   }, [focusCardId, main.id]);
   return <MobileFlow title={cardGroupTitle(main.bankName, cards)} onBack={onBack} className="mobile-card-detail">
-    <div className="mobile-card-detail-carousel" ref={track} style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', gap: 14, padding: '4px 0 16px' }}>
+    <div className="mobile-card-detail-carousel" data-card-flow="inline" ref={track} style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', gap: 14, padding: '4px 0 16px' }}>
       {cards.map(card => <div key={card.id} data-card-id={card.id} style={{ flex: '0 0 92%', scrollSnapAlign: 'center' }}>{renderCard(card)}</div>)}
     </div>
     <CardBillSection cardIds={cards.map(card => card.id)} revision={reloadKey} onChanged={onChanged} />

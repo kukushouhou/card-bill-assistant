@@ -1,0 +1,111 @@
+/* 卡片内容与叠层适配；边框、辉光和内侧反射完整复用 React Bits Border Glow。 */
+.bank-card-stage {
+  position: relative;
+  min-width: 0;
+  z-index: 0;
+}
+
+.bank-card-p0 { --bcs-ink: #10213e; --bcs-color: #24466e; }
+.bank-card-p1 { --bcs-ink: #381b28; --bcs-color: #693348; }
+.bank-card-p2 { --bcs-ink: #0c2e31; --bcs-color: #1a5550; }
+.bank-card-p3 { --bcs-ink: #271c3c; --bcs-color: #4f3b68; }
+.bank-card-p4 { --bcs-ink: #362718; --bcs-color: #66502c; }
+
+.bank-card-surface,
+.cards-mobile-action-emblem {
+  --bank-card-bg: linear-gradient(135deg, var(--bcs-ink), var(--bcs-color));
+  --card-bg: var(--bank-card-bg);
+}
+
+.bank-card-surface {
+  position: relative;
+  border-radius: 14px;
+  color: #fff;
+  min-height: 186px;
+}
+
+/* 正面单独成层，背卡不继承正面倾转；无需保持整页合成层。 */
+.bank-card-face.border-glow-card {
+  --border-glow-background: var(--bank-card-bg);
+  min-height: inherit;
+  transform: none;
+  background: var(--bank-card-bg);
+}
+
+.bank-card-face.border-glow-controlled {
+  --edge-proximity: 0;
+  --cursor-angle: 315deg;
+}
+
+/* 横向轮播的滚动裁切区较窄，收紧落影以免出现矩形阴影断面。 */
+.mobile-card-detail-carousel .bank-card-face {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 6px 10px -6px rgba(0, 0, 0, 0.24);
+}
+
+.bank-card-face > .border-glow-inner {
+  min-height: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.bank-card-content {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  /* 组件自带 1px 边框，与原来的文字起点保持一致。 */
+  padding: 17px 17px 13px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* 堆叠结构与静止位移不变，两个伪元素仍只属于背卡。 */
+.bank-card.bank-card-stack { overflow: visible; margin-bottom: 14px; }
+
+.bank-card-stack::before,
+.bank-card-stack::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.bank-card-stack::before {
+  transform: translate(7px, 11px);
+  background: linear-gradient(rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.32)), var(--bank-card-bg);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35), 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.bank-card-stack::after {
+  transform: translate(3px, 5px);
+  background: linear-gradient(rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0.16)), var(--bank-card-bg);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(0, 0, 0, 0.16);
+}
+
+.bank-card-stage[data-card-tilting] .bank-card-face {
+  transform: perspective(1000px) rotateX(var(--bcs-front-rx)) rotateY(var(--bcs-front-ry));
+  will-change: transform;
+}
+
+.bank-card-stage[data-card-tilting] .bank-card-stack::before {
+  transform: translate(7px, 11px) perspective(1000px) rotateX(var(--bcs-back-rx)) rotateY(var(--bcs-back-ry));
+  will-change: transform;
+}
+
+.bank-card-stage[data-card-tilting] .bank-card-stack::after {
+  transform: translate(3px, 5px) perspective(1000px) rotateX(var(--bcs-middle-rx)) rotateY(var(--bcs-middle-ry));
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bank-card-border-glow { --edge-proximity: 62 !important; --cursor-angle: 315deg !important; }
+  .bank-card-border-glow::before,
+  .bank-card-border-glow::after,
+  .bank-card-border-glow > .edge-light { transition: none; }
+  .bank-card-stage[data-card-tilting] .bank-card-face { transform: none; will-change: auto; }
+  .bank-card-stage[data-card-tilting] .bank-card-stack::before { transform: translate(7px, 11px); will-change: auto; }
+  .bank-card-stage[data-card-tilting] .bank-card-stack::after { transform: translate(3px, 5px); will-change: auto; }
+}

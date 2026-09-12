@@ -343,20 +343,7 @@ select {
   background: color-mix(in srgb, var(--danger) 10%, var(--surface)) !important;
 }
 
-/* ===== 卡片管理：银行卡样式 ===== */
-.bank-card {
-  position: relative;
-  border-radius: 14px;
-  padding: 18px 18px 14px;
-  color: #fff;
-  min-height: 186px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
+/* ===== 卡片管理：内容排版（材质与动效由 BankCardSurface 独立维护） ===== */
 .bank-card-role-ribbon-clip {
   position: absolute;
   z-index: 4;
@@ -389,63 +376,6 @@ select {
 /* 左上角袖标与设置入口错开，袖标不遮住齿轮和银行名。 */
 .bank-card-with-role .bank-card-head {
   padding-left: 38px;
-}
-
-/* 银行渐变配色（按卡 id 轮转） */
-.bank-card-p0 {
-  --card-bg: linear-gradient(135deg, #1c3faa 0%, #2d6cdf 55%, #6ea8ff 100%);
-  background: var(--card-bg);
-}
-.bank-card-p1 {
-  --card-bg: linear-gradient(135deg, #7a1f1f 0%, #b03a3a 55%, #e07b7b 100%);
-  background: var(--card-bg);
-}
-.bank-card-p2 {
-  --card-bg: linear-gradient(135deg, #0e5e4a 0%, #18966f 55%, #6fd0ae 100%);
-  background: var(--card-bg);
-}
-.bank-card-p3 {
-  --card-bg: linear-gradient(135deg, #4a2b7a 0%, #7a4fb5 55%, #b89ae0 100%);
-  background: var(--card-bg);
-}
-.bank-card-p4 {
-  --card-bg: linear-gradient(135deg, #8a5a00 0%, #c98a1a 55%, #ecc06a 100%);
-  background: var(--card-bg);
-}
-
-/* 套卡堆叠包裹：建立层叠上下文，下层卡伪元素不掉到页面底 */
-.bank-card-stack-wrap {
-  position: relative;
-  z-index: 0;
-}
-
-/* 套卡堆叠：下层卡复用同一渐变与 14px 圆角，扑克牌叠放（不得内阴影、白细亮边、纯黑色块） */
-.bank-card.bank-card-stack {
-  overflow: visible;
-  margin-bottom: 14px;
-}
-
-.bank-card-stack::before,
-.bank-card-stack::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 14px;
-  background: var(--card-bg);
-  pointer-events: none;
-  z-index: -1;
-}
-
-/* 最下层：下移回到 11px，不得再加 1px，不改叠层结构 */
-.bank-card-stack::before {
-  transform: translate(7px, 11px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-}
-
-/* 中层 */
-.bank-card-stack::after {
-  transform: translate(3px, 5px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
 }
 
 .bank-card-head {
