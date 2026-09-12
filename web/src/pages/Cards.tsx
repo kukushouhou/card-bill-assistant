@@ -18,6 +18,7 @@ import {
   InputNumber,
   Modal,
   Pagination,
+  Popover,
   Radio,
   Row,
   Select,
@@ -29,6 +30,7 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
+  CalculatorOutlined,
   CheckOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -41,6 +43,7 @@ import {
   SettingOutlined,
   SortAscendingOutlined,
   StarOutlined,
+  ThunderboltOutlined,
   WarningOutlined,
 } from '../skins/icons';
 import { Popup, SearchBar } from 'antd-mobile';
@@ -60,6 +63,7 @@ import type { CardInput, CardRow } from '../api/types';
 import { Page } from '../components/Layout';
 import BusinessRoleRibbon from '../components/BusinessRoleRibbon';
 import BankCardSurface from '../components/BankCardSurface/BankCardSurface';
+import { autoPalette, paletteGradient, paletteName, paletteVars, CARD_PALETTES } from '../components/BankCardSurface/palettes';
 import MarkAbnormalModal, { type MarkAbnormalTarget } from '../components/MarkAbnormalModal';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
 import {
@@ -132,6 +136,7 @@ interface CardFormValues {
   dueOffsetDays?: number | null;
   remindDaysBefore: number[];
   annualFeeDate?: dayjs.Dayjs | null;
+  colorPalette?: number | null;
 }
 
 interface CardFormDraft {
@@ -140,7 +145,7 @@ interface CardFormDraft {
 }
 
 function cardFormInitialValues(initial?: CardRow | null): Partial<CardFormValues> {
-  if (!initial) return { dueRule: 'offset', remindDaysBefore: [3, 1, 0] };
+  if (!initial) return { dueRule: 'offset', remindDaysBefore: [3, 1, 0], colorPalette: null };
   return {
     bankName: initial.bankName,
     cardLast4: initial.displayLast4,
@@ -152,6 +157,7 @@ function cardFormInitialValues(initial?: CardRow | null): Partial<CardFormValues
     dueOffsetDays: initial.dueOffsetDays,
     remindDaysBefore: initial.remindDaysBefore,
     annualFeeDate: initial.annualFeeDate ? dayjs(initial.annualFeeDate) : null,
+    colorPalette: initial.colorPalette ?? null,
   };
 }
 
@@ -173,11 +179,56 @@ function normalizedCardFormValues(values: Partial<CardFormValues>) {
     dueOffsetDays: values.dueRule === 'offset' ? values.dueOffsetDays ?? null : null,
     remindDaysBefore: [...(values.remindDaysBefore ?? [])].sort((a, b) => a - b),
     annualFeeDate: values.annualFeeDate ? values.annualFeeDate.format('YYYY-MM-DD') : null,
+    colorPalette: values.colorPalette ?? null,
   };
 }
 
 function cardFormChanged(values: Partial<CardFormValues>, baseline: Partial<CardFormValues>): boolean {
   return JSON.stringify(normalizedCardFormValues(values)) !== JSON.stringify(normalizedCardFormValues(baseline));
+}
+
+/** 卡片颜色选择：自动分配 + 32 色渐变网格 + 随机抽色；null = 自动 */
+function PalettePicker({ value, onChange }: {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+}) {
+  const current = value ?? null;
+  return (
+    <div className="cards-palette-picker">
+      <div className="cards-palette-toolbar">
+        <Button size="small" type={current === null ? 'primary' : 'default'} onClick={() => onChange?.(null)}>
+          自动
+        </Button>
+        <Button
+          size="small"
+          icon={<ThunderboltOutlined />}
+          onClick={() => {
+            let next = current;
+            while (next === current) next = Math.floor(Math.random() * CARD_PALETTES.length);
+            onChange?.(next);
+          }}
+        >
+          随机
+        </Button>
+        <span className="cards-palette-name">{current === null ? '按卡片自动分配' : paletteName(current)}</span>
+      </div>
+      <div className="cards-palette-grid" role="radiogroup" aria-label="卡片颜色">
+        {CARD_PALETTES.map((p, i) => (
+          <button
+            key={`${p.name}${i}`}
+            type="button"
+            role="radio"
+            aria-checked={current === i}
+            aria-label={p.name}
+            title={p.name}
+            className={`cards-palette-dot${current === i ? ' is-active' : ''}`}
+            style={{ background: paletteGradient(i) }}
+            onClick={() => onChange?.(i)}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function CardForm({
@@ -203,11 +254,87 @@ function CardForm({
     ...definedCardDraft(restoreDraft?.values),
   }).current;
   const dueRule = Form.useWatch('dueRule', form) ?? formInitialValues.dueRule;
+  const statementDayValue = Form.useWatch('statementDay', form) ?? formInitialValues.statementDay;
   const billingEditable = initial?.billingEditable ?? true;
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcStatement, setCalcStatement] = useState<dayjs.Dayjs | null>(null);
+  const [calcDue, setCalcDue] = useState<dayjs.Dayjs | null>(null);
   useDraftGuard(Boolean(restoreDraft?.dirty));
 
   useResetOnModeChange(() => setLeaveConfirm(false));
+
+  // 打开计算器时按表单当前出账日预填最近一个已过的该日，用户只需补还款日
+  const openOffsetCalc = () => {
+    const day = typeof statementDayValue === 'number' ? statementDayValue : null;
+    const now = dayjs();
+    let base = now;
+    if (day != null) {
+      base = now.date(Math.min(day, now.daysInMonth()));
+      if (base.isAfter(now, 'day')) {
+        const prev = now.subtract(1, 'month');
+        base = prev.date(Math.min(day, prev.daysInMonth()));
+      }
+    }
+    setCalcStatement(base);
+    setCalcDue(null);
+    setCalcOpen(true);
+  };
+
+  const applyCalcOffset = (days: number) => {
+    form.setFieldValue('dueOffsetDays', days);
+    // setFieldValue 不触发 onValuesChange，手动补草稿标记
+    const values = form.getFieldsValue(true) as CardFormValues;
+    onDraftChange({ values, dirty: cardFormChanged(values, baseline) });
+    setCalcOpen(false);
+  };
+
+  const offsetCalcContent = (
+    <div className="cards-offset-calc">
+      <div className="cards-offset-calc-hint">任选一期账单，填入它的出账日和实际还款日</div>
+      <div className="cards-offset-calc-row">
+        <span>出账日</span>
+        <DatePicker
+          value={calcStatement}
+          allowClear={false}
+          format="YYYY-MM-DD"
+          onChange={setCalcStatement}
+          getPopupContainer={(node) => node.closest('.cards-offset-calc') ?? document.body}
+        />
+      </div>
+      <div className="cards-offset-calc-row">
+        <span>实际还款日</span>
+        <DatePicker
+          value={calcDue}
+          format="YYYY-MM-DD"
+          placeholder="选择还款日"
+          disabledDate={(d) => (calcStatement ? d.isBefore(calcStatement, 'day') : false)}
+          onChange={setCalcDue}
+          getPopupContainer={(node) => node.closest('.cards-offset-calc') ?? document.body}
+        />
+      </div>
+      {calcStatement && calcDue && (() => {
+        // 预填的出账日带当前时刻，面板选择的还款日为 0 点，按自然日对齐后再求差避免差一天
+        const diff = calcDue.startOf('day').diff(calcStatement.startOf('day'), 'day');
+        if (diff < 0) {
+          return <div className="cards-offset-calc-result is-warn">实际还款日需不早于出账日</div>;
+        }
+        if (diff > 40) {
+          return <div className="cards-offset-calc-result is-warn">相差 {diff} 天，超出可填写范围（0-40 天）</div>;
+        }
+        return (
+          <div className="cards-offset-calc-result">
+            <span>
+              {calcStatement.format('M月D日')}出账 → {calcDue.format('M月D日')}还款，相差 <b>{diff}</b> 天
+            </span>
+            <Button type="primary" size="small" onClick={() => applyCalcOffset(diff)}>
+              填入 {diff} 天
+            </Button>
+          </div>
+        );
+      })()}
+    </div>
+  );
 
   const title = initial ? `编辑卡片 - ${initial.bankName}（${initial.displayLast4}）` : '新增卡片';
   const requestClose = () => {
@@ -234,6 +361,7 @@ function CardForm({
             ...(initial.businessRole === 'supplementary' ? { holderName: v.holderName } : {}),
             nickname: v.nickname,
             annualFeeDate,
+            colorPalette: v.colorPalette ?? null,
           });
           return;
         }
@@ -243,6 +371,7 @@ function CardForm({
           dueDay: v.dueRule === 'fixed' ? v.dueDay ?? null : null,
           dueOffsetDays: v.dueRule === 'offset' ? v.dueOffsetDays ?? null : null,
           annualFeeDate,
+          colorPalette: v.colorPalette ?? null,
         });
       }}
     >
@@ -250,8 +379,8 @@ function CardForm({
         {/* 左栏：基础信息 */}
         <Col xs={24} lg={isMobile ? 24 : 12}>
           <h3 className="cards-edit-section-title">基础信息</h3>
-          <Form.Item name="bankName" label="银行名称" rules={[{ required: true, message: '请输入银行名称' }]}>
-            <Input placeholder="如：招商银行" disabled={!!initial && !billingEditable} />
+          <Form.Item name="bankName" label="银行名称" tooltip="银行名称来自账单解析，修改会导致账单无法匹配" rules={[{ required: true, message: '请输入银行名称' }]}>
+            <Input placeholder="如：招商银行" disabled={!!initial} />
           </Form.Item>
           <Form.Item
             name="cardLast4"
@@ -273,6 +402,13 @@ function CardForm({
           <Form.Item name="nickname" label="别名（可选）" tooltip="卡片右上角显示的辨识名，如：银联钻石卡">
             <Input placeholder="如：银联钻石卡" maxLength={32} />
           </Form.Item>
+          <Form.Item
+            name="colorPalette"
+            label="卡片颜色"
+            tooltip="卡片封面配色；「自动」按系统分配，也可点色块选择或随机抽取"
+          >
+            <PalettePicker />
+          </Form.Item>
         </Col>
         {/* 右栏：账单规则；副卡、附属卡仅保留身份与年费日 */}
         <Col xs={24} lg={isMobile ? 24 : 12}>
@@ -293,7 +429,7 @@ function CardForm({
                 label="年费收取日（可选）"
                 tooltip="每年该日期收取年费，也可由历史账单自动识别"
               >
-                <DatePicker style={{ width: '100%' }} placeholder="如 03-15" />
+                <DatePicker style={{ width: '100%' }} format="MM-DD" placeholder="如 03-15" />
               </Form.Item>
             </>
           ) : (
@@ -324,7 +460,31 @@ function CardForm({
               label="还款日距出账日天数"
               rules={[{ required: true, message: '请输入天数' }]}
             >
-              <InputNumber min={0} max={40} style={{ width: '100%' }} placeholder="常见 18-25 天" />
+              <InputNumber
+                min={0}
+                max={40}
+                style={{ width: '100%' }}
+                placeholder="常见 18-25 天"
+                addonAfter={
+                  <Popover
+                    open={calcOpen}
+                    onOpenChange={setCalcOpen}
+                    trigger="click"
+                    placement="bottom"
+                    content={offsetCalcContent}
+                  >
+                    <Tooltip title="用实际还款日倒推天数">
+                      <Button
+                        type="text"
+                        size="small"
+                        aria-label="计算还款天数"
+                        icon={<CalculatorOutlined />}
+                        onClick={openOffsetCalc}
+                      />
+                    </Tooltip>
+                  </Popover>
+                }
+              />
             </Form.Item>
           ) : (
             <Form.Item name="dueDay" label="每月还款日（几号）" rules={[{ required: true, message: '请输入还款日' }]}>
@@ -342,7 +502,7 @@ function CardForm({
             label="年费收取日（可选）"
             tooltip="每年该日期收取年费，将在年费出账前一期的还款日提醒；也可由历史账单自动识别"
           >
-            <DatePicker style={{ width: '100%' }} placeholder="如 03-15" />
+            <DatePicker style={{ width: '100%' }} format="MM-DD" placeholder="如 03-15" />
           </Form.Item>
           </>
           )}
@@ -959,7 +1119,7 @@ function BankCardItem({
 
   return (
       <BankCardSurface
-        palette={card.id % 5}
+        palette={card.colorPalette ?? autoPalette(card.id)}
         stacked={stacked}
         mobile={isMobile}
         className={`${isMobile ? 'cards-mobile-bank-card' : ''}${showBusinessRole ? ' bank-card-with-role' : ''}`}
@@ -1252,7 +1412,10 @@ function MobileCardActionSheet({
         <section role="dialog" aria-modal="true" aria-labelledby="cards-mobile-action-title">
           <div className="cards-mobile-sheet-handle" aria-hidden="true" />
           <div className="cards-mobile-action-summary">
-            <span className={`cards-mobile-action-emblem bank-card-p${card.id % 5}`}>
+            <span
+              className="cards-mobile-action-emblem"
+              style={paletteVars(card.colorPalette ?? autoPalette(card.id))}
+            >
               <SettingOutlined />
             </span>
             <div>

@@ -5,11 +5,7 @@
   z-index: 0;
 }
 
-.bank-card-p0 { --bcs-ink: #10213e; --bcs-color: #24466e; }
-.bank-card-p1 { --bcs-ink: #381b28; --bcs-color: #693348; }
-.bank-card-p2 { --bcs-ink: #0c2e31; --bcs-color: #1a5550; }
-.bank-card-p3 { --bcs-ink: #271c3c; --bcs-color: #4f3b68; }
-.bank-card-p4 { --bcs-ink: #362718; --bcs-color: #66502c; }
+/* 卡面配色统一由 palettes.ts 内联 --bcs-ink/--bcs-color 提供，不再使用配色类名。 */
 
 .bank-card-surface,
 .cards-mobile-action-emblem {

@@ -305,6 +305,71 @@ describe('PUT /api/cards/:id 编辑接口拒收后四位', () => {
   });
 });
 
+describe('PUT /api/cards/:id 银行名称锁定与卡片配色', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // 上方 describe 用 mockImplementation 换掉了事务实现，clearAllMocks 不还原，这里显式恢复
+    prisma.$transaction.mockImplementation(async (input: unknown) =>
+      typeof input === 'function'
+        ? (input as (tx: typeof prisma) => Promise<unknown>)(prisma)
+        : Promise.all(input as Promise<unknown>[]));
+    prisma.card.findUnique.mockResolvedValue(existingCard());
+    prisma.card.update.mockResolvedValue(existingCard());
+    prisma.card.findMany.mockResolvedValue([existingCard()]);
+    prisma.card.updateMany.mockResolvedValue({});
+    recomputePrimary.mockResolvedValue(undefined);
+  });
+
+  it('改成不同银行名称 400 拒绝且不写入（银行名称是账单匹配键）', async () => {
+    await withServer(async (url) => {
+      const res = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bankName: '招商', nickname: '金卡' }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: '银行名称不支持修改' });
+    });
+    expect(prisma.card.update).not.toHaveBeenCalled();
+  });
+
+  it('原样回传银行名称放行（编辑表单禁用字段随表单提交）', async () => {
+    await withServer(async (url) => {
+      const res = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bankName: '招商银行', nickname: '金卡' }),
+      });
+      expect(res.status).toBe(200);
+    });
+    expect(prisma.card.update).toHaveBeenCalled();
+  });
+
+  it('colorPalette 写入卡档案，null 表示恢复自动分配', async () => {
+    await withServer(async (url) => {
+      const set = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ colorPalette: 7 }),
+      });
+      expect(set.status).toBe(200);
+      expect(prisma.card.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ colorPalette: 7 }) }),
+      );
+
+      const auto = await fetch(`${url}/api/cards/2`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ colorPalette: null }),
+      });
+      expect(auto.status).toBe(200);
+      expect(prisma.card.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ colorPalette: null }) }),
+      );
+    });
+  });
+});
+
 describe('POST /api/cards/:id/secret 完整卡号保存闸门', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -28,8 +28,7 @@ jobs:
             "## 详细变更" \
             "## 升级说明" \
             "## Docker 镜像" \
-            "## 验证结果" \
-            "## 已知限制"; do
+            "## 验证结果"; do
             grep -Fqx "$heading" "$RELEASE_NOTES_FILE" || {
               echo "发布说明缺少必要章节：$heading"
               exit 1

@@ -145,7 +145,7 @@ export async function latestStatementRepairResult() {
   const plan = await prisma.upgradePlan.findFirst({
     where: { status: 'completed' },
     orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
-    include: { tasks: true },
+    include: { tasks: { include: { items: true } } },
   });
   const task = plan?.tasks.find((item) => item.key === STATEMENT_REPAIR_KEY && item.status === 'completed');
   if (!task) return null;

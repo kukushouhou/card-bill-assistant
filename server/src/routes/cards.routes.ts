@@ -32,9 +32,12 @@ const cardCreateSchema = z.object({
   dueOffsetDays: z.number().int().min(0).max(40).nullable().optional(),
   remindDaysBefore: z.array(z.number().int().min(0).max(60)).default([3, 1, 0]),
   annualFeeDate: annualFeeDateSchema,
+  /** 卡片配色序号（前端色表下标，上限与 CARD_PALETTE_COUNT-1 联动）；null = 自动分配 */
+  colorPalette: z.number().int().min(0).max(31).nullable().optional(),
 });
 
 // 编辑接口不接受卡号后四位，也不复用新增表单的默认值，避免局部修改时意外覆盖原设置。
+// 银行名称保留在 schema 中仅为兼容表单原样回传；实际修改在下方直接拒绝。
 const cardUpdateSchema = z.object({
   bankName: z.string().trim().min(1, '银行名不能为空').optional(),
   holderName: z.string().trim().max(64).optional().nullable(),
@@ -46,6 +49,7 @@ const cardUpdateSchema = z.object({
   dueOffsetDays: z.number().int().min(0).max(40).nullable().optional(),
   remindDaysBefore: z.array(z.number().int().min(0).max(60)).optional(),
   annualFeeDate: annualFeeDateSchema,
+  colorPalette: z.number().int().min(0).max(31).nullable().optional(),
   status: z.enum(['active', 'frozen', 'closed']).optional(),
 }).strict();
 
@@ -143,6 +147,7 @@ router.get(
           remindDaysBefore: card.remindDaysBefore,
           annualFeeDate: card.annualFeeDate?.toISOString() ?? null,
           annualFeeDateManual: card.annualFeeDateManual,
+          colorPalette: card.colorPalette,
           businessRole: card.businessRole,
           businessPrimaryCardId: card.businessPrimaryId,
           businessPrimaryCardLast4: card.businessPrimaryId
@@ -211,6 +216,7 @@ router.post(
         remindDaysBefore: input.remindDaysBefore,
         annualFeeDate: input.annualFeeDate ? fromYmd(input.annualFeeDate) : null,
         annualFeeDateManual: input.annualFeeDate ? true : false,
+        colorPalette: input.colorPalette ?? null,
         source: 'manual',
       } });
       await reconcileUnfinishedPlaceholderCards(tx, { bankNames: [input.bankName] });
@@ -257,6 +263,7 @@ router.get(
       remindDaysBefore: card.remindDaysBefore,
       annualFeeDate: card.annualFeeDate?.toISOString() ?? null,
       annualFeeDateManual: card.annualFeeDateManual,
+      colorPalette: card.colorPalette,
       businessRole: card.businessRole,
       businessPrimaryCardId: card.businessPrimaryId,
       businessPrimaryCardLast4: card.businessPrimaryId ? primary?.displayLast4 ?? null : null,
@@ -297,6 +304,10 @@ router.put(
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card || card.hidden) throw new ApiError(404, '卡档案不存在');
     const input = cardUpdateSchema.parse(req.body);
+    // 银行名称是账单解析匹配键的一半，改名会导致后续账单匹配不到原卡，禁止修改
+    if (input.bankName !== undefined && input.bankName !== card.bankName) {
+      throw new ApiError(400, '银行名称不支持修改');
+    }
 
     if (card.businessRole === 'secondary' || card.businessRole === 'supplementary') {
       const locked = [
@@ -339,6 +350,7 @@ router.put(
               annualFeeDateManual: input.annualFeeDate ? true : false,
             }
           : {}),
+        ...(input.colorPalette !== undefined ? { colorPalette: input.colorPalette } : {}),
       };
     let hiddenPlaceholder = false;
     await prisma.$transaction(async (tx) => {

@@ -116,7 +116,7 @@
   .cards-mobile-bank-card .bank-card-no {
     min-width: 0;
     font-size: clamp(18px, 6vw, 22px);
-    letter-spacing: clamp(1px, 0.7vw, 3px);
+    letter-spacing: clamp(1.5px, 0.8vw, 4px);
   }
 
   .cards-mobile-bank-card .bank-card-no > span:first-child {
@@ -397,9 +397,9 @@
   }
 
   .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-no {
-    margin-block: 3px 1px;
+    margin-block: 8px 6px;
     font-size: 19px;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
   }
 
   .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-secret-value,
@@ -698,3 +698,89 @@
   }
 }
 .cards-edit-section-title { margin: 0 0 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); font-size: 15px; line-height: 1.5; }
+
+/* 卡片颜色选择器：自动/随机工具行 + 8 列渐变色块网格 */
+.cards-palette-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cards-palette-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cards-palette-name {
+  font-size: 12px;
+  color: var(--text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.cards-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 22px);
+  gap: 8px;
+}
+
+.cards-palette-dot {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transition: transform 0.15s ease;
+}
+
+.cards-palette-dot:hover {
+  transform: scale(1.12);
+}
+
+.cards-palette-dot.is-active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--ant-color-primary, #1677ff);
+}
+
+/* 还款天数计算器弹出层 */
+.cards-offset-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 264px;
+}
+
+.cards-offset-calc-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.cards-offset-calc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cards-offset-calc-row > span {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cards-offset-calc-row .ant-picker {
+  width: 148px;
+}
+
+.cards-offset-calc-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.cards-offset-calc-result.is-warn {
+  color: var(--ant-color-warning, #d48806);
+}

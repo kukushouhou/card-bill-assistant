@@ -1,6 +1,7 @@
 import { useEffect, useRef, type HTMLAttributes } from 'react';
 import { attachCardMotion } from './cardMotion';
 import BorderGlow from '../BorderGlow/BorderGlow';
+import { paletteVars } from './palettes';
 import './bank-card-surface.css';
 
 type BankCardSurfaceProps = HTMLAttributes<HTMLDivElement> & {
@@ -11,7 +12,7 @@ type BankCardSurfaceProps = HTMLAttributes<HTMLDivElement> & {
 
 /** 独立卡面：只处理材质、堆叠和交互，业务内容及操作由使用方传入。 */
 export default function BankCardSurface({
-  palette, stacked = false, mobile = false, className = '', children, ...props
+  palette, stacked = false, mobile = false, className = '', style, children, ...props
 }: BankCardSurfaceProps) {
   const stage = useRef<HTMLDivElement>(null);
 
@@ -36,7 +37,11 @@ export default function BankCardSurface({
 
   return (
     <div ref={stage} className={`bank-card-stage${stacked ? ' bank-card-stack-wrap' : ''}`}>
-      <div {...props} className={`bank-card bank-card-surface bank-card-p${palette % 5}${stacked ? ' bank-card-stack' : ''} ${className}`}>
+      <div
+        {...props}
+        className={`bank-card bank-card-surface${stacked ? ' bank-card-stack' : ''} ${className}`}
+        style={{ ...paletteVars(palette), ...style }}
+      >
         <BorderGlow
           className="bank-card-face bank-card-border-glow"
           backgroundColor="var(--bcs-ink)"

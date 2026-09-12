@@ -79,6 +79,8 @@ model Card {
   status             String    @default("active")
   annualFeeDate      DateTime?
   annualFeeDateManual Boolean  @default(false)
+  /** 卡片配色序号：前端色表下标（0-31）；null = 按卡片 id 自动轮换 */
+  colorPalette       Int?
   /** 套卡内优先显示卡：primaryManual 压过自动，否则 priority 降序，并列 ID 升序；hidden 卡不参与候选。单卡组恒 false。不表示银行主副卡，不承担主卡权限。 */
   isPrimary          Boolean  @default(false)
   /** 用户指定的优先显示卡（true 时自动推导不覆盖该组） */

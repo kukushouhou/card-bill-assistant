@@ -24,14 +24,24 @@ Only mutate GitHub, tags, Releases, or GHCR after the user has explicitly author
 
 Create `docs/releases/vX.Y.Z.md` before committing. Never substitute generated commit titles for a real changelog. Include the release date, previous version, Compare link, and exactly these required headings:
 
-- `## 版本概述`: explain the user problem solved and the release positioning.
-- `## 详细变更`: describe observable product, interface, deployment, and documentation changes by topic. Use user language and distinguish fixes from new capabilities.
-- `## 升级说明`: state retained configuration and data, incompatible changes, database migrations, reprocessing requirements, and rollback or backup considerations. Explicitly say when no migration or reprocessing exists.
+- `## 版本概述`: 两三句话说清这次更新给用户带来了什么。
+- `## 详细变更`: 按主题列出用户可感知的变化，区分新功能与问题修复。
+- `## 升级说明`: 只写用户需要动手或会注意到的事：备份数据、镜像版本号、升级后界面或数据有什么变化、需要做什么选择；用一句话说明有无数据迁移。
 - `## Docker 镜像`: list the immutable version tag, minor tag, `latest`, Compose choices, and `linux/amd64` plus `linux/arm64`.
 - `## 验证结果`: report tests, type checks, production build, Compose or Docker checks, representative routes, and remote CI. Do not claim checks that were not run.
-- `## 已知限制`: preserve still-relevant limitations and state whether this release adds any new limitation.
 
-Keep the notes complete but readable. Do not disclose real card numbers, account data, secrets, or internal-only test fixtures.
+### 写作红线（硬性限制，违反任何一条即不合格，必须重写）
+
+发布说明的唯一读者是使用这个软件管理信用卡账单的普通用户，不是开发者。动笔前与完稿后逐条自检：
+
+1. **只写用户可感知的变化**：能用什么新功能、什么问题不再出现、哪个操作变了、升级后会看到什么。
+2. **禁止出现任何系统实现细节**：模块、函数、数据结构、字段名、解析器机制、匹配逻辑、归组算法、迁移游标、事务、前端组件与 CSS 等实现词汇一律不得出现。只允许写界面上的中文词（如「卡片颜色」「年费收取日」）。
+3. **禁止「已知限制」类内容**：不设该章节，也不在任何章节写「仍存在的限制」「既有限制继续适用」之类的兜底话——用户既不关心也无法据此行动。
+4. **禁止 AI 味套话**：不写空洞总结（如「本版本包含三条主线」）、自我评价（如「语义正确」「彻底消除」）、排比式小标题堆砌与重复铺垫。每句话都要有用户能感知或能行动的信息，否则删掉。
+5. **修复不写成技术复盘**：用户只在意「什么问题不再发生」，不写根因分析、调用链、判定矩阵、覆盖用例清单。
+6. 宁可短而实，不可长而虚：一条变化一两句话说清，多分条、不堆段。
+
+Do not disclose real card numbers, account data, secrets, or internal-only test fixtures.
 
 ## Synchronize the version
 

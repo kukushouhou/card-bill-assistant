@@ -463,16 +463,17 @@ select {
   gap: 8px;
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: 3px;
+  /* 字间距与上下留白向实体信用卡的号码排版靠拢 */
+  letter-spacing: 4px;
   font-variant-numeric: lining-nums tabular-nums;
   opacity: 0.95;
-  margin: 6px 0 2px;
+  margin: 10px 0 8px;
 }
 
 /* PIN 验证展开后的完整卡号：位数多，收小字号与间距 */
 .bank-card-no-full {
   font-size: 15px;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   line-height: 1.5;
   word-break: break-all;
 }

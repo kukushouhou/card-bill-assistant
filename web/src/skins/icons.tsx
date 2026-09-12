@@ -18,6 +18,7 @@ export const AppstoreOutlined = skinIcon('AppstoreOutlined', Original.AppstoreOu
 export const BankOutlined = skinIcon('BankOutlined', Original.BankOutlined);
 export const BellOutlined = skinIcon('BellOutlined', Original.BellOutlined);
 export const CalendarOutlined = skinIcon('CalendarOutlined', Original.CalendarOutlined);
+export const CalculatorOutlined = skinIcon('CalculatorOutlined', Original.CalculatorOutlined);
 export const CheckCircleOutlined = skinIcon('CheckCircleOutlined', Original.CheckCircleOutlined);
 export const CheckOutlined = skinIcon('CheckOutlined', Original.CheckOutlined);
 export const ClockCircleOutlined = skinIcon('ClockCircleOutlined', Original.ClockCircleOutlined);
