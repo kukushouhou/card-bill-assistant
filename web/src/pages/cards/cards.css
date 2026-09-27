@@ -116,7 +116,7 @@
   .cards-mobile-bank-card .bank-card-no {
     min-width: 0;
     font-size: clamp(18px, 6vw, 22px);
-    letter-spacing: clamp(1.5px, 0.8vw, 4px);
+    letter-spacing: clamp(2px, 1.2vw, 5px);
   }
 
   .cards-mobile-bank-card .bank-card-no > span:first-child {
@@ -397,9 +397,9 @@
   }
 
   .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-no {
-    margin-block: 8px 6px;
+    margin-block: 12px 10px;
     font-size: 19px;
-    letter-spacing: 3px;
+    letter-spacing: 4px;
   }
 
   .cards-mobile-detail-carousel .cards-mobile-bank-card .bank-card-secret-value,

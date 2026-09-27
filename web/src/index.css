@@ -464,16 +464,16 @@ select {
   font-size: 22px;
   font-weight: 600;
   /* 字间距与上下留白向实体信用卡的号码排版靠拢 */
-  letter-spacing: 4px;
+  letter-spacing: 5px;
   font-variant-numeric: lining-nums tabular-nums;
   opacity: 0.95;
-  margin: 10px 0 8px;
+  margin: 20px 0 12px;
 }
 
 /* PIN 验证展开后的完整卡号：位数多，收小字号与间距 */
 .bank-card-no-full {
   font-size: 15px;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
   line-height: 1.5;
   word-break: break-all;
 }
@@ -514,6 +514,8 @@ select {
   justify-content: space-between;
   align-items: flex-end;
   gap: 8px;
+  /* 与持卡人的间距为有效期与持卡人间距的一半 */
+  margin-top: 5px;
 }
 
 .bank-card-label {
@@ -534,7 +536,7 @@ select {
 }
 
 .bank-card-holder {
-  margin-top: 4px;
+  margin-top: 10px;
   color: rgba(255, 255, 255, 0.8);
   font-size: 12px;
 }

@@ -1,4 +1,4 @@
-import { displayPeriod } from '../lib/displayDate';
+import { displayDate, displayPeriod } from '../lib/displayDate';
 import { useEffect, useRef, useState } from 'react';
 import { useUnsavedExit } from '../lib/draftGuard';
 import {
@@ -12,6 +12,7 @@ import { App, Button, InputNumber, Tag, Typography } from 'antd';
 import { List as MobileList } from 'antd-mobile';
 import { api, ApiError } from '../api/client';
 import { currencyPrefix, formatMoney } from '../lib/money';
+import type { PagedTransactions } from '../api/types';
 import type { MarkPaidTarget } from './MarkPaidModal';
 import { MobileFlow } from './MobilePrimitives';
 import './mobile-action-flows.css';
@@ -151,6 +152,7 @@ function MobileCardMarkPaidFlow({
   const [action, setAction] = useState<MobilePaymentAction | null>(null);
   const [totalAmount, setTotalAmount] = useState<number | null>(hasBill ? target.amount ?? null : null);
   const [paidAmount, setPaidAmount] = useState<number | null>(hasBill ? currentPaid(target) : null);
+  const [billTx, setBillTx] = useState<PagedTransactions | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const { requestExit, confirmation } = useUnsavedExit(totalAmount !== (hasBill ? target.amount ?? null : null)
@@ -162,6 +164,19 @@ function MobileCardMarkPaidFlow({
     setTotalAmount(target.billId != null ? target.amount ?? null : null);
     setPaidAmount(target.billId != null ? currentPaid(target) : null);
   }, [target]);
+
+  // 登记还款时就近展示本账单消费明细；加载失败静默，不影响还款操作
+  useEffect(() => {
+    if (target.billId == null) {
+      setBillTx(null);
+      return;
+    }
+    let alive = true;
+    api.get<PagedTransactions>(`/api/transactions?billId=${target.billId}&page=1&pageSize=100`)
+      .then((data) => { if (alive) setBillTx(data); })
+      .catch(() => { if (alive) setBillTx(null); });
+    return () => { alive = false; };
+  }, [target.billId]);
 
   const existingPaid = currentPaid(target);
   const existingRemaining = target.amount == null
@@ -342,6 +357,7 @@ function MobileCardMarkPaidFlow({
       )}
 
       {step === 'choose' ? (
+        <>
         <section className="mobile-payment-actions" aria-label="选择还款操作">
           <div className="mobile-action-section-heading">
             <div>
@@ -418,6 +434,37 @@ function MobileCardMarkPaidFlow({
             )}
           </MobileList>
         </section>
+        {billTx && billTx.items.length > 0 && (
+          <section className="mobile-payment-actions" aria-label="本期账单明细">
+            <div className="mobile-action-section-heading">
+              <div>
+                <strong>账单明细</strong>
+                <span>共 {billTx.total} 笔</span>
+              </div>
+            </div>
+            <MobileList mode="card" className="mobile-payment-tx-list">
+              {billTx.items.map((tx) => (
+                <MobileList.Item
+                  key={tx.id}
+                  description={tx.transactionDate ? displayDate(tx.transactionDate) : tx.date?.trim() || '—'}
+                  extra={(
+                    <span className={tx.amount < 0 ? 'mobile-payment-tx-amount is-refund' : 'mobile-payment-tx-amount'}>
+                      {tx.amount < 0 ? `+${formatMoney(Math.abs(tx.amount), tx.currency)}` : formatMoney(tx.amount, tx.currency)}
+                    </span>
+                  )}
+                >
+                  {tx.description}
+                </MobileList.Item>
+              ))}
+            </MobileList>
+            {billTx.total > billTx.items.length && (
+              <Typography.Paragraph type="secondary" className="mobile-payment-tx-more">
+                明细较多，仅显示最近 100 笔
+              </Typography.Paragraph>
+            )}
+          </section>
+        )}
+        </>
       ) : step === 'amount' ? (
         <section className="mobile-action-surface mobile-payment-entry">
           <div className="mobile-action-section-heading">

@@ -457,6 +457,29 @@
   line-height: 1.7;
 }
 
+/* 登记还款流程内的本账单消费明细 */
+.mobile-payment-tx-list .adm-list-item-content-extra {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+}
+
+.mobile-payment-tx-amount {
+  color: var(--danger);
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.mobile-payment-tx-amount.is-refund {
+  color: var(--success);
+}
+
+.mobile-payment-tx-more {
+  margin: 10px 4px 0;
+  font-size: 12px;
+}
+
 @media (max-width: 359px) {
   .mobile-action-identity {
     grid-template-columns: 40px minmax(0, 1fr);

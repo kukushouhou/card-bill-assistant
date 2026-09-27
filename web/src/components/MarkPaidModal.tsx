@@ -235,7 +235,15 @@ export default function MarkPaidModal({
       ) : hasBill ? (
         <>
           <InfoFields label="本期账单金额" items={[
+            ...(target.paidStatus === 'partial' ? [{
+              label: '剩余待还',
+              value: target.amount == null
+                ? '金额待填写'
+                : formatMoney(Math.max(0, target.amount - (target.paidAmount ?? 0)), currency),
+              tone: 'danger' as const,
+            }] : []),
             { label: '本期应还', value: target.amount != null ? formatMoney(target.amount, currency) : '金额待填写' },
+            ...(target.paidStatus === 'partial' ? [{ label: '已还金额', value: formatMoney(target.paidAmount ?? 0, currency) }] : []),
             ...(target.minAmount != null ? [{ label: '最低还款', value: formatMoney(target.minAmount, currency) }] : []),
           ]} />
           <p className="payment-choice-heading">选择还款情况</p>

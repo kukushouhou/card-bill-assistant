@@ -182,6 +182,7 @@
 .transaction-bill-total { display: grid; align-content: center; gap: 10px; padding: 18px; border-radius: var(--radius, 10px); background: var(--primary-soft); }
 .transaction-bill-total > span { color: var(--text-secondary); font-size: 13px; }
 .transaction-bill-total > strong { font-size: 30px; line-height: 1.2; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
+.transaction-bill-total.is-remaining > strong { color: var(--danger); }
 .transaction-bill-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center; gap: 16px 20px; margin: 0; }
 .transaction-bill-facts > div { display: grid; align-content: start; gap: 7px; min-width: 0; }
 .transaction-bill-facts dt { font-size: 12px; color: var(--text-secondary); }
