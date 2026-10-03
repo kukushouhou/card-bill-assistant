@@ -48,9 +48,18 @@ export function setSkinVariables(root: HTMLElement, tokens: SkinTokens) {
   Object.entries(values).forEach(([key, value]) => root.style.setProperty('--' + key, value));
 }
 
+type SkinResourceStage = 'asset-url' | 'stylesheet' | 'font' | 'image';
+
+class SkinResourceError extends Error {
+  constructor(readonly stage: SkinResourceStage, readonly resource: string | undefined, cause: unknown) {
+    super('皮肤资源无法加载，已保留原皮肤', { cause });
+    this.name = 'SkinResourceError';
+  }
+}
+
 function assetUrl(skin: SkinDescriptor, asset: string) {
   // 描述来自服务端；缓存损坏时也不会加载任意远程地址。
-  if (!/^[a-z][a-z0-9-]{1,47}$/.test(skin.manifest.id) || !/^[\w.-]+$/.test(skin.manifest.version) || !/^[\w/.-]+$/.test(asset) || asset.includes('..')) throw new Error('皮肤资源地址无效');
+  if (!/^[a-z][a-z0-9-]{1,47}$/.test(skin.manifest.id) || !/^[\w.-]+$/.test(skin.manifest.version) || !/^[\w/.-]+$/.test(asset) || asset.includes('..')) throw new SkinResourceError('asset-url', undefined, new Error('皮肤资源地址无效'));
   return '/api/skins/assets/' + skin.manifest.id + '/' + skin.manifest.version + '/' + asset;
 }
 
@@ -61,10 +70,15 @@ async function prepareAssets(skin: SkinDescriptor) {
   if (!pending) {
     pending = Promise.all(skin.manifest.assets.map(async (asset, index) => {
       const url = assetUrl(skin, asset);
-      if (/\.(woff2?|ttf|otf)$/i.test(asset)) {
-        await new FontFace('skin-validation-' + index, 'url("' + url + '")').load();
-      } else {
-        const image = new Image(); image.src = url; await image.decode();
+      const stage = /\.(woff2?|ttf|otf)$/i.test(asset) ? 'font' : 'image';
+      try {
+        if (stage === 'font') {
+          await new FontFace('skin-validation-' + index, 'url("' + url + '")').load();
+        } else {
+          const image = new Image(); image.src = url; await image.decode();
+        }
+      } catch (cause) {
+        throw new SkinResourceError(stage, url, cause);
       }
     })).then(() => undefined);
     preparedAssets.set(key, pending);
@@ -78,11 +92,23 @@ export async function prepareSkin(skin: SkinDescriptor, variant: SkinVariant, do
   const links: HTMLLinkElement[] = [];
   const loaded = skin.manifest.styles.concat(skin.manifest.variants[variant].styles).map(file => new Promise<void>((resolve, reject) => {
     const link = doc.createElement('link'); link.rel = 'stylesheet'; link.media = 'not all'; link.href = assetUrl(skin, file); link.dataset.skinDynamic = 'pending';
-    link.onload = () => resolve(); link.onerror = () => reject(new Error('皮肤样式加载失败'));
+    link.onload = () => resolve(); link.onerror = () => reject(new SkinResourceError('stylesheet', assetUrl(skin, file), new Error('皮肤样式加载失败')));
     links.push(link); doc.head.appendChild(link);
   }));
   try { await Promise.all([...loaded, prepareAssets(skin)]); }
-  catch { links.forEach(link => link.remove()); throw new Error('皮肤资源无法加载，已保留原皮肤'); }
+  catch (error) {
+    links.forEach(link => link.remove());
+    const cause = error instanceof SkinResourceError ? error.cause : error;
+    // 仅在本机控制台记录资源诊断；阶段不等于根因，HTTP 状态和策略拦截仍需结合 Network 判断。
+    console.error('[skin-resource-load]', {
+      skin: skin.manifest.id + '@' + skin.manifest.version, variant,
+      stage: error instanceof SkinResourceError ? error.stage : 'unknown',
+      resource: error instanceof SkinResourceError ? error.resource : undefined,
+      causeName: cause instanceof Error ? cause.name : 'UnknownError',
+      causeMessage: cause instanceof Error ? cause.message : String(cause),
+    });
+    throw error instanceof SkinResourceError ? error : new Error('皮肤资源无法加载，已保留原皮肤', { cause: error });
+  }
   return {
     activate() {
       const root = doc.documentElement;
