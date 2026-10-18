@@ -5,6 +5,8 @@ const db = vi.hoisted(() => ({
   emailAccount: { count: vi.fn(), findMany: vi.fn() },
   mailLog: { findMany: vi.fn(), findUnique: vi.fn() },
   card: { findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  bill: { findMany: vi.fn() },
+  billCard: { findMany: vi.fn() },
   upgradePlan: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   upgradeTask: {
     findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(),
@@ -85,6 +87,8 @@ describe('版本升级协调器', () => {
     db.emailAccount.findMany.mockResolvedValue([]);
     db.mailLog.findMany.mockResolvedValue([]);
     db.card.findMany.mockResolvedValue([]);
+    db.bill.findMany.mockResolvedValue([]);
+    db.billCard.findMany.mockResolvedValue([]);
     db.upgradePlan.create.mockResolvedValue({ id: 8 });
     parserMocks.list.mockReturnValue([
       { id: 'icbc2026', bankName: '工商银行' },

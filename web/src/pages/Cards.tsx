@@ -1210,7 +1210,8 @@ function BankCardItem({
               <span className="bank-card-secret-value">{revealed?.expDate ?? '••/••'}</span>
               <span className="bank-card-secret-value">{revealed?.cvv ?? '•••'}</span>
             </div>
-            {card.holderName && <div className="bank-card-holder">{card.holderName}</div>}
+            {/* 无持卡人也保留行高，卡片高度与有姓名的卡一致 */}
+            <div className="bank-card-holder">{card.holderName || '\u00A0'}</div>
           </div>
 
         {showBilling && <div className="bank-card-foot">

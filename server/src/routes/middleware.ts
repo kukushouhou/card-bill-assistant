@@ -2,9 +2,20 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
-import { sessionRevoked, sessionVersion } from '../modules/auth/session';
+import { SESSION_MAX_AGE_MS, sessionRevoked, sessionVersion, shouldRenewSession, signSession } from '../modules/auth/session';
 
 export const COOKIE_NAME = 'drc_token';
+
+/** 登录与自动续期共用同一 Cookie 口径，避免两处配置漂移。 */
+export function setAuthCookie(res: Response, token: string): void {
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: config.cookieSecure,
+    maxAge: SESSION_MAX_AGE_MS,
+    path: '/',
+  });
+}
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   res.set('Cache-Control', 'no-store');
@@ -33,6 +44,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (!admin || revoked || (payload.sv ?? '') !== version) {
       res.status(401).json({ error: '登录已过期，请重新登录' });
       return;
+    }
+    // 滑动续期：只要持续使用就换发新凭证，旧凭证留到自然过期，登出时仍可单独撤销。
+    if (shouldRenewSession(payload)) {
+      setAuthCookie(res, signSession({ id: admin.id, username: admin.username }, version));
     }
     (req as AuthedRequest).adminId = admin.id;
     (req as AuthedRequest).username = admin.username;

@@ -144,6 +144,24 @@ describe('登录与会话安全', () => {
       expect([...settings.values()].some(value => value.includes(current.token))).toBe(false);
     });
   });
+
+  it('长期未使用的凭证在继续使用时自动续期，新签发的凭证不重发', async () => {
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const aged = jwt.sign({ sub: 1, username: 'admin', iat: Math.floor(Date.now() / 1000) - 2 * 86400 },
+        config.jwtSecret, { expiresIn: '30d' });
+      const agedResponse = await get(aged);
+      expect(agedResponse.status).toBe(200);
+      const renewedCookie = agedResponse.headers.get('set-cookie')!;
+      expect(renewedCookie).toContain('Max-Age=2592000');
+      const renewedToken = renewedCookie.split(';')[0].split('=')[1];
+      expect(renewedToken).not.toBe(aged);
+      expect((await get(renewedToken)).status).toBe(200);
+      const fresh = jwt.sign({ sub: 1, username: 'admin' }, config.jwtSecret, { expiresIn: '30d' });
+      expect((await get(fresh)).status).toBe(200);
+      expect((await get(fresh)).headers.get('set-cookie')).toBeNull();
+    });
+  });
 });
 
 function proof(overrides: Record<string, unknown> = {}) {

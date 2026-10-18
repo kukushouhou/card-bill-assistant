@@ -7,6 +7,11 @@ import { prisma } from '../../lib/prisma';
 export const SESSION_VERSION_KEY = 'auth.sessionVersion';
 const REVOKED_PREFIX = 'auth.revokedSession.';
 
+/** 会话最长空闲期：只要在此窗口内用过一次就自动续期，长期不用才需要重新登录。 */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 3600_000;
+/** 距签发超过该时长才续期，避免同一批并发请求反复重签。 */
+const SESSION_RENEW_THRESHOLD_MS = 24 * 3600_000;
+
 /** 空版本兼容升级前的登录；首次改密后旧版本凭证全部失效。 */
 export async function sessionVersion(db: Pick<Prisma.TransactionClient, 'appSetting'>): Promise<string> {
   return (await db.appSetting.findUnique({ where: { key: SESSION_VERSION_KEY } }))?.value ?? '';
@@ -15,9 +20,14 @@ export async function sessionVersion(db: Pick<Prisma.TransactionClient, 'appSett
 export function signSession(admin: { id: number; username: string }, version: string): string {
   return jwt.sign({ sub: admin.id, username: admin.username, sv: version }, config.jwtSecret, {
     algorithm: 'HS256',
-    expiresIn: '7d',
+    expiresIn: '30d',
     jwtid: randomUUID(),
   });
+}
+
+/** 活跃用户无需周期性重登：距签发超过 24 小时的凭证在使用时自动换发新凭证。 */
+export function shouldRenewSession(payload: jwt.JwtPayload): boolean {
+  return typeof payload.iat !== 'number' || Date.now() - payload.iat * 1_000 > SESSION_RENEW_THRESHOLD_MS;
 }
 
 export async function sessionRevoked(token: string): Promise<boolean> {

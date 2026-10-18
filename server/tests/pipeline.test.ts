@@ -684,6 +684,83 @@ describe('applyParsedBill 合并账单多卡', () => {
     }));
   });
 
+  it('附属卡未显式标注主卡时回退账单承接卡建立关联', async () => {
+    tx.card.create.mockImplementation(async ({ data }: { data: { cardLast4: string } }) => ({
+      id: data.cardLast4 === '7777' ? 9 : 8,
+      ...data,
+    }));
+    // 广发式账单：附卡条目只带卡尾，不带 primaryCardLast4
+    await applyParsedBill(81, 'cgb2026', {
+      ...makeMergedBill(),
+      cardLast4s: ['5888', '7777'],
+      businessCards: {
+        primaryCardLast4: '5888',
+        supplementaryCards: [{ cardLast4: '7777', holderName: null }],
+      },
+    });
+
+    expect(tx.card.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        cardLast4: '7777',
+        businessRole: 'supplementary',
+        businessPrimaryId: 7,
+      }),
+    }));
+  });
+
+  it('历史遗留的空关联附属卡在下次账单到达时自动挂回承接卡', async () => {
+    tx.card.findUnique.mockImplementation(async ({ where }: { where: { bankName_cardLast4: { cardLast4: string } } }) => {
+      const tail = where.bankName_cardLast4.cardLast4;
+      if (tail === '5888') {
+        return {
+          id: 7,
+          holderName: '张三',
+          statementDay: 5,
+          dueRule: 'offset',
+          dueDay: null,
+          dueOffsetDays: 18,
+          annualFeeDate: null,
+          annualFeeDateManual: false,
+          businessRole: 'primary',
+          businessPrimaryId: null,
+        };
+      }
+      if (tail === '7777') {
+        return {
+          id: 10,
+          holderName: '张三',
+          statementDay: 5,
+          dueRule: 'offset',
+          dueDay: null,
+          dueOffsetDays: 18,
+          annualFeeDate: null,
+          annualFeeDateManual: false,
+          businessRole: 'supplementary',
+          businessPrimaryId: null,
+          businessRelationDate: fromYmd('2026-07-05'),
+        };
+      }
+      return null;
+    });
+    await applyParsedBill(83, 'cgb2026', {
+      ...makeMergedBill(),
+      cardLast4s: ['5888', '7777'],
+      businessCards: {
+        primaryCardLast4: '5888',
+        supplementaryCards: [{ cardLast4: '7777', holderName: null }],
+      },
+    });
+
+    expect(tx.card.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 10 },
+      data: expect.objectContaining({
+        businessRole: 'supplementary',
+        businessPrimaryId: 7,
+        businessRelationDate: fromYmd('2026-08-05'),
+      }),
+    }));
+  });
+
   it('当期未再列出附属卡对应主卡时保留已确认的历史归属', async () => {
     tx.card.findUnique.mockImplementation(async ({ where }: { where: { bankName_cardLast4: { cardLast4: string } } }) => {
       const tail = where.bankName_cardLast4.cardLast4;

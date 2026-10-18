@@ -4,6 +4,7 @@ import { accountZeroBillsMigration } from './migrations/backfill-account-zero-bi
 import { accountZeroBillsMigrationV2 } from './migrations/backfill-account-zero-bills-v2';
 import { repairStatements050Migration } from './migrations/repair-statements-050';
 import { overdueBasisNoticeMigration } from './migrations/overdue-basis-notice';
+import { supplementaryLinkRepairMigration } from './migrations/supplementary-link-repair';
 import type { VersionMigration } from './migration.types';
 
 export const versionMigrations: VersionMigration[] = [
@@ -13,6 +14,7 @@ export const versionMigrations: VersionMigration[] = [
   accountZeroBillsMigrationV2,
   repairStatements050Migration,
   overdueBasisNoticeMigration,
+  supplementaryLinkRepairMigration,
 ];
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

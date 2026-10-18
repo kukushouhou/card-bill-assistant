@@ -1,23 +1,12 @@
-import { Router, type Request, type Response } from 'express';
+import { Router } from 'express';
 import { asyncHandler, ApiError } from '../lib/errors';
-import { config } from '../config';
-import { requireAuth } from './middleware';
+import { requireAuth, setAuthCookie } from './middleware';
 import * as authService from '../modules/auth/auth.service';
 import { attemptLimit } from './security.middleware';
 import { createLoginChallenge } from '../modules/auth/login-guard';
 import { revokeSession } from '../modules/auth/session';
 
 const router = Router();
-
-function setAuthCookie(res: Response, token: string): void {
-  res.cookie('drc_token', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: config.cookieSecure,
-    maxAge: 7 * 24 * 3600_000,
-    path: '/',
-  });
-}
 
 // 登录
 router.post('/login-challenge', attemptLimit(60, 60_000, { countSuccess: true }), asyncHandler(async (req, res) => {

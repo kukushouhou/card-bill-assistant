@@ -216,6 +216,7 @@ async function applyParsedBillInTransaction(
         : null;
       const mapped = bill.holderMap?.[tail] ?? supplementaryByTail.get(tail)?.holderName;
       const mappedName = typeof mapped === 'string' && mapped ? mapped : null;
+      // 附属卡关联优先级：条目显式标注 → 已确认历史关联（不模糊抢卡）→ 回退本账单承接卡（保证首次能建立）
       const parentPrimaryTail = explicitBusinessRole === 'secondary'
         ? businessPrimaryTail
         : explicitBusinessRole === 'supplementary'
@@ -223,9 +224,9 @@ async function applyParsedBillInTransaction(
           : null;
       const parentPrimaryId = parentPrimaryTail
         ? businessPrimaryIds.get(parentPrimaryTail) ?? null
-        : explicitBusinessRole === 'supplementary' && card?.businessRole === 'supplementary'
-          ? card.businessPrimaryId ?? null
-          : null;
+        : explicitBusinessRole === 'supplementary' && card?.businessRole === 'supplementary' && card.businessPrimaryId != null
+          ? card.businessPrimaryId
+          : businessPrimaryIds.get(businessPrimaryTail) ?? null;
       // 账单级提取姓名只落到本封账单承接卡，不在解析器里猜附卡
       const extracted = isOwner && bill.holderName ? bill.holderName : null;
 
