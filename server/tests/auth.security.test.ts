@@ -4,12 +4,12 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   admin: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-  appSetting: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+  appSetting: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   card: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   $queryRaw: vi.fn(), $transaction: vi.fn(),
 }));
@@ -18,7 +18,7 @@ import { config } from '../src/config';
 import { ApiError } from '../src/lib/errors';
 import { derivePinKey, encrypt, decrypt, makePinVerifier } from '../src/lib/crypto';
 import { changePassword, changePin, destroyPin, login, requireValidPin, setPin, withValidPin } from '../src/modules/auth/auth.service';
-import { SESSION_VERSION_KEY } from '../src/modules/auth/session';
+import { SESSION_MAX_AGE_MS, SESSION_VERSION_KEY } from '../src/modules/auth/session';
 import { requireAuth } from '../src/routes/middleware';
 import { apiSecurity, attemptLimit, securityHeaders } from '../src/routes/security.middleware';
 import { createLoginChallenge, loginDifficulty } from '../src/modules/auth/login-guard';
@@ -44,6 +44,11 @@ beforeEach(() => {
   db.admin.update.mockImplementation(async ({ data }) => Object.assign(admin, data));
   db.appSetting.findUnique.mockImplementation(async ({ where }) => settings.has(where.key) ? { key: where.key, value: settings.get(where.key) } : null);
   db.appSetting.upsert.mockImplementation(async ({ where, create, update }) => { settings.set(where.key, settings.has(where.key) ? update.value : create.value); });
+  db.appSetting.updateMany.mockImplementation(async ({ where, data }) => {
+    if (settings.get(where.key) !== where.value) return { count: 0 };
+    settings.set(where.key, data.value);
+    return { count: 1 };
+  });
   db.appSetting.create.mockImplementation(async ({ data }) => {
     if (settings.has(data.key)) throw Object.assign(new Error('重复标记'), { code: 'P2002' });
     settings.set(data.key, data.value);
@@ -88,6 +93,21 @@ async function withServer(run: (url: string) => Promise<void>) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   try { await run('http://127.0.0.1:' + (server.address() as AddressInfo).port); }
   finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+}
+
+function responseToken(response: Response): string {
+  // 修改密码可能先由认证中间件续期；浏览器以最后设置的同名 Cookie 为准。
+  const cookie = response.headers.getSetCookie().filter(value => value.startsWith('drc_token=')).at(-1);
+  expect(cookie).toBeDefined();
+  return cookie!.split(';')[0].slice('drc_token='.length);
+}
+
+async function agedLogin(days = 2) {
+  const now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now - days * 86400_000);
+  const old = (await login('admin', 'old-password')).token;
+  clock.mockReturnValue(now);
+  return { old, clock, now };
 }
 
 describe('登录与会话安全', () => {
@@ -141,7 +161,7 @@ describe('登录与会话安全', () => {
       expect(response.headers.get('set-cookie')).toContain('Expires=Thu, 01 Jan 1970');
       expect((await fetch(url + '/private', { headers: { Cookie: 'drc_token=' + current.token } })).status).toBe(401);
       expect((await fetch(url + '/private', { headers: { Cookie: 'drc_token=' + other } })).status).toBe(200);
-      expect([...settings.values()].some(value => value.includes(current.token))).toBe(false);
+      expect([...settings].some(([key, value]) => key.includes(current.token) || value.includes(current.token))).toBe(false);
     });
   });
 
@@ -160,6 +180,296 @@ describe('登录与会话安全', () => {
       const fresh = jwt.sign({ sub: 1, username: 'admin' }, config.jwtSecret, { expiresIn: '30d' });
       expect((await get(fresh)).status).toBe(200);
       expect((await get(fresh)).headers.get('set-cookie')).toBeNull();
+    });
+  });
+
+  it('自动续期后退出，同一会话的新旧凭证都无法重放，其他设备继续有效', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now - 2 * 86400_000);
+    const old = (await login('admin', 'old-password')).token;
+    clock.mockReturnValue(now);
+    const other = (await login('admin', 'old-password')).token;
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const response = await get(old);
+      expect(response.status).toBe(200);
+      const renewed = response.headers.get('set-cookie')!.split(';')[0].split('=')[1];
+      expect(renewed).not.toBe(old);
+      const originalPayload = jwt.decode(old) as jwt.JwtPayload;
+      const renewedPayload = jwt.decode(renewed) as jwt.JwtPayload;
+      expect(originalPayload.sid).toBeTruthy();
+      expect(renewedPayload.sid).toBe(originalPayload.sid);
+      expect(renewedPayload.jti).not.toBe(originalPayload.jti);
+      expect((jwt.decode(other) as jwt.JwtPayload).sid).not.toBe(originalPayload.sid);
+      expect((await get(renewed)).status).toBe(200);
+      expect((await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + renewed },
+      })).status).toBe(200);
+      expect((await get(renewed)).status).toBe(401);
+      expect((await get(old)).status).toBe(401);
+      expect((await get(other)).status).toBe(200);
+    });
+  });
+
+  it.each(['新登录', '旧版登录'])('%s的同一旧凭证并发续期后，退出任一分支会撤销其他分支和原凭证', async source => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now - 2 * 86400_000);
+    const old = source === '新登录' ? (await login('admin', 'old-password')).token
+      : jwt.sign({ sub: 1, username: 'admin' }, config.jwtSecret, { expiresIn: '30d' });
+    clock.mockReturnValue(now);
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const responses = await Promise.all(Array.from({ length: 4 }, () => get(old)));
+      const renewed = responses.map(response => {
+        expect(response.status).toBe(200);
+        return response.headers.get('set-cookie')!.split(';')[0].split('=')[1];
+      });
+      expect(new Set(renewed).size).toBe(4);
+      expect(new Set(renewed.map(token => (jwt.decode(token) as jwt.JwtPayload).sid)).size).toBe(1);
+      expect((await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + renewed[0] },
+      })).status).toBe(200);
+      for (const token of [...renewed, old]) expect((await get(token)).status).toBe(401);
+    });
+  });
+});
+
+describe('续期会话撤销回归', () => {
+  it.each(['原凭证', '续期凭证'])('兼容无会话标识的旧版登录，使用%s退出会同时撤销原凭证与续期凭证', async logoutWith => {
+    const old = jwt.sign({ sub: 1, username: 'admin', iat: Math.floor(Date.now() / 1000) - 2 * 86400 },
+      config.jwtSecret, { expiresIn: '30d', jwtid: 'legacy-device' });
+    const other = jwt.sign({ sub: 1, username: 'admin' }, config.jwtSecret, { expiresIn: '30d', jwtid: 'other-device' });
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const response = await get(old);
+      expect(response.status).toBe(200);
+      const renewed = responseToken(response);
+      expect((await get(renewed)).status).toBe(200);
+      expect((await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + (logoutWith === '原凭证' ? old : renewed) },
+      })).status).toBe(200);
+      for (const token of [old, renewed]) {
+        const replay = await get(token);
+        expect(replay.status).toBe(401);
+        expect(replay.headers.get('set-cookie')).toBeNull();
+      }
+      expect((await get(other)).status).toBe(200);
+    });
+  });
+
+  it('保留旧版按凭证摘要保存的撤销记录，已退出的旧登录不能通过续期复活', async () => {
+    const old = jwt.sign({ sub: 1, username: 'admin', iat: Math.floor(Date.now() / 1000) - 2 * 86400 },
+      config.jwtSecret, { expiresIn: '30d' });
+    settings.set('auth.revokedSession.' + createHash('sha256').update(old).digest('hex'),
+      new Date((jwt.decode(old) as jwt.JwtPayload).exp! * 1000).toISOString());
+    const other = (await login('admin', 'old-password')).token;
+    await withServer(async url => {
+      const replay = await fetch(url + '/private', { headers: { Cookie: 'drc_token=' + old } });
+      expect(replay.status).toBe(401);
+      expect(replay.headers.get('set-cookie')).toBeNull();
+      expect((await fetch(url + '/private', { headers: { Cookie: 'drc_token=' + other } })).status).toBe(200);
+    });
+  });
+
+  it('多次续期始终属于同一会话，退出旧凭证后撤销记录覆盖最新凭证的剩余有效期', async () => {
+    const { old, clock, now } = await agedLogin(28);
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const logout = (token: string) => fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + token },
+      });
+      const renewed = responseToken(await get(old));
+      clock.mockReturnValue(now + 86400_000 + 1_000);
+      const latest = responseToken(await get(renewed));
+      expect((jwt.decode(latest) as jwt.JwtPayload).sid).toBe((jwt.decode(old) as jwt.JwtPayload).sid);
+      expect((await logout(old)).status).toBe(200);
+      const key = 'auth.revokedSession.' + (jwt.decode(old) as jwt.JwtPayload).sid;
+      const deadline = settings.get(key)!;
+      expect(Date.parse(deadline)).toBeGreaterThanOrEqual((jwt.decode(latest) as jwt.JwtPayload).exp! * 1000);
+      settings.set('unrelated', '2000-01-01T00:00:00.000Z');
+
+      // 原凭证已自然到期时，触发其他设备退出的清理，续期凭证仍必须被撤销。
+      clock.mockReturnValue(now + 3 * 86400_000);
+      expect((await logout((await login('admin', 'old-password')).token)).status).toBe(200);
+      expect(settings.get(key)).toBe(deadline);
+      for (const token of [old, renewed, latest]) expect((await get(token)).status).toBe(401);
+
+      clock.mockReturnValue(Date.parse(deadline) + 1_000);
+      const current = (await login('admin', 'old-password')).token;
+      const cleanup = (await login('admin', 'old-password')).token;
+      expect((await logout(cleanup)).status).toBe(200);
+      expect(settings.has(key)).toBe(false);
+      expect(settings.get('unrelated')).toBe('2000-01-01T00:00:00.000Z');
+      for (const token of [old, renewed, latest]) expect((await get(token)).status).toBe(401);
+      expect((await get(current)).status).toBe(200);
+    });
+  });
+
+  it('已通过认证的在途续期即使晚于退出返回，也不能签发可重放的凭证', async () => {
+    const { old, clock, now } = await agedLogin();
+    const key = 'auth.revokedSession.' + (jwt.decode(old) as jwt.JwtPayload).sid;
+    const find = db.appSetting.findUnique.getMockImplementation()!;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const checked = new Promise<void>(resolve => { entered = resolve; });
+    let paused = false;
+    db.appSetting.findUnique.mockImplementation(async args => {
+      const result = await find(args);
+      if (args.where.key === key && !paused) { paused = true; entered(); await gate; }
+      return result;
+    });
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const pending = get(old);
+      try {
+        await checked;
+        expect((await fetch(url + '/api/auth/logout', {
+          method: 'POST', headers: { Cookie: 'drc_token=' + old },
+        })).status).toBe(200);
+        clock.mockReturnValue(now + 2_000);
+      } finally { release(); }
+      const response = await pending;
+      expect(response.status).toBe(200);
+      const renewed = responseToken(response);
+      expect((jwt.decode(renewed) as jwt.JwtPayload).iat).toBe(Math.floor(now / 1_000));
+      expect((await get(renewed)).status).toBe(401);
+      expect((await get(old)).status).toBe(401);
+    });
+  });
+
+  it('退出写入期间的并发续期同样被撤销，清理时间从撤销提交之后计算', async () => {
+    const { old, clock, now } = await agedLogin();
+    const key = 'auth.revokedSession.' + (jwt.decode(old) as jwt.JwtPayload).sid;
+    const create = db.appSetting.create.getMockImplementation()!;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const writing = new Promise<void>(resolve => { entered = resolve; });
+    db.appSetting.create.mockImplementation(async args => {
+      if (args.data.key === key) { entered(); await gate; }
+      return create(args);
+    });
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const logout = fetch(url + '/api/auth/logout', { method: 'POST', headers: { Cookie: 'drc_token=' + old } });
+      let renewed!: string;
+      try {
+        await writing;
+        clock.mockReturnValue(now + 2_000);
+        const response = await get(old);
+        expect(response.status).toBe(200);
+        renewed = responseToken(response);
+      } finally { release(); }
+      expect((await logout).status).toBe(200);
+      expect(Date.parse(settings.get(key)!)).toBeGreaterThanOrEqual((jwt.decode(renewed) as jwt.JwtPayload).exp! * 1000);
+
+      clock.mockReturnValue(now + SESSION_MAX_AGE_MS + 1_000);
+      const cleanup = (await login('admin', 'old-password')).token;
+      expect((await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + cleanup },
+      })).status).toBe(200);
+      expect(settings.has(key)).toBe(true);
+      expect((await get(renewed)).status).toBe(401);
+    });
+  });
+
+  it('并发重复退出不能覆盖已有撤销期限，独立设备仍可访问', async () => {
+    const { old, clock, now } = await agedLogin();
+    const key = 'auth.revokedSession.' + (jwt.decode(old) as jwt.JwtPayload).sid;
+    const update = db.appSetting.updateMany.getMockImplementation()!;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const updating = new Promise<void>(resolve => { entered = resolve; });
+    db.appSetting.updateMany.mockImplementationOnce(async args => { entered(); await gate; return update(args); });
+    await withServer(async url => {
+      const logout = () => fetch(url + '/api/auth/logout', { method: 'POST', headers: { Cookie: 'drc_token=' + old } });
+      const first = logout();
+      let deadline!: string;
+      try {
+        await updating;
+        clock.mockReturnValue(now + 1_000);
+        expect((await logout()).status).toBe(200);
+        deadline = settings.get(key)!;
+      } finally { release(); }
+      expect((await first).status).toBe(200);
+      expect(settings.get(key)).toBe(deadline);
+      const other = (await login('admin', 'old-password')).token;
+      expect((await fetch(url + '/private', { headers: { Cookie: 'drc_token=' + other } })).status).toBe(200);
+    });
+  });
+
+  it('撤销已提交但保存清理时间失败时，当前会话仍失效并保留撤销记录', async () => {
+    const { old } = await agedLogin();
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const renewed = responseToken(await get(old));
+      db.appSetting.updateMany.mockRejectedValueOnce(new Error('保存清理时间失败'));
+      const logout = await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + renewed },
+      });
+      expect(logout.status).toBe(500);
+      expect(logout.headers.get('set-cookie')).toContain('Expires=Thu, 01 Jan 1970');
+      const other = (await login('admin', 'old-password')).token;
+      expect((await fetch(url + '/api/auth/logout', { method: 'POST', headers: { Cookie: 'drc_token=' + other } })).status).toBe(200);
+      for (const token of [old, renewed]) expect((await get(token)).status).toBe(401);
+      expect([...settings.values()]).toContain('pending');
+    });
+  });
+
+  it('续期后经真实路由修改密码，当前新凭证可用，历史凭证及其他设备全部失效', async () => {
+    const { old } = await agedLogin();
+    const other = (await login('admin', 'old-password')).token;
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const renewed = responseToken(await get(old));
+      const changed = await fetch(url + '/api/auth/password', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + old, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: 'old-password', newPassword: 'new-password' }),
+      });
+      expect(changed.status).toBe(200);
+      const current = responseToken(changed);
+      expect((jwt.decode(current) as jwt.JwtPayload).sid).not.toBe((jwt.decode(old) as jwt.JwtPayload).sid);
+      const autoRenewed = changed.headers.getSetCookie()[0].split(';')[0].slice('drc_token='.length);
+      for (const token of [old, renewed, autoRenewed, other]) expect((await get(token)).status).toBe(401);
+      expect((await get(current)).status).toBe(200);
+      expect((await fetch(url + '/api/auth/logout', {
+        method: 'POST', headers: { Cookie: 'drc_token=' + renewed },
+      })).status).toBe(200);
+      expect((await get(current)).status).toBe(200);
+      await expect(login('admin', 'old-password')).rejects.toMatchObject({ status: 400 });
+      expect((await get((await login('admin', 'new-password')).token)).status).toBe(200);
+    });
+  });
+
+  it('修改密码时已在途的续期只能沿用旧密码版本，不能恢复旧登录', async () => {
+    const { old } = await agedLogin();
+    const find = db.appSetting.findUnique.getMockImplementation()!;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const checked = new Promise<void>(resolve => { entered = resolve; });
+    let paused = false;
+    db.appSetting.findUnique.mockImplementation(async args => {
+      const result = await find(args);
+      if (args.where.key === SESSION_VERSION_KEY && !paused) { paused = true; entered(); await gate; }
+      return result;
+    });
+    await withServer(async url => {
+      const get = (token: string) => fetch(url + '/private', { headers: { Cookie: 'drc_token=' + token } });
+      const pending = get(old);
+      let current!: string;
+      try {
+        await checked;
+        current = (await changePassword('old-password', 'new-password')).token;
+      } finally { release(); }
+      const response = await pending;
+      expect(response.status).toBe(200);
+      const renewed = responseToken(response);
+      expect((await get(renewed)).status).toBe(401);
+      expect((await get(old)).status).toBe(401);
+      expect((await get(current)).status).toBe(200);
     });
   });
 });
