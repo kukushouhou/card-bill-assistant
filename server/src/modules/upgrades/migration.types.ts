@@ -38,6 +38,8 @@ export interface VersionMigration {
   targetVersion: string;
   order: number;
   mode: MigrationMode;
+  /** 新补救迁移接替旧项；保留旧任务身份和明细，不再重复展示旧迁移。 */
+  supersedes?: string[];
   title: string;
   description: string;
   executeLabel?: string;

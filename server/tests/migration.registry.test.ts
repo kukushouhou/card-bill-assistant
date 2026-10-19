@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { classifyUpgradePreflight, compareVersions, validateMigrationRegistry } from '../src/modules/upgrades/migration.registry';
+import { applicableMigrations, classifyUpgradePreflight, compareVersions, migrationByKey, validateMigrationRegistry } from '../src/modules/upgrades/migration.registry';
 import type { VersionMigration } from '../src/modules/upgrades/migration.types';
 
 function migration(overrides: Partial<VersionMigration>): VersionMigration {
@@ -18,6 +18,16 @@ function migration(overrides: Partial<VersionMigration>): VersionMigration {
 }
 
 describe('版本迁移注册表', () => {
+  it('从 0.7.0 升级到 0.7.1 可以执行独立补救迁移', () => {
+    expect(applicableMigrations('0.7.0', '0.7.1').map((row) => row.key)).toEqual(['supplementary-link-repair-v2']);
+  });
+
+  it('从更早版本直接升级时只提示 0.7.1 附属卡迁移', () => {
+    expect(applicableMigrations('0.6.2', '0.7.1').map((row) => row.key)).toEqual(['supplementary-link-repair-v2']);
+    expect(migrationByKey('supplementary-link-repair-v1')?.targetVersion).toBe('0.7.0');
+    expect(applicableMigrations('0.6.2', '0.7.0').map((row) => row.key)).toEqual(['supplementary-link-repair-v1']);
+  });
+
   it('按语义化版本比较而不是字符串比较', () => {
     expect(compareVersions('0.3.2', '0.3.1')).toBeGreaterThan(0);
     expect(compareVersions('0.10.0', '0.9.9')).toBeGreaterThan(0);

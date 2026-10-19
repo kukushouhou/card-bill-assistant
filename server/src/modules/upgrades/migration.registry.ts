@@ -5,6 +5,7 @@ import { accountZeroBillsMigrationV2 } from './migrations/backfill-account-zero-
 import { repairStatements050Migration } from './migrations/repair-statements-050';
 import { overdueBasisNoticeMigration } from './migrations/overdue-basis-notice';
 import { supplementaryLinkRepairMigration } from './migrations/supplementary-link-repair';
+import { supplementaryLinkRepairMigrationV2 } from './migrations/supplementary-link-repair-v2';
 import type { VersionMigration } from './migration.types';
 
 export const versionMigrations: VersionMigration[] = [
@@ -15,6 +16,7 @@ export const versionMigrations: VersionMigration[] = [
   repairStatements050Migration,
   overdueBasisNoticeMigration,
   supplementaryLinkRepairMigration,
+  supplementaryLinkRepairMigrationV2,
 ];
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -57,10 +59,12 @@ export function applicableMigrations(fromVersion: string, toVersion: string): Ve
   if (compareVersions(fromVersion, toVersion) > 0) {
     throw new Error(`不支持从 ${fromVersion} 降级到 ${toVersion}`);
   }
-  return versionMigrations
+  const available = versionMigrations.filter((migration) => compareVersions(migration.targetVersion, toVersion) <= 0);
+  const superseded = new Set(available.flatMap((migration) => migration.supersedes ?? []));
+  return available
     .filter((migration) => (
       compareVersions(migration.targetVersion, fromVersion) > 0
-      && compareVersions(migration.targetVersion, toVersion) <= 0
+      && !superseded.has(migration.key)
     ))
     .sort((a, b) => compareVersions(a.targetVersion, b.targetVersion) || a.order - b.order);
 }

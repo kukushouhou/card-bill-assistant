@@ -4,7 +4,7 @@ import { recomputePrimary } from '../../../lib/card-groups';
 import type { MigrationInspection, TaskExecutionResult, VersionMigration } from '../migration.types';
 import { affectedBankNames } from '../migration-context';
 
-type LinkRepairTarget = {
+export type LinkRepairTarget = {
   cardId: number;
   bankName: string;
   cardLast4: string;
@@ -13,30 +13,13 @@ type LinkRepairTarget = {
   /** 证据账单：恢复关联所依据的最新一封合并账单 */
   period: string;
   statementDate: string;
+  /** 纠正已执行的旧任务时，写入前必须仍匹配旧关联。 */
+  previousPrimaryCardId?: number;
+  previousRelationDate?: string;
 };
 
 function itemKeyOf(target: Pick<LinkRepairTarget, 'cardId'>): string {
   return `card:${target.cardId}`;
-}
-
-function readTargetPayload(value: unknown): LinkRepairTarget {
-  if (!value || typeof value !== 'object') throw new Error('升级任务明细缺少卡片参数');
-  const row = value as Record<string, unknown>;
-  const cardId = Number(row.cardId);
-  const bankName = typeof row.bankName === 'string' ? row.bankName : '';
-  const cardLast4 = typeof row.cardLast4 === 'string' ? row.cardLast4 : '';
-  const primaryCardId = Number(row.primaryCardId);
-  const primaryCardLast4 = typeof row.primaryCardLast4 === 'string' ? row.primaryCardLast4 : '';
-  const period = typeof row.period === 'string' ? row.period : '';
-  const statementDate = typeof row.statementDate === 'string' ? row.statementDate : '';
-  if (
-    !Number.isInteger(cardId) || cardId < 1 || !bankName || !cardLast4
-    || !Number.isInteger(primaryCardId) || primaryCardId < 1 || !primaryCardLast4
-    || !period || !statementDate
-  ) {
-    throw new Error('升级任务明细卡片参数无效');
-  }
-  return { cardId, bankName, cardLast4, primaryCardId, primaryCardLast4, period, statementDate };
 }
 
 interface OwnerSnapshot {
@@ -54,12 +37,21 @@ interface OwnerSnapshot {
  * 旧版合账只能保留已有关联、不能首次建立关联，导致这类卡独立展示且规则不再跟随更新。
  * 修复证据取 BillCard：该卡以非承接卡身份出现在同银行可见承接卡的账单中，按最新一封挂回。
  */
-async function scanLinkRepairTargets(db: PrismaClient | Prisma.TransactionClient): Promise<LinkRepairTarget[]> {
+export async function scanLinkRepairTargets(db: PrismaClient | Prisma.TransactionClient, cardId?: number): Promise<LinkRepairTarget[]> {
   const orphans = await db.card.findMany({
-    where: { businessRole: 'supplementary', businessPrimaryId: null, hidden: false },
+    where: { ...(cardId === undefined ? {} : { id: cardId }), businessRole: 'supplementary', businessPrimaryId: null, hidden: false },
     select: { id: true, bankName: true, displayLast4: true },
   });
   if (orphans.length === 0) return [];
+  return scanSupplementaryLinkEvidence(db, orphans);
+}
+
+/** 复用同一证据口径；截止时间用于核对旧任务执行前就已存在且未被后来改写的账单。 */
+export async function scanSupplementaryLinkEvidence(
+  db: PrismaClient | Prisma.TransactionClient,
+  orphans: Array<{ id: number; bankName: string; displayLast4: string }>,
+  before?: Date,
+): Promise<LinkRepairTarget[]> {
   const orphanById = new Map(orphans.map((card) => [card.id, card]));
 
   const links = await db.billCard.findMany({
@@ -70,7 +62,7 @@ async function scanLinkRepairTargets(db: PrismaClient | Prisma.TransactionClient
   const bills = billIds.length === 0
     ? []
     : await db.bill.findMany({
-        where: { id: { in: billIds } },
+        where: { id: { in: billIds }, ...(before ? { updatedAt: { lte: before } } : {}) },
         select: { id: true, cardId: true, period: true, statementDate: true },
       });
   const billById = new Map(bills.map((bill) => [bill.id, bill]));
@@ -84,7 +76,8 @@ async function scanLinkRepairTargets(db: PrismaClient | Prisma.TransactionClient
   const owners = ownerIds.length === 0
     ? []
     : await db.card.findMany({
-        where: { id: { in: ownerIds }, hidden: false },
+        // 单卡重扫也须保留全量扫描排除其他空关联附属卡的口径。
+        where: { id: { in: ownerIds }, hidden: false, NOT: { businessRole: 'supplementary', businessPrimaryId: null } },
         select: {
           id: true,
           bankName: true,
@@ -139,8 +132,11 @@ export async function inspectSupplementaryLinks(db: PrismaClient | Prisma.Transa
 }
 
 /** 可选迁移等待期间新账单可继续同步；真正执行前在这里重新扫描最新目标。 */
-export async function prepareSupplementaryLinkTask(taskId: number): Promise<void> {
-  const targets = await scanLinkRepairTargets(prisma);
+export async function prepareSupplementaryLinkTask(
+  taskId: number,
+  scan: typeof scanLinkRepairTargets = scanLinkRepairTargets,
+): Promise<void> {
+  const targets = await scan(prisma);
   const existing = await prisma.upgradeTaskItem.findMany({ where: { taskId }, select: { itemKey: true } });
   const known = new Set(existing.map((item) => item.itemKey));
   const fresh = targets.filter((target) => !known.has(itemKeyOf(target)));
@@ -178,30 +174,31 @@ async function markItem(
   await updateTaskCounts(item.taskId);
 }
 
-export async function executeSupplementaryLinkTask(taskId: number): Promise<TaskExecutionResult> {
-  await prepareSupplementaryLinkTask(taskId);
+export async function executeSupplementaryLinkTask(
+  taskId: number,
+  scan: typeof scanLinkRepairTargets = scanLinkRepairTargets,
+): Promise<TaskExecutionResult> {
+  await prepareSupplementaryLinkTask(taskId, scan);
   const rows = await prisma.upgradeTaskItem.findMany({
     where: { taskId, status: { in: ['pending', 'failed'] } },
     orderBy: { itemKey: 'asc' },
   });
-  // 逐项执行：扫描结果可能已随新账单变化，目标消失记 unchanged（关联已被合账环节建立）
-  const targets = await scanLinkRepairTargets(prisma);
-  const targetByKey = new Map(targets.map((target) => [itemKeyOf(target), target] as const));
-
   for (const row of rows) {
     const item = { id: row.id, taskId: row.taskId };
     await prisma.upgradeTaskItem.update({ where: { id: row.id }, data: { status: 'running', error: null } });
-    const target = targetByKey.get(row.itemKey);
-    if (!target) {
-      await markItem(item, 'unchanged');
-      continue;
-    }
     try {
-      const payload = readTargetPayload(row.payload);
-      await prisma.$transaction(async (tx) => {
+      const cardId = Number(row.itemKey.slice('card:'.length));
+      if (!Number.isSafeInteger(cardId) || cardId < 1 || row.itemKey !== itemKeyOf({ cardId })) {
+        throw new Error('升级任务明细卡片参数无效');
+      }
+      // 后台历史拉取仍可写入；串行化事务内逐卡重扫，payload 只保留准备时快照。
+      const updated = await prisma.$transaction(async (tx) => {
+        const [target] = await scan(tx, cardId);
+        // 关联已建立、卡片已隐藏或证据消失时保留当前状态。
+        if (!target) return { count: 0 };
         // 关联指向最新证据账单的承接卡；账期规则对齐承接卡当前规则（尊重每卡独立的手动调整）
         const owner = await tx.card.findUnique({
-          where: { id: payload.primaryCardId },
+          where: { id: target.primaryCardId },
           select: {
             id: true,
             bankName: true,
@@ -212,23 +209,34 @@ export async function executeSupplementaryLinkTask(taskId: number): Promise<Task
             dueOffsetDays: true,
           },
         });
-        if (!owner || owner.hidden || owner.bankName !== payload.bankName) {
+        if (!owner || owner.hidden || owner.bankName !== target.bankName) {
           throw new Error('承接卡不存在或已隐藏，无法恢复关联');
         }
-        await tx.card.update({
-          where: { id: payload.cardId },
+        const statementDate = new Date(target.statementDate);
+        // 扫描后卡片可能已被其他写入修复或改变身份，原子校验，避免覆盖新关系。
+        return tx.card.updateMany({
+          where: {
+            id: target.cardId,
+            bankName: target.bankName,
+            businessRole: 'supplementary',
+            businessPrimaryId: target.previousPrimaryCardId ?? null,
+            hidden: false,
+            ...(target.previousRelationDate
+              ? { businessRelationDate: new Date(target.previousRelationDate) }
+              : { OR: [{ businessRelationDate: null }, { businessRelationDate: { lte: statementDate } }] }),
+          },
           data: {
             businessRole: 'supplementary',
             businessPrimaryId: owner.id,
-            businessRelationDate: new Date(payload.statementDate),
+            businessRelationDate: statementDate,
             statementDay: owner.statementDay,
             dueRule: owner.dueRule,
             dueDay: owner.dueDay,
             dueOffsetDays: owner.dueOffsetDays,
           },
         });
-      });
-      await markItem(item, 'succeeded');
+      }, { isolationLevel: 'Serializable' });
+      await markItem(item, updated.count > 0 ? 'succeeded' : 'unchanged');
     } catch (error) {
       await markItem(item, 'failed', error instanceof Error ? error.message : String(error));
     }

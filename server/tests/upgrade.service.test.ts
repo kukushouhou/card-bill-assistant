@@ -53,7 +53,7 @@ vi.mock('../src/modules/upgrades/migrations/overdue-basis-notice', async (import
 });
 
 import { APP_VERSION } from '../src/version';
-import { getUpgradePlan, initializeUpgradeState, submitUpgradeDecisions } from '../src/modules/upgrades/upgrade.service';
+import { approveUpgradeTask, getUpgradePlan, initializeUpgradeState, submitUpgradeDecisions } from '../src/modules/upgrades/upgrade.service';
 import { accountZeroBillsMigration } from '../src/modules/upgrades/migrations/backfill-account-zero-bills';
 import { cardBusinessRelationsMigration } from '../src/modules/upgrades/migrations/card-business-relations';
 import { repairStatements050Migration } from '../src/modules/upgrades/migrations/repair-statements-050';
@@ -196,6 +196,114 @@ describe('版本升级协调器', () => {
       manifest: tasks.map((task) => ({ ...task, targetVersion: task.toVersion, order: task.migrationOrder, summary: null })),
     };
   }
+
+  function supplementaryLinks(primaryId: number | null) {
+    const august = new Date('2026-08-25T00:00:00+08:00');
+    const september = new Date('2026-09-25T00:00:00+08:00');
+    const orphan = {
+      ...card({ id: 445, bankName: '广发银行', displayLast4: '6736' }),
+      businessRole: 'supplementary', businessPrimaryId: primaryId,
+      businessRelationDate: primaryId === 446 ? september : august,
+    };
+    db.card.findMany.mockImplementation(async ({ where }: { where?: Record<string, unknown> } = {}) => {
+      if (where?.businessRole === 'supplementary') {
+        return (where.businessPrimaryId === null) === (primaryId === null) ? [orphan] : [];
+      }
+      if (where?.id) return [card({ id: 444, bankName: '广发银行' }), card({ id: 446, bankName: '广发银行' })];
+      return [];
+    });
+    db.billCard.findMany.mockResolvedValue([{ billId: 101, cardId: 445 }, { billId: 102, cardId: 445 }]);
+    db.bill.findMany.mockResolvedValue([
+      { id: 101, cardId: 444, period: '2026-08', statementDate: august },
+      { id: 102, cardId: 446, period: '2026-09', statementDate: september },
+    ]);
+    db.upgradeTaskItem.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => (
+      where.task ? [{
+        itemKey: 'card:445', processedAt: new Date('2026-10-18T10:00:00+08:00'),
+        payload: { cardId: 445, bankName: '广发银行', primaryCardId: 444, statementDate: august.toISOString() },
+      }] : []
+    ));
+  }
+
+  it('已完成 0.7.0 且关联正确时不创建 0.7.1 计划，直接推进版本', async () => {
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.7.0' });
+    supplementaryLinks(446);
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
+    expect(db.upgradePlan.create).not.toHaveBeenCalled();
+    expect(db.upgradeTask.create).not.toHaveBeenCalled();
+    expect(db.appSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { value: '0.7.1' } }));
+  });
+
+  it.each([null, 444])('0.7.0 用户关联为 %s 时只创建 0.7.1 可选修复项', async (primaryId) => {
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.7.0' });
+    supplementaryLinks(primaryId);
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
+    expect(db.upgradeTask.create).toHaveBeenCalledTimes(1);
+    expect(db.upgradeTask.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      key: 'supplementary-link-repair-v2', toVersion: '0.7.1', mode: 'optional', status: 'awaiting_decision',
+    }) });
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each(['awaiting_decision', 'failed'])('接替尚未结束的 0.7.0 %s 计划，保留旧明细', async (status) => {
+    const stored = storedPlan();
+    stored.toVersion = '0.7.0';
+    stored.status = status;
+    stored.tasks = [{ ...stored.tasks[0], key: 'supplementary-link-repair-v1', toVersion: '0.7.0', status }];
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.6.2' });
+    supplementaryLinks(null);
+
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
+    expect(db.upgradePlan.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: stored.id }, data: expect.objectContaining({ status: 'superseded' }),
+    }));
+    expect(db.upgradeTask.create).toHaveBeenCalledTimes(1);
+    expect(db.upgradeTask.create).toHaveBeenCalledWith({ data: expect.objectContaining({ key: 'supplementary-link-repair-v2' }) });
+    expect(db.upgradeTaskItem.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('旧计划未决定但关联已经正确时，接替旧计划且不再弹修复项', async () => {
+    const stored = storedPlan();
+    stored.toVersion = '0.7.0';
+    stored.tasks = [{ ...stored.tasks[0], key: 'supplementary-link-repair-v1', toVersion: '0.7.0' }];
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.6.2' });
+    supplementaryLinks(446);
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
+    expect(db.upgradeTask.create).not.toHaveBeenCalled();
+    expect(db.upgradePlan.create).not.toHaveBeenCalled();
+  });
+
+  it('旧计划被接替后拒绝浏览器残留的旧执行请求', async () => {
+    db.upgradeTask.findUnique.mockResolvedValue({
+      key: 'supplementary-link-repair-v1', plan: { status: 'superseded' },
+    });
+    await expect(approveUpgradeTask('supplementary-link-repair-v1')).rejects.toThrow('更新计划已被新版本接替');
+    expect(db.upgradeTask.update).not.toHaveBeenCalled();
+  });
+
+  it('重建计划时保留其他迁移已经确认的决定', async () => {
+    const stored = storedPlan();
+    stored.toVersion = '0.7.0';
+    const approved = { ...stored.tasks[0], status: 'approved' };
+    stored.tasks = [approved, { ...stored.tasks[1], key: 'supplementary-link-repair-v1', toVersion: '0.7.0' }];
+    db.upgradePlan.findFirst.mockResolvedValue(stored);
+    db.upgradePlan.create.mockResolvedValueOnce({ id: 18 });
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
+    db.mailLog.findMany.mockResolvedValue([{ accountId: 1, uid: 10, parserId: 'icbc2026' }]);
+    db.upgradeTask.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => (
+      where.key === approved.key ? approved : null
+    ));
+    supplementaryLinks(null);
+
+    await initializeUpgradeState(true);
+
+    const carried = db.upgradeTask.update.mock.calls.find(([args]) => args.where.id === approved.id);
+    expect(carried?.[0].data).toEqual(expect.objectContaining({ key: approved.key, planId: 18 }));
+    expect(carried?.[0].data).not.toHaveProperty('status');
+    expect(carried?.[0].data).not.toHaveProperty('approvedAt');
+  });
 
   it('已保存计划读取最新展示文案，保留旧快照和任务状态且不写库', async () => {
     const stored = storedPlan();

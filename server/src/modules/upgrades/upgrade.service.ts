@@ -327,6 +327,18 @@ export async function initializeUpgradeState(installed: boolean): Promise<Upgrad
   await ignoreTasksPastCursor(cursor);
 
   let existingPlan = await activePlan();
+  // 新补救项接替旧迁移时重建计划；旧任务及明细保留，其他任务复用原决定和进度。
+  if (existingPlan && compareVersions(existingPlan.toVersion, APP_VERSION) < 0) {
+    const oldKeys = new Set(existingPlan.tasks.map((task) => task.key));
+    const replaced = applicableMigrations(cursor, APP_VERSION)
+      .some((migration) => migration.supersedes?.some((key) => oldKeys.has(key)));
+    if (replaced) {
+      await prisma.upgradePlan.update({
+        where: { id: existingPlan.id }, data: { status: 'superseded', error: null, finishedAt: new Date() },
+      });
+      existingPlan = null;
+    }
+  }
   if (existingPlan) {
     existingPlan = await reconcilePlanModes(existingPlan);
     const taskStates = existingPlan.tasks.map((task) => task.status);
@@ -492,6 +504,7 @@ export async function submitUpgradeDecisions(
 async function requireActionableTask(key: string) {
   const task = await prisma.upgradeTask.findUnique({ where: { key }, include: { plan: true } });
   if (!task || !task.plan) throw new ApiError(404, '迁移任务不存在');
+  if (task.plan.status === 'superseded') throw new ApiError(409, '更新计划已被新版本接替，请刷新后重试');
   const cursor = await prisma.appSetting.findUnique({ where: { key: INSTALLED_VERSION_KEY } });
   if (cursor && compareVersions(cursor.value, task.toVersion) >= 0) {
     throw new ApiError(409, '版本游标已越过该迁移，不能再执行');
