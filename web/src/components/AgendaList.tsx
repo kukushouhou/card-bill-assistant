@@ -17,6 +17,7 @@ import MarkPaidModal, { type MarkPaidTarget } from './MarkPaidModal';
 import MarkAbnormalModal, { type MarkAbnormalTarget } from './MarkAbnormalModal';
 import BusinessFlow from './BusinessFlow';
 import AmountSummary from './AmountSummary';
+import BillAnnualFeeTag from './BillAnnualFeeTag';
 import './agenda.css';
 
 const kinds = { credit_bill: '信用卡账单', fixed_bill: '固定账单', dynamic_bill: '动态账单', general: '常规提醒', statement: '出账提醒', fee: '年费提醒', repayment: '还款提醒' };
@@ -130,7 +131,7 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
     {isMobile ? <div className="agenda-mobile-list">{items.map(item => <article key={item.key} data-row-key={item.key} className={'agenda-mobile-row ' + dueClass(item)} data-skin-slot="list-row">
       <button type="button" className="agenda-row-body" disabled={!canOpen(item)} onClick={() => openDetails(item)} aria-label={canOpen(item) ? detailLabel(item) : undefined}>
         <div className="agenda-mobile-top"><Identity item={item} /><span className="agenda-mobile-period">{displayPeriod(item.period)}{canOpen(item) && <RightOutlined aria-hidden="true" />}</span></div>
-        <div className="agenda-mobile-main"><BillAmount item={item} /><div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} /><Status item={item} /></div></div>
+        <div className="agenda-mobile-main"><div className="agenda-mobile-amount"><BillAmount item={item} />{item.bill && <BillAnnualFeeTag amount={item.bill.annualFeeAmount} currency={item.bill.currency} />}</div><div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} /><Status item={item} /></div></div>
         <Dates item={item} /><Notices item={item} />
       </button>
       {(canOpen(item) || item.bill || item.action === 'complete') && <div className="agenda-row-actions">{actions(item)}</div>}
@@ -141,7 +142,7 @@ export function AgendaRows({ items, onChanged }: { items: AgendaItem[]; onChange
       } },
       { title: '账期', key: 'period', width: 100, onCell: navigationCell, render: (_, item) => <span className="agenda-period">{canOpen(item) ? <button type="button" className="agenda-cell-link agenda-period-link" onClick={() => openDetails(item)}>{displayPeriod(item.period)}</button> : <span>{displayPeriod(item.period)}</span>}</span> },
       { title: '日期', key: 'date', width: 150, render: (_, item) => <><DesktopDates item={item} />{compactDesktop && item.bill?.minAmount != null && <span className="agenda-compact-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</> },
-      { title: compactDesktop ? '金额 / 状态' : '金额', key: 'amount', width: 135, align: 'right', render: (_, item) => <div className="agenda-money-cell"><BillAmount item={item} />{compactDesktop && <div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} />{(!dueNotices.get(item.key) || item.bill?.paidStatus === 'partial') && <Status item={item} />}</div>}{!compactDesktop && item.bill?.minAmount != null && <span className="agenda-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</div> },
+      { title: compactDesktop ? '金额 / 状态' : '金额', key: 'amount', width: 135, align: 'right', render: (_, item) => <div className="agenda-money-cell"><BillAmount item={item} />{item.bill && <BillAnnualFeeTag amount={item.bill.annualFeeAmount} currency={item.bill.currency} />}{compactDesktop && <div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} />{(!dueNotices.get(item.key) || item.bill?.paidStatus === 'partial') && <Status item={item} />}</div>}{!compactDesktop && item.bill?.minAmount != null && <span className="agenda-minimum">最低还款 {formatMoney(item.bill.minAmount, item.bill.currency)}</span>}</div> },
       ...(!compactDesktop ? [{ title: '状态', key: 'status', width: 125, render: (_: unknown, item: AgendaItem) => <div className="agenda-status-cell"><DueNotice notice={dueNotices.get(item.key) ?? null} /><Status item={item} /></div> }] : []),
       { title: '操作', key: 'actions', width: 180, fixed: 'right', render: (_, item) => actions(item) },
     ]} />}

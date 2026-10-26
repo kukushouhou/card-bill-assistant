@@ -99,6 +99,7 @@ router.get(
         cardLast4: contextBill.card.displayLast4 || contextBill.card.cardLast4,
         bankName: contextBill.card.bankName, period: contextBill.period,
         currency: contextBill.currency, ...payment,
+        annualFeeAmount: contextBill.annualFeeAmount == null ? null : Number(contextBill.annualFeeAmount),
         remainingAmount: payment.amount == null ? null : remainingOf(payment),
         daysOverdue: isOverdue(payment, now, overdueBasis) ? daysBetween(payment.dueDate, now) : null,
         statementDate: contextBill.statementDate, paidAt: contextBill.paidAt,

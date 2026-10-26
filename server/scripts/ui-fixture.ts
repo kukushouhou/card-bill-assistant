@@ -90,7 +90,31 @@ const app = express(); app.use(express.json()); app.use(cookieParser());
 let authed = true; let installed = true; let upgrade: any = null; let failNext: string | null = null;
 const signed = jwt.sign({ sub: '1', username: 'admin' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 app.use((req, res, next) => { if (authed) req.cookies.drc_token = signed; if (failNext && req.path === failNext) { failNext = null; res.status(503).json({ error: '请求暂时失败，请重试' }); } else next(); });
-app.post('/__fixture', (req, res) => { if (req.body.reset) { bills = structuredClone(initialData.bills); transactions = structuredClone(initialData.transactions); occurrences = structuredClone(initialData.occurrences); reminders = structuredClone(initialData.reminders); cardRows.splice(0, cardRows.length, ...structuredClone(initialData.cards)); accounts = structuredClone(initialData.accounts); history = structuredClone(initialData.history); channels = []; channelSequence = 0; notificationSends = []; } if ('authed' in req.body) authed = req.body.authed; if ('installed' in req.body) installed = req.body.installed; if ('upgrade' in req.body) upgrade = req.body.upgrade; if ('failNext' in req.body) failNext = req.body.failNext; res.json({ ok: true }); });
+app.post('/__fixture', (req, res) => {
+  if (req.body.reset) { bills = structuredClone(initialData.bills); transactions = structuredClone(initialData.transactions); occurrences = structuredClone(initialData.occurrences); reminders = structuredClone(initialData.reminders); cardRows.splice(0, cardRows.length, ...structuredClone(initialData.cards)); accounts = structuredClone(initialData.accounts); history = structuredClone(initialData.history); channels = []; channelSequence = 0; notificationSends = []; }
+  // 年费回归样本按需启用，保持其他页面验收的默认数据不变。
+  if (req.body.annualFees) {
+    for (const [id, amount] of [[101, 0], [102, 20], [103, 12.6], [104, 200]]) {
+      bills.find(bill => bill.id === id).annualFeeAmount = amount;
+    }
+    const source = transactions.find(row => row.billId === 104)!;
+    transactions = transactions.filter(row => row.billId !== 104);
+    transactions.push(...[
+      { description: '信用卡年费', amount: 200 },
+      { description: '年费退还', amount: -200 },
+      { description: '年费返还', amount: 200 },
+      { description: '年费冲正', amount: 200 },
+      { description: '年费减免', amount: 200 },
+      { description: '年费', amount: 0 },
+      { description: '日常消费', amount: 1080 },
+    ].map((row, index) => ({ ...source, ...row, id: 1040 + index, sequence: index + 1 })));
+  }
+  if ('authed' in req.body) authed = req.body.authed;
+  if ('installed' in req.body) installed = req.body.installed;
+  if ('upgrade' in req.body) upgrade = req.body.upgrade;
+  if ('failNext' in req.body) failNext = req.body.failNext;
+  res.json({ ok: true });
+});
 app.get('/api/app', async (_req, res) => res.json({ name: '守候信用卡小管家', version: APP_VERSION, skin: await activeSkin() }));
 app.get('/api/upgrades/latest-result', (_req, res) => res.json(null));
 app.get('/api/setup/status', (_req, res) => res.json({ installed, dbOk: true, installedAt: installed ? '2026-01-01' : null, notificationProviders: listNotificationProviderDefinitions() }));

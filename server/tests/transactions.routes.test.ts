@@ -28,7 +28,7 @@ describe('统一账单明细来源', () => {
     prisma.billTransaction.findMany.mockResolvedValue([]);
     prisma.appSetting.findUnique.mockResolvedValue(null);
     prisma.bill.findUnique.mockResolvedValue({ id: 11, period: '2026-08', currency: 'CNY', amount: 43.4,
-      paidStatus: 'unpaid', paidAmount: null, minAmount: 4.34, paidAt: null, dueDate: fromYmd('2026-09-08'), statementDate: fromYmd('2026-08-10'),
+      paidStatus: 'unpaid', paidAmount: null, minAmount: 4.34, annualFeeAmount: null, paidAt: null, dueDate: fromYmd('2026-09-08'), statementDate: fromYmd('2026-08-10'),
       card: { id: 1, bankName: '交通银行', cardLast4: '0988', displayLast4: '0988' },
       cards: [{ card: { id: 2, cardLast4: '2233', displayLast4: '2233' } }],
     });
@@ -37,9 +37,18 @@ describe('统一账单明细来源', () => {
     await withServer('/api/transactions', transactionsRouter, async url => {
       const response = await fetch(url + '/api/transactions?billId=11');
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, cardId: 1, cardLast4: '0988', mode: 'bill', amount: 43.4, remainingAmount: 43.4, paidStatus: 'unpaid', minAmount: 4.34, dueDate: '2026-09-07T16:00:00.000Z', cards: [{ id: 1 }, { id: 2 }] } });
+      expect(await response.json()).toMatchObject({ total: 0, items: [], context: { billId: 11, cardId: 1, cardLast4: '0988', mode: 'bill', amount: 43.4, remainingAmount: 43.4, paidStatus: 'unpaid', minAmount: 4.34, annualFeeAmount: null, dueDate: '2026-09-07T16:00:00.000Z', cards: [{ id: 1 }, { id: 2 }] } });
     });
     expect(prisma.billTransaction.count).toHaveBeenCalledWith({ where: { AND: [{ OR: [{ billId: 11 }] }, sharedActive] } });
+  });
+  it.each(['unpaid', 'partial', 'paid'])('年费金额取账单事实，不受 %s 状态或当前页无交易影响', async paidStatus => {
+    const source = await prisma.bill.findUnique();
+    prisma.bill.findUnique.mockResolvedValue({ ...source, paidStatus, currency: 'USD', annualFeeAmount: '20.50' });
+    await withServer('/api/transactions', transactionsRouter, async url => {
+      const response = await fetch(url + '/api/transactions?billId=11&page=2&pageSize=1');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ items: [], context: { annualFeeAmount: 20.5, currency: 'USD', paidStatus } });
+    });
   });
   it('历史只限定来源账单关联卡，账期筛选使用所属账单而非交易日期', async () => {
     await withServer('/api/transactions', transactionsRouter, async url => {

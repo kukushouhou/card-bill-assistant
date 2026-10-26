@@ -4,6 +4,7 @@ import { billDueNotice } from '../lib/billDue';
 import { paymentStatusOf } from '../lib/billPayment';
 import { displayDate } from '../lib/displayDate';
 import { formatMoney } from '../lib/money';
+import BillAnnualFeeTag from './BillAnnualFeeTag';
 
 /** 本账单概况取自账单事实，不将当前页交易相加冒充应还金额。 */
 export default function TransactionBillSummary({ bill }: { bill: TransactionContext }) {
@@ -16,6 +17,7 @@ export default function TransactionBillSummary({ bill }: { bill: TransactionCont
     <div className={isPartial ? 'transaction-bill-total is-remaining' : 'transaction-bill-total'}>
       <span>{isPartial ? '剩余待还' : '本期应还总额'}</span>
       <strong className="agenda-amount">{heroAmount == null ? '金额待填写' : formatMoney(heroAmount, bill.currency)}</strong>
+      {bill.annualFeeAmount != null && bill.annualFeeAmount > 0 && <div><BillAnnualFeeTag amount={bill.annualFeeAmount} currency={bill.currency} /></div>}
     </div>
     <dl className="transaction-bill-facts">
       <div className="transaction-bill-status"><dt>还款状态</dt><dd><Tag color={status.color}>{status.label}</Tag>{due && due.tone !== 'overdue' && <span className={'transaction-due transaction-due-' + due.tone}>{due.label}</span>}</dd></div>

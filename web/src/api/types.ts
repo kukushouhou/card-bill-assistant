@@ -496,6 +496,7 @@ export interface TransactionContext {
   amount: number | null;
   remainingAmount: number | null;
   minAmount: number | null;
+  annualFeeAmount: number | null;
   paidAmount: number | null;
   paidStatus: 'paid' | 'partial' | 'unpaid';
   paidAt: string | null;

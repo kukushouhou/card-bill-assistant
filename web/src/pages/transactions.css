@@ -44,6 +44,11 @@
   gap: 8px;
 }
 
+.transaction-mobile-card.annual-fee-row {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+
 .transaction-mobile-heading,
 .transaction-mobile-meta {
   display: flex;

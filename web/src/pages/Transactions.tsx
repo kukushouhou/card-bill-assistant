@@ -30,6 +30,15 @@ function transactionDirection(amount: number) {
   return <Tag>无金额</Tag>;
 }
 
+/** 沿用原明细的识别规则：只标记实际收取，排除退还、冲正和减免。 */
+function isAnnualFeeTransaction(row: TransactionRow): boolean {
+  return row.amount > 0 && /年费/.test(row.description) && !/退|返|冲|免|减/.test(row.description);
+}
+
+function transactionDescription(row: TransactionRow) {
+  return <>{row.statementShared && <Tag>账户共享明细</Tag>}{isAnnualFeeTransaction(row) && <Tag color="red">年费</Tag>}{row.description}</>;
+}
+
 function hasUsefulOriginalAmount(row: TransactionRow): boolean {
   if (row.originalAmount == null || !row.originalCurrency) return false;
   return row.originalCurrency.toUpperCase() !== row.currency.toUpperCase()
@@ -296,12 +305,12 @@ export function TransactionsContent({ params, onParamsChange, sourceCardId, onPa
       {(!error || resource.data) && (isMobile ? (
         <div className="transaction-mobile-list">
           {loading && data.items.length === 0 ? <Spin /> : data.items.length === 0 ? <Empty description={noRecords} /> : data.items.map((row) => (
-            <Card key={row.id} size="small" className="transaction-mobile-card">
+            <Card key={row.id} size="small" className={'transaction-mobile-card' + (isAnnualFeeTransaction(row) ? ' annual-fee-row' : '')}>
               <div className="transaction-mobile-heading">
                 <strong>{row.bankName}（{row.cardLast4 ?? '----'}）</strong>
                 <Tag color={row.unbilled ? 'gold' : undefined}>{row.unbilled ? row.period : displayPeriod(row.period)}</Tag>
               </div>
-              <Typography.Paragraph className="transaction-description">{row.statementShared && <Tag>账户共享明细</Tag>}{row.description}</Typography.Paragraph>
+              <Typography.Paragraph className="transaction-description">{transactionDescription(row)}</Typography.Paragraph>
               <div className="transaction-mobile-meta">
                 <div className="transaction-mobile-date"><span>交易日</span><span>{transactionDate(row)}</span></div>
                 <div className="transaction-mobile-direction-amount">
@@ -325,6 +334,7 @@ export function TransactionsContent({ params, onParamsChange, sourceCardId, onPa
           tableLayout="fixed"
           scroll={{ x: 850 }}
           rowKey="id"
+          rowClassName={row => isAnnualFeeTransaction(row) ? 'annual-fee-row' : ''}
           loading={loading}
           dataSource={data.items}
           locale={{ emptyText: <Empty description={noRecords} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
@@ -333,7 +343,7 @@ export function TransactionsContent({ params, onParamsChange, sourceCardId, onPa
             { title: '交易日', width: 130, render: (_, row) => transactionDate(row) },
             { title: '银行 / 卡尾', width: 170, render: (_, row) => `${row.bankName}（${row.cardLast4 ?? '----'}）` },
             { title: '方向', width: 70, align: 'center', render: (_, row) => transactionDirection(row.amount) },
-            { title: '交易描述', dataIndex: 'description', render: (value, row) => <>{row.statementShared && <Tag>账户共享明细</Tag>}{value}</> },
+            { title: '交易描述', dataIndex: 'description', render: (_, row) => transactionDescription(row) },
             {
               title: '账期',
               dataIndex: 'period',

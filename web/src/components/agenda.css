@@ -63,6 +63,7 @@
 .agenda-mobile-period { display: inline-flex; align-items: center; gap: 8px; }
 .agenda-mobile-period .anticon { color: var(--primary); font-size: 12px; }
 .agenda-mobile-main { align-items: center; flex-wrap: wrap; }
+.agenda-mobile-amount { display: grid; justify-items: start; gap: 6px; min-width: 0; }
 .agenda-mobile-main .agenda-status-cell { margin-left: auto; justify-items: end; }
 .agenda-status-cell { display: grid; justify-items: start; gap: 5px; }
 .agenda-status-cell .ant-tag { margin: 0; }
