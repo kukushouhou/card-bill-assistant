@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { latestStatementRepairResult } from '../src/modules/upgrades/migrations/repair-statements-050';
+import { latestStatementRepairResult } from '../src/modules/upgrades/statement-repair-result';
 
 const db = vi.hoisted(() => ({
   upgradePlan: { findFirst: vi.fn() },
@@ -62,5 +62,16 @@ describe('最近一次升级计划的修复结果', () => {
     expect(result?.incomplete[0]).toMatchObject({ bankName: '中信银行', billCount: 1 });
     expect(result?.banks).toEqual([{ bankName: '光大银行', billCount: 45, mailCount: 40 }]);
     expect(result?.version).toBe('0.5.0');
+  });
+  it.each(['ignored', 'failed'])('本轮工行 %s 不退回同计划旧0.5结果', async status => {
+    db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), repairTask({ key: 'icbc-foreign-amount-repair-080-v1', status })] });
+    expect(await latestStatementRepairResult()).toBeNull();
+  });
+  it('本轮工行完成聚合金额、恢复、状态保留与原文跳过，旧任务不混入', async () => {
+    db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), repairTask({ key: 'icbc-foreign-amount-repair-080-v1', toVersion: '0.8.0',
+      items: [{ payload: { bankName: '工商银行', billIds: [1], result: { correctedBills: 1, restoredRepayments: 0, uncertainRepayments: 1 } } },
+        { payload: { bankName: '工商银行', billIds: [2], incompleteReason: '原文缺失', result: { unavailableMails: 1 } } }] })] });
+    expect(await latestStatementRepairResult()).toMatchObject({ kind: 'icbc-foreign', version: '0.8.0', counts: {
+      correctedBills: 1, restoredRepayments: 0, uncertainRepayments: 1, unavailableMails: 1, addedTransactions: 0 } });
   });
 });

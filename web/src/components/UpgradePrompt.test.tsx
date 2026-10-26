@@ -166,6 +166,29 @@ describe('整批确认升级选择', () => {
     expect(await screen.findByText('修正账单 2 笔')).toBeTruthy();
     expect(screen.getByText('补建账单 1 笔')).toBeTruthy();
   });
+  it('工行范围按全部历史候选展示，忽略后果按选择展开，完成广播刷新', async () => {
+    const current = plan([task('icbc-foreign-amount-repair-080-v1', '修正工行外币账单')]);
+    current.toVersion = '0.8.0';
+    current.migrations[0].summary = '全部历史需复核：工商银行 25 笔外币账单／25 封邮件。\n近一个月候选恢复待还：1 笔（按 2026-10-26 执行，还款日从 2026-09-26 起）。\n以上是候选数量，实际修正和恢复以原文复核结果为准。';
+    current.tasks[0].ignoreWarning = '忽略后，尚未修正的历史外币金额会继续影响统计，近期错误的已还状态也会保留；后续新邮件按修复后的规则处理。系统将不再提供本次迁移服务。';
+    apiMocks.get.mockResolvedValueOnce(current).mockResolvedValue({ kind: 'icbc-foreign', version: '0.8.0', counts: {
+      correctedBills: 12, addedBills: 0, addedTransactions: 0, correctedTransactions: 0, removedTransactions: 0,
+      restoredRepayments: 1, fallbackMinimumBills: 0, unavailableMails: 0, uncertainRepayments: 2 }, incomplete: [] });
+    apiMocks.post.mockResolvedValue(null);
+    const changed = vi.fn(); window.addEventListener('app:data-changed', changed);
+    const user = userEvent.setup(); render(<App><UpgradePrompt /></App>);
+    await screen.findByText('修正工行外币账单');
+    expect(screen.getByText(/全部历史需复核：工商银行 25 笔.*近一个月候选恢复待还：1 笔.*2026-09-26/)).toBeTruthy();
+    await user.click(within(screen.getByRole('radiogroup', { name: '修正工行外币账单' })).getByText('忽略'));
+    expect(screen.getByRole('alert').textContent).toBe(current.tasks[0].ignoreWarning);
+    await user.click(within(screen.getByRole('radiogroup', { name: '修正工行外币账单' })).getByText('执行'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '确认并继续' }));
+    expect(await screen.findByText('修正账单 12 笔')).toBeTruthy();
+    expect(screen.getByText('2 笔账单金额已修正，还款状态未变')).toBeTruthy();
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener('app:data-changed', changed);
+  });
 
   function mailboxFailurePlan() {
     const current = plan([{ ...task('repair', '修复历史账单'), status: 'failed', failed: 2, succeeded: 4 }]);

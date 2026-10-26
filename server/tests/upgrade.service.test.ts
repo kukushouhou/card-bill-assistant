@@ -163,7 +163,7 @@ describe('版本升级协调器', () => {
 
   it('主副卡入场条件成立时创建可选任务且不推进游标', async () => {
     db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
-    db.mailLog.findMany.mockResolvedValue([{ accountId: 1, uid: 10, parserId: 'icbc2026' }]);
+    db.mailLog.findMany.mockResolvedValue([{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }]);
     db.upgradeTask.create.mockResolvedValue({ id: 9 });
 
     const result = await initializeUpgradeState(true);
@@ -231,7 +231,7 @@ describe('版本升级协调器', () => {
     expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
     expect(db.upgradePlan.create).not.toHaveBeenCalled();
     expect(db.upgradeTask.create).not.toHaveBeenCalled();
-    expect(db.appSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { value: '0.7.1' } }));
+    expect(db.appSetting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { value: APP_VERSION } }));
   });
 
   it.each([null, 444])('0.7.0 用户关联为 %s 时只创建 0.7.1 可选修复项', async (primaryId) => {
@@ -291,7 +291,7 @@ describe('版本升级协调器', () => {
     db.upgradePlan.findFirst.mockResolvedValue(stored);
     db.upgradePlan.create.mockResolvedValueOnce({ id: 18 });
     db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
-    db.mailLog.findMany.mockResolvedValue([{ accountId: 1, uid: 10, parserId: 'icbc2026' }]);
+    db.mailLog.findMany.mockResolvedValue([{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }]);
     db.upgradeTask.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => (
       where.key === approved.key ? approved : null
     ));
@@ -330,9 +330,24 @@ describe('版本升级协调器', () => {
     expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
     expect(repairStatements050Migration.targetVersion).toBe('0.5.0');
     expect(repairStatements050Migration.mode).toBe('optional');
-    expect(db.mailLog.findMany).not.toHaveBeenCalled();
+    // 0.8 独立工行迁移仍须盘点，已越过的 0.5 修复不再盘点。
+    expect(db.mailLog.findMany).toHaveBeenCalledTimes(1);
+    expect(db.mailLog.findMany.mock.calls[0][0].where.parserId).toBe('icbc2026');
     expect(db.upgradePlan.create).not.toHaveBeenCalled();
     expect(db.upgradeTask.create).not.toHaveBeenCalled();
+  });
+
+  it('0.7.0 用户通过正常预检进入0.8工行可选任务，等待不阻碍业务且不提前推进游标', async () => {
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.7.0' });
+    db.mailLog.findMany.mockResolvedValue([{ id: 10, accountId: 1, uid: 20,
+      bills: [{ id: 1, cardId: 7, period: '2026-09', currency: 'USD', dueDate: new Date('2026-10-25T00:00:00+08:00') }] }]);
+    db.upgradeTask.create.mockResolvedValue({ id: 9 });
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
+    expect(isUpgradeBusinessBlocked()).toBe(false);
+    expect(db.upgradeTask.create).toHaveBeenCalledTimes(1);
+    expect(db.upgradeTask.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      key: 'icbc-foreign-amount-repair-080-v1', toVersion: '0.8.0', mode: 'optional', status: 'awaiting_decision' }) });
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
   });
 
   it('notice 迁移入盘时创建不阻碍业务的提醒任务', async () => {

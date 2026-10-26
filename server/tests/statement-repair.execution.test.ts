@@ -87,4 +87,25 @@ describe('0.5 迁移执行的局部失败与邮箱失败边界', () => {
     await expect(execute()).rejects.toBe(error);
     expect(items.some(item => item.payload.failureKind === 'mailbox_unavailable')).toBe(false);
   });
+  it('复用执行器仍保留0.5连接重试与事务超时，关闭失败也释放账户锁', async () => {
+    vi.useFakeTimers();
+    try {
+      reader.open.mockRejectedValueOnce(new MailboxUnavailableError());
+      reader.close.mockRejectedValue(new Error('关闭失败'));
+      const running = execute();
+      await vi.runAllTimersAsync();
+      expect(await running).toMatchObject({ succeeded: 3, failed: 0 });
+      expect(reader.open).toHaveBeenCalledTimes(3);
+      expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 60_000 });
+      expect(reader.release).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it('邮箱失败状态只更新未完成项，不抹掉同邮箱已完成结果', async () => {
+    items[0]!.status = 'succeeded';
+    items[0]!.payload.result = { correctedBills: 4 };
+    reader.open.mockRejectedValue(new ApiError(404, '邮箱账户不存在'));
+    expect(await execute()).toMatchObject({ succeeded: 1, unchanged: 2, failed: 0 });
+    expect(items[0]!.payload.result).toEqual({ correctedBills: 4 });
+    expect(reader.release).toHaveBeenCalledTimes(2);
+  });
 });

@@ -150,7 +150,7 @@ export default function UpgradePrompt() {
               <div className="upgrade-item-scope">
                 {migration.mode === 'optional' && <span className="upgrade-optional">可选更新</span>}
                 {migration.mode === 'notice' && <span className="upgrade-optional">新选项</span>}
-                {migration.summary && <span>{migration.summary}</span>}
+                {migration.summary && <span style={{ whiteSpace: 'pre-line' }}>{migration.summary}</span>}
               </div>
               {actionable && task.mode === 'notice' && (
                 <div className="upgrade-item-notice-option">

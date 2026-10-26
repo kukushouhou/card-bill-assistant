@@ -1,6 +1,33 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
 import { buildBill, cardTailLine, dateLine, flattenHtml, mailText, mergeAccountBillsByCurrency, normalizeCurrency, parseAmount, parseDate, pick, pickHolder } from '../_util';
 
+/** 只读取连续的还款行；卡尾承接在下一张卡、合计或其他区块前终止。 */
+export function icbcRepaymentRows(text: string) {
+  const heading = /需\s*还\s*款\s*明\s*细\s*(?:\n|（|\()/g;
+  const start = heading.exec(text);
+  let section = start ? text.slice(start.index + start[0].length) : text;
+  section = section.split(/合\s*计|本\s*期\s*交\s*易\s*汇\s*总|交\s*易\s*明\s*细/)[0]!;
+  const rows: Array<{ cardLast4: string; currency: string; amount: number; minAmount: number; continued: boolean }> = [];
+  const card = /(\d{4})\([^)]{0,20}\)/g;
+  const amounts = /^\s*[^\d\n/]{1,30}?\s*(-?[\d,]+\.\d{2})\/([A-Z]{3})\s*(-?[\d,]+\.\d{2})\/\2(?:\s*-?[\d,]+\.\d{2}\/\2)?/;
+  for (let match; (match = card.exec(section));) {
+    let cursor = card.lastIndex;
+    let continued = false;
+    for (;;) {
+      const row = amounts.exec(section.slice(cursor));
+      if (!row || /^\s*合\s*计/.test(row[0])) break;
+      const amount = parseAmount(row[1]);
+      const minAmount = parseAmount(row[3]);
+      if (amount == null || minAmount == null) break;
+      rows.push({ cardLast4: match[1]!, amount, minAmount, currency: normalizeCurrency(row[2]), continued });
+      cursor += row[0].length;
+      continued = true;
+    }
+    card.lastIndex = cursor;
+  }
+  return rows;
+}
+
 /**
  * 工商银行信用卡对账单解析器
  * 实测邮件特征（webmaster@icbc.com.cn）：
@@ -29,19 +56,14 @@ export const icbc2026Parser: BankParser = {
     const holderName = pickHolder(text);
     const bills: ParsedBill[] = [];
     // 需还款明细：币种以金额后的三位代码为准，可同时出现多种外币。
-    for (const m of text.matchAll(
-      /(\d{4})\([^)]{0,20}\)\s*[^\n]{1,30}?\s*(-?[\d,]+\.\d{2})\/([A-Z]{3})\s*(-?[\d,]+\.\d{2})\/\3/g,
-    )) {
-      const amount = parseAmount(m[2]);
-      const minAmount = parseAmount(m[4]);
-      if (amount == null) continue;
+    for (const row of icbcRepaymentRows(text)) {
       const bill = buildBill({
         bankName: '工商银行',
-        cardLast4: m[1],
+        cardLast4: row.cardLast4,
         holderName,
-        amount,
-        minAmount,
-        currency: normalizeCurrency(m[3]),
+        amount: row.amount,
+        minAmount: row.minAmount,
+        currency: row.currency,
         statementDate,
         dueDate,
       });

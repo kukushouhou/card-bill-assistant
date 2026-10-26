@@ -22,10 +22,14 @@ const bill = task('preview-bill', '修正本期账单状态', 'optional', {
 const silent: UpgradeMigrationSummary = { key: 'preview-silent', targetVersion: '0.3.2', order: 10, mode: 'silent',
   title: '隐藏重复显示的无卡号卡片', description: '已有对应真实卡时，隐藏无卡号卡片，保留历史账单。',
   total: 2, summary: '平安银行、北京银行 · 共 2 张无卡号卡片' };
+const icbc = task('icbc-foreign-amount-repair-080-v1', '修正工行外币账单', 'optional', { targetVersion: '0.8.0', total: 25,
+  description: '旧版本可能漏读工行账单的外币应还金额和最低还款额，并把零金额账单标为已还。\n金额修正：重新读取现有外币账单对应的全部历史来源邮件，修正受影响账单，纠正统计；不补建已不存在的账单。\n恢复待还与提醒：仅处理从首次执行日往前一个月起、按还款日筛选且符合自动误结清特征的账单。更早历史账单只修金额，保留还款状态。',
+  ignoreWarning: '忽略后，尚未修正的历史外币金额会继续影响统计，近期错误的已还状态也会保留；后续新邮件按修复后的规则处理。系统将不再提供本次迁移服务。' });
 const summaries: Record<string, string> = {
   'preview-required': '工商银行、平安银行 · 共 8 条还款记录',
   'preview-mail': '工商银行、平安银行 · 共 26 封已识别的历史账单邮件',
   'preview-bill': '平安银行、招商银行 · 共 3 张卡的本期账单',
+  [icbc.key]: '全部历史需复核：工商银行 25 笔外币账单／25 封邮件。\n近一个月候选恢复待还：1 笔（按 2026-10-26 执行，还款日从 2026-09-26 起）。\n以上是候选数量，实际修正和恢复以原文复核结果为准。',
 };
 function makePlan(tasks: UpgradeTask[], options: { status?: UpgradePlan['status']; silent?: boolean } = {}): UpgradePlan {
   const hasRequired = tasks.some(item => item.mode === 'required');
@@ -38,6 +42,8 @@ function makePlan(tasks: UpgradeTask[], options: { status?: UpgradePlan['status'
     error: status === 'failed' ? tasks.find(item => item.error)?.error ?? null : null };
 }
 const scenarios = [
+  { id: 'icbc', title: '工行全历史金额与近月恢复', plan: { ...makePlan([icbc]), fromVersion: '0.7.0', toVersion: '0.8.0' } },
+  { id: 'icbc-ignore', title: '工行忽略后果', plan: { ...makePlan([icbc]), fromVersion: '0.7.0', toVersion: '0.8.0' }, ignore: icbc.key },
   { id: 'optional', title: '可选更新', plan: makePlan([mail, bill]) },
   { id: 'ignore', title: '忽略后果', plan: makePlan([mail, bill]), ignore: mail.key },
   { id: 'ignore-bill', title: '忽略本期修正', plan: makePlan([mail, bill]), ignore: bill.key },
@@ -118,5 +124,49 @@ for (const device of ['desktop', 'mobile'] as const) for (const scenario of scen
         .filter(item => ['awaiting_decision', 'failed'].includes(item.status))
         .map(item => ({ key: item.key, action: item.key === scenario.ignore ? 'ignore' : 'approve' })) }]);
     }
+  });
+}
+
+for (const device of ['desktop', 'mobile'] as const) for (const state of ['normal', 'unavailable', 'uncertain', 'preserved'] as const) {
+  test(`工行真实结果组件 ${state} / ${device}`, async ({ page, request }, testInfo) => {
+    await page.setViewportSize({ width: device === 'mobile' ? 390 : 1440, height: device === 'mobile' ? 844 : 1000 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await request.post('/__fixture', { data: { reset: true } });
+    let current: UpgradePlan | null = { ...makePlan([icbc]), fromVersion: '0.7.0', toVersion: '0.8.0' };
+    await page.route('**/api/upgrades', route => route.fulfill({ json: current }));
+    await page.route('**/api/upgrades/decisions', route => { current = null; return route.fulfill({ json: null }); });
+    await page.route('**/api/upgrades/latest-result', route => route.fulfill({ json: { kind: 'icbc-foreign', version: '0.8.0',
+      finishedAt: '2026-10-26', lowerBound: '2026-09-26', banks: [{ bankName: '工商银行', billCount: 25, mailCount: 25 }],
+      counts: { correctedBills: 12, addedBills: 0, addedTransactions: 0, correctedTransactions: 0, removedTransactions: 0,
+        restoredRepayments: 1, fallbackMinimumBills: 0, unavailableMails: state === 'preserved' ? 12 : state === 'unavailable' ? 2 : 0,
+        uncertainRepayments: state === 'uncertain' ? 3 : 0 }, incomplete: state === 'preserved'
+          ? Array.from({ length: 12 }, () => ({ bankName: '工商银行', billCount: 1, reason: '原文不能唯一对应现有外币账单，保留原状' }))
+          : state === 'unavailable' ? [{ bankName: '工商银行', billCount: 2, reason: '原文缺失' }] : [] } }));
+    await page.goto('/bills');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.upgrade-item-scope')).toContainText('全部历史需复核：工商银行 25 笔');
+    await expect(dialog.locator('.upgrade-item-scope')).toContainText('近一个月候选恢复待还：1 笔');
+    await expect(dialog.locator('.upgrade-item-scope')).toContainText('2026-09-26');
+    await expect(dialog.getByRole('radio', { name: '执行' })).toBeChecked();
+    await dialog.getByRole('button', { name: '确认并继续' }).click();
+    const result = page.getByRole('dialog', { name: '系统升级结果' });
+    await expect(result.getByText('修正账单 12 笔')).toBeVisible();
+    await expect(result.getByText('恢复待还 1 笔')).toBeVisible();
+    if (state === 'unavailable') await expect(result.getByText('2 封邮件的账单未修正')).toBeVisible();
+    if (state === 'uncertain') await expect(result.getByText('3 笔账单金额已修正，还款状态未变')).toBeVisible();
+    if (state === 'preserved') {
+      await expect(result.getByText('12 封邮件的账单未修正')).toBeVisible();
+      await expect(result.getByRole('alert')).toContainText('未修正数量不代表仍有错误账单');
+      await expect(result.getByRole('alert')).not.toContainText('无法完整读取');
+      await expect(result.getByRole('alert')).not.toContainText('零余额');
+    }
+    if (state === 'normal') await expect(result.getByRole('alert')).toHaveCount(0);
+    expect(await result.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+    const filename = `icbc-result-${state}-${device}.png`;
+    await page.screenshot({ path: process.env.UPGRADE_REVIEW_DIR ? path.join(process.env.UPGRADE_REVIEW_DIR, filename) : testInfo.outputPath(filename), animations: 'disabled' });
+    const done = result.getByRole('button', { name: '完成' });
+    const box = (await done.boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(device === 'mobile' ? 844 : 1000);
+    await done.click(); await expect(result).not.toBeVisible();
   });
 }

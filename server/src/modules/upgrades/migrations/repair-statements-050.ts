@@ -3,9 +3,10 @@ import { prisma } from '../../../lib/prisma';
 import { ApiError } from '../../../lib/errors';
 import { MailboxUnavailableError } from '../../email/mail-reader-error';
 import { tryParse, getParserById } from '../../../parsers/registry';
-import { acquireEmailAccountLock, openAccountMailReader, type MailBodyResult } from '../../email/email.service';
+import { openAccountMailReader, type MailBodyResult } from '../../email/email.service';
 import type { VersionMigration } from '../migration.types';
-import { emptyRepairCounts, REPAIR_PARSERS, repairStatementMail, repaymentLowerBound, type RepairCounts } from './statement-repair';
+import { emptyRepairCounts, REPAIR_PARSERS, repairStatementMail, repaymentLowerBound } from './statement-repair';
+import { executeStatementRepairMails } from './statement-repair-execution';
 
 export const STATEMENT_REPAIR_KEY = 'statement-parser-repair-050-v1';
 interface MailItem { mailLogId: number; accountId: number; uid: number; parserId: string; bankName: string; billIds: number[] }
@@ -67,56 +68,31 @@ export const repairStatements050Migration: VersionMigration = {
     const task = await prisma.upgradeTask.findUniqueOrThrow({ where: { id: taskId } });
     const payload = task.payload as unknown as Payload;
     if (!payload.lowerBound) throw new Error('升级任务缺少固定的还款恢复日期');
-    const rows = await prisma.upgradeTaskItem.findMany({ where: { taskId, status: { in: ['pending', 'running', 'failed'] } }, orderBy: { id: 'asc' } });
-    for (const accountId of new Set(rows.map((row) => (row.payload as unknown as MailItem).accountId))) {
-      const own = rows.filter((row) => (row.payload as unknown as MailItem).accountId === accountId);
-      let release: (() => void) | undefined;
-      let reader: Awaited<ReturnType<typeof openAccountMailReader>> | undefined;
+    return executeStatementRepairMails<MailItem>(taskId, async (item, mail, reader) => {
       try {
-        release = acquireEmailAccountLock(accountId);
-        reader = await retryRead(() => openAccountMailReader(accountId));
-        for (const item of own) {
-          const mail = item.payload as unknown as MailItem;
-          try {
-            const body: MailBodyResult = await reader.fetch(mail.uid);
-            const parsed = tryParse({ ...body, date: new Date(body.date), text: body.text ?? undefined,
-              html: body.html ?? undefined, pdfText: body.pdfText ?? undefined, attachText: body.attachText ?? undefined }, mail.parserId);
-            if (!parsed.matched || !parsed.bills.length) throw new Error('原文无法完整解析');
-            await prisma.$transaction(async (tx) => {
-              // 状态与修复写在同一事务，宕机后不会二次翻转金额。
-              const current = await tx.upgradeTaskItem.findUniqueOrThrow({ where: { id: item.id } });
-              if (current.status === 'succeeded' || current.status === 'unchanged') return;
-              const result = await repairStatementMail(tx, { mailLogId: mail.mailLogId, billIds: mail.billIds,
-                parserId: mail.parserId, parsed: parsed.bills, lowerBound: new Date(payload.lowerBound!) });
-              const changed = result.correctedBills + result.addedBills + result.restoredRepayments > 0;
-              await tx.upgradeTaskItem.update({ where: { id: item.id }, data: { status: changed ? 'succeeded' : 'unchanged',
-                processedAt: new Date(), error: null, payload: json({ ...mail, result }) } });
-            }, { timeout: 60_000 });
-          } catch (error) {
-            if (error instanceof MailboxUnavailableError) throw error;
-            // 单封失败直接跳过，尤其不要求用户恢复已删除邮件；原账单和已完成结果保留。
-            await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: { status: 'unchanged', processedAt: new Date(),
-              error: null, payload: json({ ...mail, result: { ...emptyRepairCounts(), unavailableMails: 1 },
-                incompleteReason: '该邮件无法完整修复，已跳过并保留原账单和明细' }) } });
-          }
-          await updateCounts(taskId);
-        }
+        const body: MailBodyResult = await reader.fetch(mail.uid);
+        const parsed = tryParse({ ...body, date: new Date(body.date), text: body.text ?? undefined,
+          html: body.html ?? undefined, pdfText: body.pdfText ?? undefined, attachText: body.attachText ?? undefined }, mail.parserId);
+        if (!parsed.matched || !parsed.bills.length) throw new Error('原文无法完整解析');
+        await prisma.$transaction(async (tx) => {
+          // 状态与修复写在同一事务，宕机后不会二次翻转金额。
+          const current = await tx.upgradeTaskItem.findUniqueOrThrow({ where: { id: item.id } });
+          if (current.status === 'succeeded' || current.status === 'unchanged') return;
+          const result = await repairStatementMail(tx, { mailLogId: mail.mailLogId, billIds: mail.billIds,
+            parserId: mail.parserId, parsed: parsed.bills, lowerBound: new Date(payload.lowerBound!) });
+          const changed = result.correctedBills + result.addedBills + result.restoredRepayments > 0;
+          await tx.upgradeTaskItem.update({ where: { id: item.id }, data: { status: changed ? 'succeeded' : 'unchanged',
+            processedAt: new Date(), error: null, payload: json({ ...mail, result }) } });
+        }, { timeout: 60_000 });
       } catch (error) {
-        const missingAccount = error instanceof ApiError && error.status === 404;
-        // 数据库/锁等基础设施错误不等于邮箱配置错误，不能误引导用户修改授权码。
-        if (!(error instanceof MailboxUnavailableError) && !missingAccount) throw error;
-        // 连接阶段失败或运行中确认断连才需要重新配置；结构化记录对应邮箱，不靠错误文案猜测。
-        const unfinished = await prisma.upgradeTaskItem.findMany({ where: { id: { in: own.map((row) => row.id) }, status: { in: ['pending', 'running', 'failed'] } } });
-        for (const item of unfinished) await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: {
-          status: missingAccount ? 'unchanged' : 'failed', error: missingAccount ? null : '邮箱无法读取，请重新设置邮箱后继续', processedAt: new Date(),
-          payload: json({ ...item.payload as unknown as MailItem, ...(missingAccount
-            ? { result: { ...emptyRepairCounts(), unavailableMails: 1 }, incompleteReason: '邮箱已解绑，已跳过并保留原账单和明细' }
-            : { failureKind: 'mailbox_unavailable' }) }),
-        } });
-      } finally { await reader?.close().catch(() => undefined); release?.(); }
-    }
-    const counts = await updateCounts(taskId);
-    return { ...counts, error: counts.failed ? '邮箱无法读取，请重新设置邮箱后继续。已完成的修改已保留。' : undefined };
+        if (error instanceof MailboxUnavailableError) throw error;
+        // 保持0.5既有单封失败处理；公共helper只承担邮箱级生命周期。
+        await prisma.upgradeTaskItem.update({ where: { id: item.id }, data: { status: 'unchanged', processedAt: new Date(),
+          error: null, payload: json({ ...mail, result: { ...emptyRepairCounts(), unavailableMails: 1 },
+            incompleteReason: '该邮件无法完整修复，已跳过并保留原账单和明细' }) } });
+      }
+    }, mail => json({ ...mail, result: { ...emptyRepairCounts(), unavailableMails: 1 },
+      incompleteReason: '邮箱已解绑，已跳过并保留原账单和明细' }), accountId => retryRead(() => openAccountMailReader(accountId)));
   },
 };
 
@@ -127,35 +103,4 @@ async function retryRead<T>(read: () => Promise<T>): Promise<T> {
       await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 1000));
     }
   }
-}
-async function updateCounts(taskId: number) {
-  const groups = await prisma.upgradeTaskItem.groupBy({ by: ['status'], where: { taskId }, _count: true });
-  const get = (status: string) => groups.find((group) => group.status === status)?._count ?? 0;
-  const counts = { succeeded: get('succeeded'), unchanged: get('unchanged'), failed: get('failed') };
-  await prisma.upgradeTask.update({ where: { id: taskId }, data: { ...counts, processed: counts.succeeded + counts.unchanged + counts.failed } });
-  return counts;
-}
-
-/**
- * 最近一次完成的升级计划中，历史账单修复的结果。
- * 结果只属于本次升级：最近完成的计划没有执行该修复（未含、被忽略或未完成）时返回 null，
- * 不得把历史上其他升级的修复结果兜底展示。
- */
-export async function latestStatementRepairResult() {
-  const plan = await prisma.upgradePlan.findFirst({
-    where: { status: 'completed' },
-    orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
-    include: { tasks: { include: { items: true } } },
-  });
-  const task = plan?.tasks.find((item) => item.key === STATEMENT_REPAIR_KEY && item.status === 'completed');
-  if (!task) return null;
-  const counts = emptyRepairCounts();
-  const incomplete: Array<{ bankName: string; billCount: number; reason: string }> = [];
-  for (const item of task.items) {
-    const data = item.payload as unknown as MailItem & { result?: RepairCounts; incompleteReason?: string };
-    if (data.result) for (const key of Object.keys(counts) as Array<keyof RepairCounts>) counts[key] += data.result[key] ?? 0;
-    if (data.incompleteReason) incomplete.push({ bankName: data.bankName, billCount: data.billIds.length, reason: data.incompleteReason });
-  }
-  const payload = task.payload as unknown as Payload;
-  return { version: task.toVersion, finishedAt: task.finishedAt, banks: payload.banks, lowerBound: payload.lowerBound, counts, incomplete };
 }

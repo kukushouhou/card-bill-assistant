@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/errors';
 import { requireAuth } from './middleware';
-import { latestStatementRepairResult } from '../modules/upgrades/migrations/repair-statements-050';
+import { latestStatementRepairResult } from '../modules/upgrades/statement-repair-result';
 import {
   approveUpgradeTask,
   getUpgradePlan,

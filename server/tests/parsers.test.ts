@@ -409,6 +409,35 @@ describe('abc2026Parser.parse（欠款额符号归一）', () => {
 });
 
 describe('icbc2026Parser.parse（账户级多卡、多币种与 HTML 附件）', () => {
+  const icbcMail = (rows: string[]) => ({ from: 'webmaster@icbc.com.cn', subject: '工商银行对账单', date: new Date(),
+    text: ['贷记卡到期还款日 2026年10月25日', '对账单生成日 2026年09月30日', '需 还 款 明 细', ...rows].join('\n') });
+  it('真实样本等价续行不重复卡尾，合计不累计，交易 TRY 原币保持', () => {
+    const result = icbc2026Parser.parse(icbcMail([
+      '7640(牡丹贷记卡)', '人民币(本位币)', '14,651.71/RMB', '2,053.77/RMB', '81,000.00/RMB',
+      '美元', '21.26/USD', '2.13/USD', '11,824.00/USD', '合计', '美元', '21.26/USD', '2.13/USD', '/',
+      '本 期 交 易 汇 总', '人民币 99.00/RMB 9.00/RMB', '交 易 明 细',
+      '1225', '2026-09-01', '2026-09-02', '境外消费', '780.00/TRY', '21.26/USD(支出)',
+    ]));
+    expect(result.find(b => b.currency === 'CNY')).toMatchObject({ amount: 14651.71, minAmount: 2053.77 });
+    expect(result.find(b => b.currency === 'USD')).toMatchObject({ amount: 21.26, minAmount: 2.13,
+      transactions: [expect.objectContaining({ originalCurrency: 'TRY', originalAmount: 780, amount: 21.26, currency: 'USD' })] });
+  });
+  it('连续多币种、下一卡显式币种和重复卡尾正确归并，区块结束停止承接', () => {
+    const result = icbc2026Parser.parse(icbcMail([
+      '1111(牡丹贷记卡) 人民币 100.00/RMB 10.00/RMB 1000.00/RMB',
+      '美元 20.00/USD 2.00/USD 100.00/USD', '欧元 30.00/EUR 3.00/EUR 100.00/EUR',
+      '2222(牡丹贷记卡) 美元 40.00/USD 4.00/USD 100.00/USD',
+      '2222(牡丹贷记卡) 欧元 50.00/EUR 5.00/EUR 100.00/EUR',
+      '本 期 交 易 汇 总', '英镑 999.00/GBP 99.00/GBP',
+    ]));
+    expect(result.map(b => [b.currency, b.amount, b.minAmount])).toEqual([['CNY', 100, 10], ['USD', 60, 6], ['EUR', 80, 8]]);
+  });
+  it('零余额续行保持 0，孤立币种不从前一非连续区块借卡尾', () => {
+    const result = icbc2026Parser.parse(icbcMail(['美元 100.00/USD 10.00/USD',
+      '1111(牡丹贷记卡) 人民币 0.00/RMB 0.00/RMB', '美元 0.00/USD 0.00/USD',
+      '其他区块', '欧元 99.00/EUR 9.00/EUR']));
+    expect(result.map(b => [b.currency, b.amount])).toEqual([['CNY', 0], ['USD', 0]]);
+  });
   it('7640 承接整套卡账单，1225/6769/7640 明细按入账币种拆账', () => {
     const attachmentText = [
       '贷记卡到期还款日 2026年8月25日',

@@ -658,9 +658,12 @@ export interface SettingsInfo {
 }
 
 export interface StatementRepairResult {
+  kind?: 'statement' | 'icbc-foreign';
   version: string; finishedAt: string; lowerBound: string;
   banks: Array<{ bankName: string; billCount: number; mailCount: number }>;
   counts: { correctedBills: number; addedBills: number; addedTransactions: number; correctedTransactions: number;
-    removedTransactions: number; restoredRepayments: number; fallbackMinimumBills: number; unavailableMails: number };
+    removedTransactions: number; restoredRepayments: number; fallbackMinimumBills: number; unavailableMails: number;
+    uncertainRepayments?: number; skippedBills?: number };
   incomplete: Array<{ bankName: string; billCount: number; reason: string }>;
+  preserved?: Array<{ bankName: string; billCount: number; reason: string }>;
 }
