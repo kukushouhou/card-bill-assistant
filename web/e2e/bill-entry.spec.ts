@@ -118,7 +118,10 @@ for (const width of [1440, 390]) test('本账单概况不依赖交易数量且�
   await expect(summary).toContainText('¥34.60');
   await expect(summary).toContainText('已还最低');
   await expect(summary.locator('dl > div').filter({ hasText: '已还金额' })).toContainText('¥10.00');
-  await expect(summary.locator('dl > div').filter({ hasText: '剩余待还' })).toContainText('¥24.60');
+  // v0.6.1 起部分已还以剩余待还为主体金额，应还总额退居事实行
+  await expect(summary.locator('.transaction-bill-total')).toContainText('剩余待还');
+  await expect(summary.locator('.transaction-bill-total')).toContainText('¥24.60');
+  // 已还最低的账单不再提示还款紧迫性（与「已还最低」口径一致）
   await expect(summary).not.toContainText('今天应还');
   await expect(page.getByText('该账单暂无明细', { exact: true })).toBeVisible();
   await fs.mkdir(output, { recursive: true });

@@ -19,7 +19,9 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
     const migration = { key: 'demo-update', title: '更新账单显示', description: '整理历史账单的显示信息，原有还款记录会保留。', mode: 'required', targetVersion: '0.3.2', executeLabel: '确认更新' };
     await request.post('/__fixture', { data: { upgrade: { fromVersion: '0.3.1', toVersion: '0.3.2', status: 'awaiting_decision', hasRequired: true, migrations: [migration], tasks: [{ ...migration, status: 'awaiting_decision', total: 10, processed: 0 }] } } });
     await page.goto('/bills'); const upgrade = page.getByRole('dialog').filter({ hasText: '系统升级' }); await expect(upgrade).toBeVisible();
-    await expect(upgrade.getByRole('button', { name: '确认更新', exact: true })).toBeVisible();
+    // 必选迁移的确认动作统一在弹窗底部「确认并继续」，条目内只展示「必须更新」状态
+    await expect(upgrade.getByRole('button', { name: '确认并继续', exact: true })).toBeVisible();
+    await expect(upgrade).toContainText('必须更新');
     if (width < 1024) await expect.poll(async () => Math.round((await page.locator('.mobile-upgrade-flow').boundingBox())!.width)).toBe(width);
     await page.screenshot({ path: directory + '/upgrade.png', fullPage: true, animations: 'disabled' });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

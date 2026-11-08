@@ -12,6 +12,9 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
       await page.setViewportSize({ width, height: 1000 }); await page.goto(route);
       await expect(page.locator('.page').first()).toBeVisible(); await expect(page.locator('html')).toHaveAttribute('data-skin', skin + '@1.0.0');
       await expect(page.locator('html')).toHaveAttribute('data-mode', mode);
+      // 皮肤类切换会触发 0.16s 背景过渡，动画中间帧的颜色会误报对比度；禁用过渡让样式落到稳定值后再测量
+      await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; }' });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const result = await page.evaluate(() => {
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
         const rgba = (value: string) => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = value; ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data].map((v, i) => i === 3 ? v / 255 : v); };
