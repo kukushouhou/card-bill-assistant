@@ -364,6 +364,60 @@ describe('annualFeeSchedule / card_fee 年费提醒', () => {
     expect(fee!.date).toBe('2026-08-23');
     expect(fee!.title).toContain('年费');
   });
+
+  it('锚点已过但年费账单未出 → upcoming 挂今天持续可见，且不再推送', () => {
+    // 年费日 8-20 → 计入 2026-09 期；锚点 2026-08 还款日 8-23，8-25 锚点已过而 2026-09 账单未出
+    const feeCard = makeCard({ statementDay: 5, dueOffsetDays: 18, annualFeeDate: fromYmd('2024-08-20') });
+    const schedule = annualFeeSchedule(feeCard, [], fromYmd('2026-08-25'));
+    expect(schedule!.feePeriod).toBe('2026-09');
+
+    const items = collectUpcoming([feeCard], new Map(), [], fromYmd('2026-08-25'), 30);
+    const fee = items.find((i) => i.type === 'fee');
+    expect(fee).toBeDefined();
+    expect(fee!.date).toBe('2026-08-25');
+    expect(fee!.daysLeft).toBe(0);
+    expect(fee!.detail).toContain('2026-09');
+
+    // 持续可见只作用于 UI，推送仍只发生在锚点日当天
+    expect(collectCardEvents(feeCard, [], fromYmd('2026-08-25')).filter((e) => e.type === 'card_fee')).toHaveLength(0);
+  });
+
+  it('年费账单已出 → upcoming 不再出现年费项（顺延明年在窗口外）', () => {
+    const feeCard = makeCard({ statementDay: 5, dueOffsetDays: 18, annualFeeDate: fromYmd('2024-08-20') });
+    const feeBill = {
+      id: 81,
+      cardId: 1,
+      period: '2026-09',
+      dueDate: fromYmd('2026-09-23'),
+      amount: 400,
+      minAmount: null,
+      currency: 'CNY',
+      paidStatus: 'unpaid',
+    };
+    const items = collectUpcoming([feeCard], new Map([[1, [feeBill]]]), [], fromYmd('2026-08-25'), 30);
+    expect(items.filter((i) => i.type === 'fee')).toHaveLength(0);
+  });
+
+  it('collectUpcoming 还款与出账项携带账单年费金额', () => {
+    const bill = {
+      id: 90,
+      cardId: 1,
+      period: '2026-08',
+      dueDate: fromYmd('2026-08-23'),
+      amount: 1000,
+      minAmount: null,
+      currency: 'CNY',
+      paidStatus: 'unpaid',
+      annualFeeAmount: 200,
+    };
+    const items = collectUpcoming([card], new Map([[1, [bill]]]), [], fromYmd('2026-08-01'), 30);
+    const due = items.find((i) => i.type === 'due');
+    const statement = items.find((i) => i.type === 'statement');
+    expect(due).toBeDefined();
+    expect(statement).toBeDefined();
+    expect(due!.annualFeeAmount).toBe(200);
+    expect(statement!.annualFeeAmount).toBe(200);
+  });
 });
 
 describe('collectCustomEvents', () => {

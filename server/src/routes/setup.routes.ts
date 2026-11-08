@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../lib/errors';
 import { config } from '../config';
+import { attemptLimit } from './security.middleware';
 import { derivePinKey, makePinVerifier, randomBytes } from '../lib/crypto';
 import { listNotificationProviderDefinitions } from '../notify/registry';
 import { notificationCreateSchema, prepareNotificationChannel } from '../notify/notification.service';
@@ -61,6 +62,8 @@ const installSchema = z.object({
 
 router.post(
   '/install',
+  // 安装前该接口可匿名访问，限流减缓无安装实例上的滥用；正常安装只需一次请求
+  attemptLimit(20),
   asyncHandler(async (req, res) => {
     // 已安装时先拒绝，避免匿名请求反复触发通知配置处理和皮肤读取。
     if (await getInstalledAt()) throw new ApiError(403, '系统已安装，如需重置请查阅部署文档');

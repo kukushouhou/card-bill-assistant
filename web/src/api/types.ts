@@ -327,6 +327,8 @@ export interface UpcomingItem {
   detail: string;
   amount: number | null;
   minAmount: number | null;
+  /** 本期年费（正数非退还合计），null=无 */
+  annualFeeAmount: number | null;
   currency: string | null;
   /** 是否已结清（null=无账单） */
   paid: boolean | null;
@@ -365,6 +367,8 @@ export interface TodoItem {
   currency?: string;
   paidStatus: 'partial' | 'unpaid' | string | null;
   paidAmount?: number | null;
+  /** 本期年费（正数非退还合计），null=无（未取得账单占位行恒为 null） */
+  annualFeeAmount?: number | null;
   /** true = 未取得账单占位行 */
   missing?: boolean;
   /** 逾期天数（还款日已过且未还；未逾期为 null） */

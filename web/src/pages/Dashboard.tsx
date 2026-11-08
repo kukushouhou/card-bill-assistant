@@ -19,6 +19,7 @@ import { hasMetMinimumPayment } from '../lib/billPayment';
 import { useDataChanged } from '../lib/dataChanged';
 import { Page } from '../components/Layout';
 import MarkPaidModal, { type MarkPaidTarget } from '../components/MarkPaidModal';
+import BillAnnualFeeTag from '../components/BillAnnualFeeTag';
 import { useBillNavigation, useSourceSnapshot } from '../lib/billNavigation';
 import { displayDate, displayPeriod } from '../lib/displayDate';
 import TrendChart from '../components/TrendChart';
@@ -37,6 +38,12 @@ const TYPE_TAG: Record<UpcomingItem['type'], { color: string; text: string }> = 
   statement: { color: 'blue', text: '出账日' },
   custom: { color: 'purple', text: '自定义' },
 };
+
+/** 年费是账单事实：待办与未来事项行随金额直接展示，与账单中心同一套标签。 */
+function feeTag(amount: number | null | undefined, currency: string | null | undefined) {
+  if (amount == null || amount <= 0) return null;
+  return <BillAnnualFeeTag amount={amount} currency={currency ?? 'CNY'} />;
+}
 
 /** 待办卡尾展示：单卡（1234）；多卡（5888 等2张卡） */
 function todoTails(tails: string[]): string {
@@ -384,6 +391,7 @@ export default function Dashboard() {
       minAmount: item.minAmount ?? null,
       paidStatus: item.paidStatus,
       paidAmount: item.paidAmount ?? null,
+      annualFeeAmount: item.annualFeeAmount ?? null,
     });
   };
 
@@ -587,6 +595,7 @@ export default function Dashboard() {
                               {formatMoney(Math.max(0, item.amount - (item.paidAmount ?? 0)), item.currency ?? 'CNY')}
                             </Typography.Text>
                           )}
+                          {item.recordType === 'card' && feeTag(item.annualFeeAmount, item.currency)}
                         </div>
                         <div className={`mobile-todo-card-due${item.daysOverdue != null ? ' is-overdue' : ''}`}>
                           <strong>{todoDueCopy(item)}</strong>
@@ -666,6 +675,7 @@ export default function Dashboard() {
                           </div>
                           <Typography.Text strong>{item.title}</Typography.Text>
                           {item.detail && <Typography.Text type="secondary">{item.detail}</Typography.Text>}
+                          {feeTag(item.annualFeeAmount, item.currency)}
                         </div>
                         {item.amount != null && (
                           <Typography.Text type="danger" className="amount-strong">{formatMoney(item.amount, item.currency ?? 'CNY')}</Typography.Text>
@@ -928,6 +938,7 @@ export default function Dashboard() {
                                 {formatMoney(Math.max(0, item.amount - (item.paidAmount ?? 0)), item.currency ?? 'CNY')}
                               </Typography.Text>
                             )}
+                            {item.recordType === 'card' && feeTag(item.annualFeeAmount, item.currency)}
                             <Typography.Text type="secondary">
                               {item.action === 'complete'
                                 ? displayDate(item.dueDate)
@@ -1014,6 +1025,7 @@ export default function Dashboard() {
                             {formatMoney(r.amount, r.currency ?? 'CNY')}
                           </Typography.Text>
                         )}
+                        {feeTag(r.annualFeeAmount, r.currency)}
                         {r.detail && (
                           <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
                             {r.detail}

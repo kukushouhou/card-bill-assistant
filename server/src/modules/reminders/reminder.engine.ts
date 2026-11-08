@@ -104,6 +104,8 @@ function money(currency: string, amount: number): string {
  * 提醒锚点 = 前一期账单还款日。年费日在出账日之后时锚点可能晚于收取日
  * （此时年费已入账但账单未出，仍提示"将计入下期账单"），因此候选含今年已过
  * 但账单未出的收取日；该期账单已出则顺延至明年。
+ * 锚点日已过但年费账单未出时同样返回（fee.prevDue < today，即"已计入待出账"），
+ * 保证 UI 在账单出账前持续可见；推送仍只发生在锚点日当天，由调用方控制。
  */
 export function annualFeeSchedule(
   card: CardLike,
@@ -125,12 +127,12 @@ export function annualFeeSchedule(
     // 年费账单已出则该次不再提示，顺延候选
     if (bills.some((b) => b.period === feePeriod)) continue;
 
-    // 前一期账单及其还款日（锚点已过则该次无可提醒）
+    // 前一期账单及其还款日（提醒锚点）
     const prev = monthParts(feeDate, feeOnOrBeforeStatement ? -1 : 0);
     const prevPeriod = `${prev.year}-${String(prev.month).padStart(2, '0')}`;
     const prevBill = bills.find((b) => b.period === prevPeriod) ?? null;
     const prevDue = prevBill ? shanghaiMidnight(prevBill.dueDate) : computeCycle(card, prev.year, prev.month, null).dueDate;
-    if (prevDue >= today) return { feeDate, feePeriod, prevPeriod, prevDue };
+    return { feeDate, feePeriod, prevPeriod, prevDue };
   }
   return null;
 }
@@ -331,6 +333,8 @@ export interface UpcomingItem {
   detail: string;
   amount: number | null;
   minAmount: number | null;
+  /** 本期年费（正数非退还合计，来自账单事实），null=无 */
+  annualFeeAmount: number | null;
   currency: string | null;
   /** 是否已结清（null=无账单） */
   paid: boolean | null;
@@ -387,6 +391,7 @@ export function collectUpcoming(
           detail: bill ? '账单已出' : '',
           amount: bill?.amount != null ? Number(bill.amount) : null,
           minAmount: bill?.minAmount != null ? Number(bill.minAmount) : null,
+          annualFeeAmount: bill?.annualFeeAmount != null ? Number(bill.annualFeeAmount) : null,
           currency: bill?.currency ?? null,
           paid: null,
           paidStatus: null,
@@ -409,6 +414,7 @@ export function collectUpcoming(
           detail: bill ? '' : '未取得账单',
           amount: bill?.amount != null ? Number(bill.amount) : null,
           minAmount: bill?.minAmount != null ? Number(bill.minAmount) : null,
+          annualFeeAmount: bill?.annualFeeAmount != null ? Number(bill.annualFeeAmount) : null,
           currency: bill?.currency ?? null,
           paid: bill ? bill.paidStatus === 'paid' : null,
           paidStatus: bill?.paidStatus ?? null,
@@ -424,28 +430,33 @@ export function collectUpcoming(
       }
     }
 
-    // 年费即将出账（前一期账单还款日）
+    // 年费即将出账：锚点（前一期账单还款日）未到挂锚点日；锚点已过但年费账单
+    // 未出（已计入待出账）则挂今天，持续可见直到该期账单实际出账
     const fee = annualFeeSchedule(card, bills, today);
-    if (fee && fee.prevDue >= today && fee.prevDue <= horizon) {
-      items.push({
-        sourceKey: `card:${card.id}:${fee.feePeriod}:fee`,
-        date: ymd(fee.prevDue),
-        type: 'fee',
-        title: `${card.bankName}（${card.cardLast4}）年费即将出账`,
-        detail: `${ymd(fee.feeDate)} 收取，计入 ${fee.feePeriod} 账单`,
-        amount: null,
-        minAmount: null,
-        currency: null,
-        paid: null,
-        paidStatus: null,
-        paidAmount: null,
-        daysLeft: daysBetween(today, fee.prevDue),
-        hasBill: false,
-        cardId: card.id,
-        billId: null,
-        period: fee.feePeriod,
-        linkedCount: 1,
-      });
+    if (fee) {
+      const feePending = fee.prevDue < today;
+      if (feePending || fee.prevDue <= horizon) {
+        items.push({
+          sourceKey: `card:${card.id}:${fee.feePeriod}:fee`,
+          date: feePending ? ymd(today) : ymd(fee.prevDue),
+          type: 'fee',
+          title: `${card.bankName}（${card.cardLast4}）年费即将出账`,
+          detail: `${ymd(fee.feeDate)} 收取，计入 ${fee.feePeriod} 账单`,
+          amount: null,
+          minAmount: null,
+          annualFeeAmount: null,
+          currency: null,
+          paid: null,
+          paidStatus: null,
+          paidAmount: null,
+          daysLeft: feePending ? 0 : daysBetween(today, fee.prevDue),
+          hasBill: false,
+          cardId: card.id,
+          billId: null,
+          period: fee.feePeriod,
+          linkedCount: 1,
+        });
+      }
     }
   }
 
@@ -470,6 +481,7 @@ export function collectUpcoming(
           detail: r.note || '',
           amount: occurrence?.amount ?? (r.businessType === 'fixed_bill' ? r.fixedAmount : null),
           minAmount: null,
+          annualFeeAmount: null,
           currency: isBill ? 'CNY' : null,
           paid: isBill ? false : null,
           paidStatus: isBill && occurrence ? 'unpaid' : null,

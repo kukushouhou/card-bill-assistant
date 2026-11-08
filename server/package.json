@@ -1,6 +1,6 @@
 {
   "name": "due-reminder-server",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -42,11 +42,11 @@
     "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "@prisma/adapter-mariadb": {
-      "mariadb": "3.4.7"
+      "mariadb": "3.5.4"
     },
     "@prisma/config": {
       "deepmerge-ts": "8.0.2"

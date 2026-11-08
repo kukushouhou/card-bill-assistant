@@ -1,6 +1,6 @@
 {
   "name": "due-reminder-web",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,6 +34,6 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.9.2",
     "vite": "^8.0.0",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.5"
   }
 }

@@ -28,6 +28,7 @@ export function paymentTarget(row: BillRow): MarkPaidTarget {
     period: row.period, currency: row.currency,
     billId: row.missing ? undefined : row.id ?? undefined,
     amount: row.amount, minAmount: row.minAmount, paidStatus: row.paidStatus, paidAmount: row.paidAmount,
+    annualFeeAmount: row.annualFeeAmount,
   };
 }
 

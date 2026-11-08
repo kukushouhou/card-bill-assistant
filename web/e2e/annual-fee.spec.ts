@@ -33,6 +33,25 @@ for (const mode of ['light', 'dark']) for (const width of [1440, 1024, 390]) {
     await expect(page.locator('.transaction-content .annual-fee-row')).toHaveCount(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true, animations: 'disabled' });
+
+    // 首页待办、未来事项与还款弹窗同样展示年费事实
+    await page.goto('/');
+    const todoRow = page.locator('.dashboard-list-item').filter({ hasText: '中信银行' }).filter({ hasText: '8855' });
+    await expect(todoRow.getByText('含年费 ¥200.00', { exact: true })).toBeVisible();
+    const feeRow = page.locator('.dashboard-list-item, .ant-table-row').filter({ hasText: '年费即将出账' });
+    await expect(feeRow).toBeVisible();
+    await expect(feeRow.getByText('年费', { exact: true })).toBeVisible();
+    await todoRow.getByRole('button', { name: '标记已还', exact: true }).click();
+    if (width < 1024) {
+      const flowSummary = page.locator('.mobile-payment-summary');
+      await expect(flowSummary.getByText('含年费', { exact: true })).toBeVisible();
+      await expect(flowSummary.getByText('¥200.00', { exact: true })).toBeVisible();
+    } else {
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByText('含年费', { exact: true })).toBeVisible();
+      await expect(dialog.getByText('¥200.00', { exact: true })).toBeVisible();
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    }
   });
 }
 

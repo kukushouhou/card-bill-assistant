@@ -28,6 +28,8 @@ export interface MarkPaidTarget {
   amount?: number | null;
   /** 最低还款额（场景 B 部分已还提示用） */
   minAmount?: number | null;
+  /** 本期年费（正数非退还合计，账单事实展示用），null=无 */
+  annualFeeAmount?: number | null;
   paidStatus?: string | null;
   paidAmount?: number | null;
 }
@@ -243,6 +245,9 @@ export default function MarkPaidModal({
               tone: 'danger' as const,
             }] : []),
             { label: '本期应还', value: target.amount != null ? formatMoney(target.amount, currency) : '金额待填写' },
+            ...(target.annualFeeAmount != null && target.annualFeeAmount > 0
+              ? [{ label: '含年费', value: formatMoney(target.annualFeeAmount, currency) }]
+              : []),
             ...(target.paidStatus === 'partial' ? [{ label: '已还金额', value: formatMoney(target.paidAmount ?? 0, currency) }] : []),
             ...(target.minAmount != null ? [{ label: '最低还款', value: formatMoney(target.minAmount, currency) }] : []),
           ]} />

@@ -32,6 +32,10 @@ import { getUpgradeRuntimeState, isUpgradeBusinessBlocked, upgradeBusinessGate }
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 async function main(): Promise<void> {
+  // 弱密钥只提醒不阻断：既有部署可能在用短密钥，启动失败会直接中断业务
+  if (config.jwtSecret.length < 32) {
+    console.warn('[security] JWT_SECRET 少于 32 个字符，存在被暴力猜解的风险，建议更换为更长的随机密钥（更换后所有登录会话失效）');
+  }
   const app = express();
   app.disable('x-powered-by');
   app.use(securityHeaders);

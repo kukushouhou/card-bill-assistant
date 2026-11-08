@@ -127,6 +127,17 @@ describe('collectTodoItems 今日待办', () => {
     expect(items[0]).toMatchObject({ billId: 100, cardId: 1, missing: false });
   });
 
+  it('待办项透传账单年费金额，未取得账单占位行保持空', () => {
+    const withFee = makeCard({ id: 1, cardLast4: '1111' });
+    const missingCard = makeCard({ id: 2, cardLast4: '2222' }); // 无账单 → 占位行
+    const cards = [withFee, missingCard];
+    const items = collectTodoItems(cards, cards, [makeBill({ id: 100, cardId: 1, annualFeeAmount: 200 })], fromYmd('2026-08-24'));
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ billId: 100, annualFeeAmount: 200 });
+    expect(items[1]).toMatchObject({ billId: null, missing: true, annualFeeAmount: null });
+  });
+
   it('默认口径下过期已还最低仍进待办并按逾期标记', () => {
     const card = makeCard();
     const partial = makeBill({

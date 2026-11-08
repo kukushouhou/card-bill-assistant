@@ -352,6 +352,9 @@ function MobileCardMarkPaidFlow({
       {hasBill && (
         <section className="mobile-payment-summary" aria-label="本期还款概览">
           <div><span>本期还需</span><strong>{money(existingRemaining, currency)}</strong></div>
+          {target.annualFeeAmount != null && target.annualFeeAmount > 0 && (
+            <div><span>含年费</span><strong>{money(target.annualFeeAmount, currency)}</strong></div>
+          )}
           <div><span>最低还款</span><strong>{target.minAmount == null ? '—' : money(target.minAmount, currency)}</strong></div>
         </section>
       )}

@@ -20,6 +20,8 @@ export interface TodoListItem {
   currency: string;
   paidStatus: string | null;
   paidAmount: number | null;
+  /** 本期年费（正数非退还合计），null=无（未取得账单占位行恒为 null） */
+  annualFeeAmount: number | null;
   missing: boolean;
   daysOverdue: number | null;
 }
@@ -56,6 +58,7 @@ export function collectTodoItems(
       currency: row.currency,
       paidStatus: row.paidStatus,
       paidAmount: row.paidAmount,
+      annualFeeAmount: row.annualFeeAmount,
       missing: row.missing,
       daysOverdue: row.daysOverdue,
     }))

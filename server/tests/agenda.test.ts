@@ -40,7 +40,7 @@ describe('账单中心统一对象', () => {
     expect(summarizeAgenda(rows)).toMatchObject({ billCount: 1, unknownAmountCount: 1, missingBillCount: 1, totalsByCurrency: [] });
   });
   it('未到处理时点的未来还款是只读安排，不伪装出账提醒或真实账单', () => {
-    const future: UpcomingItem = { sourceKey: 'future', date: '2026-10-01', type: 'due', title: '还款安排', detail: '', amount: null, minAmount: null, currency: 'CNY', paid: null, paidStatus: null, paidAmount: null, daysLeft: 26, hasBill: false, cardId: 1, period: '2026-09', actionable: false };
+    const future: UpcomingItem = { sourceKey: 'future', date: '2026-10-01', type: 'due', title: '还款安排', detail: '', amount: null, minAmount: null, annualFeeAmount: null, currency: 'CNY', paid: null, paidStatus: null, paidAmount: null, daysLeft: 26, hasBill: false, cardId: 1, period: '2026-09', actionable: false };
     expect(upcomingItems([], [future])[0]).toMatchObject({ kind: 'repayment', action: 'none', bill: null });
   });
 });
