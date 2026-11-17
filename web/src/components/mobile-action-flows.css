@@ -309,6 +309,11 @@
   background: var(--surface);
 }
 
+/* 本期还需是还款主体：凑不满两格时让主体横跨整行，避免网格留出空底色格子 */
+.mobile-payment-summary > .mobile-payment-summary-wide {
+  grid-column: 1 / -1;
+}
+
 .mobile-payment-summary span,
 .mobile-payment-preview span {
   color: var(--text-secondary);

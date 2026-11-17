@@ -34,9 +34,23 @@ for (const mode of ['light', 'dark']) for (const width of [1440, 1024, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('details.png'), fullPage: true, animations: 'disabled' });
 
+    // 明细页发起的还款同样带出年费：电脑弹窗与手机流程都要显示
+    await page.locator('.transaction-content').getByRole('button', { name: '还款', exact: true }).click();
+    if (width < 1024) {
+      await expect(page.locator('.mobile-payment-summary').getByText('含年费', { exact: true })).toBeVisible();
+      await expect(page.locator('.mobile-payment-summary').getByText('¥200.00', { exact: true })).toBeVisible();
+      await page.locator('.mobile-nav-back-button').click();
+    } else {
+      const paymentDialog = page.getByRole('dialog', { name: /^标记还款/ });
+      await expect(paymentDialog.getByText('含年费', { exact: true })).toBeVisible();
+      await expect(paymentDialog.getByText('¥200.00', { exact: true })).toBeVisible();
+      await paymentDialog.getByRole('button', { name: '取消', exact: true }).click();
+    }
+
     // 首页待办、未来事项与还款弹窗同样展示年费事实
     await page.goto('/');
-    const todoRow = page.locator('.dashboard-list-item').filter({ hasText: '中信银行' }).filter({ hasText: '8855' });
+    // 占位行与真实账单行可能并存（出账日后无账单的卡会生成占位），锁定带年费标签的真实账单行
+    const todoRow = page.locator('.dashboard-list-item').filter({ hasText: '8855' }).filter({ hasText: '含年费' });
     await expect(todoRow.getByText('含年费 ¥200.00', { exact: true })).toBeVisible();
     const feeRow = page.locator('.dashboard-list-item, .ant-table-row').filter({ hasText: '年费即将出账' });
     await expect(feeRow).toBeVisible();

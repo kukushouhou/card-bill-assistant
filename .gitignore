@@ -35,3 +35,4 @@ test_debug*.log
 server/data/
 
 .ui-fixture/
+test-results/

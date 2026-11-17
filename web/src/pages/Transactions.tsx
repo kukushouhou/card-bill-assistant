@@ -288,7 +288,8 @@ export function TransactionsContent({ params, onParamsChange, sourceCardId, onPa
             {context && !history && <Button type={context.paidStatus === 'paid' ? 'default' : 'primary'} disabled={loading || !!error}
               onClick={() => setMarkTarget({ billId: context.billId, cardId: context.cardId, bankName: context.bankName,
                 cardLast4: context.cardLast4, period: context.period, currency: context.currency, amount: context.amount,
-                minAmount: context.minAmount, paidStatus: context.paidStatus, paidAmount: context.paidAmount })}>
+                minAmount: context.minAmount, paidStatus: context.paidStatus, paidAmount: context.paidAmount,
+                annualFeeAmount: context.annualFeeAmount })}>
               {context.paidStatus === 'paid' ? '调整还款' : '还款'}
             </Button>}
           </div>

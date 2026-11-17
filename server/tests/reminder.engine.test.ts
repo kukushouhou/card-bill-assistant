@@ -365,7 +365,7 @@ describe('annualFeeSchedule / card_fee 年费提醒', () => {
     expect(fee!.title).toContain('年费');
   });
 
-  it('锚点已过但年费账单未出 → upcoming 挂今天持续可见，且不再推送', () => {
+  it('锚点已过但年费账单未出 → upcoming 挂计入期出账日，且不再推送', () => {
     // 年费日 8-20 → 计入 2026-09 期；锚点 2026-08 还款日 8-23，8-25 锚点已过而 2026-09 账单未出
     const feeCard = makeCard({ statementDay: 5, dueOffsetDays: 18, annualFeeDate: fromYmd('2024-08-20') });
     const schedule = annualFeeSchedule(feeCard, [], fromYmd('2026-08-25'));
@@ -374,12 +374,24 @@ describe('annualFeeSchedule / card_fee 年费提醒', () => {
     const items = collectUpcoming([feeCard], new Map(), [], fromYmd('2026-08-25'), 30);
     const fee = items.find((i) => i.type === 'fee');
     expect(fee).toBeDefined();
-    expect(fee!.date).toBe('2026-08-25');
-    expect(fee!.daysLeft).toBe(0);
+    // 待出账的年费挂在计入期出账日（2026-09-05），不冒充"今天"发生的事项
+    expect(fee!.date).toBe('2026-09-05');
+    expect(fee!.daysLeft).toBe(11);
     expect(fee!.detail).toContain('2026-09');
 
     // 持续可见只作用于 UI，推送仍只发生在锚点日当天
     expect(collectCardEvents(feeCard, [], fromYmd('2026-08-25')).filter((e) => e.type === 'card_fee')).toHaveLength(0);
+  });
+
+  it('计入期出账日已过仍未见账单 → 候选视为陈旧顺延明年，不产生待出账预警', () => {
+    // 年费日 7-6 晚于出账日 5 号 → 计入 2026-08 期（出账日 8-05）；该期账单始终缺失，11 月不应再挂待出账预警
+    const feeCard = makeCard({ statementDay: 5, dueOffsetDays: 18, annualFeeDate: fromYmd('2024-07-06') });
+    const schedule = annualFeeSchedule(feeCard, [], fromYmd('2026-11-17'));
+    expect(schedule!.feePeriod).toBe('2027-08');
+    expect(schedule!.feeDate.toISOString()).toBe(fromYmd('2027-07-06').toISOString());
+
+    const items = collectUpcoming([feeCard], new Map(), [], fromYmd('2026-11-17'), 14);
+    expect(items.filter((i) => i.type === 'fee')).toHaveLength(0);
   });
 
   it('年费账单已出 → upcoming 不再出现年费项（顺延明年在窗口外）', () => {

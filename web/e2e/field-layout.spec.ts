@@ -77,8 +77,9 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
       await capture('card-editor', page.locator('.cards-edit-sections'));
 
       await page.goto('/bills');
-      if (width < 1024) await page.locator('.agenda-mobile-row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).getByRole('button', { name: '还款', exact: true }).click();
-      else await page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).getByRole('button', { name: '还款', exact: true }).click();
+      // 出账日后未收到账单的卡会出现占位行（同样带还款按钮），需与真实账单行区分
+      if (width < 1024) await page.locator('.agenda-mobile-row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).filter({ hasNotText: '未取得账单' }).getByRole('button', { name: '还款', exact: true }).click();
+      else await page.getByRole('row').filter({ hasText: '卡尾 0988' }).filter({ hasNotText: '/' }).filter({ hasNotText: '未取得账单' }).getByRole('button', { name: '还款', exact: true }).click();
       await capture('payment', width < 1024 ? page.locator('.mobile-payment-flow') : page.locator('.payment-modal'));
 
       await page.goto('/email'); await page.getByRole('button', { name: /拉取历史/ }).click();

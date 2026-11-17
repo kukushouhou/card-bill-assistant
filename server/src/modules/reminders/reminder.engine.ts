@@ -104,14 +104,15 @@ function money(currency: string, amount: number): string {
  * 提醒锚点 = 前一期账单还款日。年费日在出账日之后时锚点可能晚于收取日
  * （此时年费已入账但账单未出，仍提示"将计入下期账单"），因此候选含今年已过
  * 但账单未出的收取日；该期账单已出则顺延至明年。
- * 锚点日已过但年费账单未出时同样返回（fee.prevDue < today，即"已计入待出账"），
- * 保证 UI 在账单出账前持续可见；推送仍只发生在锚点日当天，由调用方控制。
+ * 「待出账」状态（fee.prevDue < today）只在计入期出账日之前有效：出账日已过
+ * 仍未见账单视为陈旧候选（历史账期缺失），顺延明年，不再挂在当天骚扰。
+ * 推送仍只发生在锚点日当天，由调用方控制。
  */
 export function annualFeeSchedule(
   card: CardLike,
   bills: BillLike[],
   today: Date,
-): { feeDate: Date; feePeriod: string; prevPeriod: string; prevDue: Date } | null {
+): { feeDate: Date; feePeriod: string; feeStatement: Date; prevPeriod: string; prevDue: Date } | null {
   if (!card.annualFeeDate) return null;
   const anchor = ymd(shanghaiMidnight(card.annualFeeDate));
   const feeMonth = Number(anchor.slice(5, 7));
@@ -126,13 +127,16 @@ export function annualFeeSchedule(
     const feePeriod = `${feePeriodParts.year}-${String(feePeriodParts.month).padStart(2, '0')}`;
     // 年费账单已出则该次不再提示，顺延候选
     if (bills.some((b) => b.period === feePeriod)) continue;
+    // 该期出账日已过仍未见账单 → 候选已陈旧（账单大概率缺失），顺延明年
+    const feeStatement = computeCycle(card, feePeriodParts.year, feePeriodParts.month, null).statementDate;
+    if (feeStatement < today) continue;
 
     // 前一期账单及其还款日（提醒锚点）
     const prev = monthParts(feeDate, feeOnOrBeforeStatement ? -1 : 0);
     const prevPeriod = `${prev.year}-${String(prev.month).padStart(2, '0')}`;
     const prevBill = bills.find((b) => b.period === prevPeriod) ?? null;
     const prevDue = prevBill ? shanghaiMidnight(prevBill.dueDate) : computeCycle(card, prev.year, prev.month, null).dueDate;
-    return { feeDate, feePeriod, prevPeriod, prevDue };
+    return { feeDate, feePeriod, feeStatement, prevPeriod, prevDue };
   }
   return null;
 }
@@ -431,14 +435,15 @@ export function collectUpcoming(
     }
 
     // 年费即将出账：锚点（前一期账单还款日）未到挂锚点日；锚点已过但年费账单
-    // 未出（已计入待出账）则挂今天，持续可见直到该期账单实际出账
+    // 未出（已计入待出账）挂计入期出账日，持续可见直到该期账单实际出账
     const fee = annualFeeSchedule(card, bills, today);
     if (fee) {
       const feePending = fee.prevDue < today;
       if (feePending || fee.prevDue <= horizon) {
+        const feeDate = feePending ? fee.feeStatement : fee.prevDue;
         items.push({
           sourceKey: `card:${card.id}:${fee.feePeriod}:fee`,
-          date: feePending ? ymd(today) : ymd(fee.prevDue),
+          date: ymd(feeDate),
           type: 'fee',
           title: `${card.bankName}（${card.cardLast4}）年费即将出账`,
           detail: `${ymd(fee.feeDate)} 收取，计入 ${fee.feePeriod} 账单`,
@@ -449,7 +454,7 @@ export function collectUpcoming(
           paid: null,
           paidStatus: null,
           paidAmount: null,
-          daysLeft: feePending ? 0 : daysBetween(today, fee.prevDue),
+          daysLeft: daysBetween(today, feeDate),
           hasBill: false,
           cardId: card.id,
           billId: null,

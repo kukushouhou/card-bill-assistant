@@ -101,6 +101,12 @@ for (const skin of ['modern', 'warm-ledger']) for (const mode of ['light', 'dark
     await request.post('/__fixture', { data: { reset: true, authed: true, installed: true, upgrade: null, failNext: null } });
     await request.put('/api/skins/active', { data: { id: skin, version: '1.0.0' } });
     await page.addInitScript(value => localStorage.setItem('appearance.mode', value), mode);
+    // 占位行数量随当天日期变化（出账日后缺账单的卡会生成占位），布局用例改写汇总计数保持确定性
+    await page.route('**/api/agenda?*', async route => {
+      const response = await route.fetch(); const data = await response.json();
+      data.summary.billCount = 7; data.summary.missingBillCount = 1; data.summary.unknownAmountCount = 2;
+      await route.fulfill({ json: data });
+    });
     const directory = '../.ui-fixture/summary-design'; await fs.mkdir(directory, { recursive: true });
     for (const width of [320, 360, 390, 768, 1023, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 }); await page.goto('/bills');
@@ -213,6 +219,8 @@ test('没有人民币或没有已知金额时保持真实币种和空态', async
   await page.route('**/api/agenda?*', async route => {
     const response = await route.fetch(); const data = await response.json();
     data.summary.totalsByCurrency = amounts;
+    // 占位行数量随当天日期变化，改写汇总计数保持确定性
+    data.summary.billCount = 7; data.summary.missingBillCount = 1; data.summary.unknownAmountCount = 2;
     await route.fulfill({ json: data });
   });
   const summary = page.locator('.agenda-totals');
