@@ -38,42 +38,41 @@ export async function applyParsedBill(mailLogId: number, parserId: string, bill:
 /** 整封邮件的全部卡片/币种账单在同一事务中落库。 */
 export async function applyParsedBills(mailLogId: number, parserId: string, bills: ParsedBill[]): Promise<number[]> {
   return withTransactionRetry(() =>
-    prisma.$transaction(async (tx) => {
-      // 历史重读时同一封邮件可能从错误的卡片归属移到业务主卡。
-      // 先读取旧行用于承接手动还款状态，新结果全部成功后再在同一事务内清理未被复用的旧行。
-      const previousRows = await tx.bill.findMany({
-        where: { mailLogId },
-        select: {
-          id: true,
-          cardId: true,
-          period: true,
-          currency: true,
-          paidStatus: true,
-          paidAt: true,
-          paidAmount: true,
-        },
-      });
-      const previousContext: PreviousBillContext = { rows: previousRows, usedIds: new Set(), sharedSequence: 0 };
-      await tx.billTransaction.deleteMany({ where: { statementMailLogId: mailLogId } });
-      const applied: AppliedBill[] = [];
-      for (const bill of bills) {
-        applied.push(await applyParsedBillInTransaction(tx, mailLogId, parserId, bill, previousContext));
-      }
-      await reconcileCurrentCycleTransactions(tx, bills, applied);
-      const sharedCurrencies = bills.filter((bill) => bill.transactions?.some((row) => row.statementShared)).map((bill) => bill.currency);
-      if (sharedCurrencies.length) await tx.bill.updateMany({ where: { mailLogId, currency: { in: sharedCurrencies } }, data: { hasDetails: true } });
-      const appliedIds = applied.map((row) => row.id);
-      if (previousRows.some((row) => !appliedIds.includes(row.id))) {
-        await tx.bill.deleteMany({
-          where: { mailLogId, ...(appliedIds.length > 0 ? { id: { notIn: appliedIds } } : {}) },
-        });
-      }
-      return applied.map((row) => row.id);
-    }),
+    prisma.$transaction(tx => applyParsedBillsInTransaction(tx, mailLogId, parserId, bills)),
   );
 }
 
+/** 升级恢复与任务状态共用外层事务，建卡、业务关系和明细仍走正常合账流程。 */
+export async function applyParsedBillsInTransaction(
+  tx: Prisma.TransactionClient, mailLogId: number, parserId: string, bills: ParsedBill[],
+  preserveCardRuleIds?: ReadonlySet<number>,
+): Promise<number[]> {
+  // 历史重读时同一封邮件可能从错误的卡片归属移到业务主卡。
+  // 先读取旧行用于承接手动还款状态，新结果全部成功后再在同一事务内清理未被复用的旧行。
+  const previousRows = await tx.bill.findMany({
+    where: { mailLogId },
+    select: { id: true, cardId: true, period: true, currency: true, paidStatus: true, paidAt: true, paidAmount: true },
+  });
+  const previousContext: PreviousBillContext = { rows: previousRows, usedIds: new Set(), sharedSequence: 0, preserveCardRuleIds };
+  await tx.billTransaction.deleteMany({ where: { statementMailLogId: mailLogId } });
+  const applied: AppliedBill[] = [];
+  for (const bill of bills) {
+    applied.push(await applyParsedBillInTransaction(tx, mailLogId, parserId, bill, previousContext));
+  }
+  await reconcileCurrentCycleTransactions(tx, bills, applied);
+  const sharedCurrencies = bills.filter((bill) => bill.transactions?.some((row) => row.statementShared)).map((bill) => bill.currency);
+  if (sharedCurrencies.length) await tx.bill.updateMany({ where: { mailLogId, currency: { in: sharedCurrencies } }, data: { hasDetails: true } });
+  const appliedIds = applied.map((row) => row.id);
+  if (previousRows.some((row) => !appliedIds.includes(row.id))) {
+    await tx.bill.deleteMany({
+      where: { mailLogId, ...(appliedIds.length > 0 ? { id: { notIn: appliedIds } } : {}) },
+    });
+  }
+  return appliedIds;
+}
+
 interface PreviousBillContext {
+  preserveCardRuleIds?: ReadonlySet<number>;
   sharedSequence: number;
   rows: Array<{
     id: number;
@@ -269,7 +268,9 @@ async function applyParsedBillInTransaction(
           businessPrimaryId?: number | null;
           businessRelationDate?: Date;
         } = {};
-        if (isOwner) Object.assign(patch, diffCardRule(card, statementDate, dueDate) ?? {});
+        const preserveRule = previousContext.preserveCardRuleIds?.has(card.id)
+          || !!previousContext.preserveCardRuleIds && card.source === 'manual';
+        if (isOwner && !preserveRule) Object.assign(patch, diffCardRule(card, statementDate, dueDate) ?? {});
         if (!card.holderName && (mappedName || extracted)) patch.holderName = mappedName || extracted!;
         if (
           explicitBusinessRole
@@ -351,7 +352,8 @@ async function applyParsedBillInTransaction(
     const parsedBusinessPrimaryIds = [...businessPrimaryIds.values()];
     if (parsedBusinessPrimaryIds.length > 0) {
       await tx.card.updateMany({
-        where: { businessPrimaryId: { in: parsedBusinessPrimaryIds } },
+        where: { businessPrimaryId: { in: parsedBusinessPrimaryIds },
+          ...(previousContext.preserveCardRuleIds ? { id: { notIn: [...previousContext.preserveCardRuleIds] }, source: { not: 'manual' } } : {}) },
         data: {
           statementDay: rule.statementDay,
           dueRule: rule.dueRule,

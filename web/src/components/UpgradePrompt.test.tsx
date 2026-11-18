@@ -28,6 +28,59 @@ function plan(tasks: UpgradeTask[]): UpgradePlan {
 describe('整批确认升级选择', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('平安、民生、广发分别展示文案与选择，按银行提交执行或忽略', async () => {
+    const definitions = [
+      { key: 'pab-details-repair-085-v1', title: '补齐平安美元明细',
+        description: '重新读取平安现有美元账单的来源邮件，补齐遗漏的美元交易及原币金额。保留已有还款记录。',
+        summary: '需要复核 平安银行 84 封邮件，实际修复数量以原文核对结果为准。',
+        ignoreWarning: '忽略后，平安历史美元明细的遗漏会保留。新邮件按新版规则解析。系统将不再提供本次迁移服务。' },
+      { key: 'cmbc-details-repair-085-v1', title: '修正民生美元明细',
+        description: '重新读取民生现有美元账单的来源邮件，将错记为人民币的美元交易归回美元账户，并补齐原币金额和币种。保留已有还款记录。',
+        summary: '需要复核 民生银行 71 封邮件，实际修复数量以原文核对结果为准。',
+        ignoreWarning: '忽略后，民生历史美元明细的币种错误及原币信息遗漏会保留。新邮件按新版规则解析。系统将不再提供本次迁移服务。' },
+      { key: 'cgb-statement-recovery-085-v1', title: '补录广发历史账单',
+        description: '重新读取已记录为未匹配的广发账单邮件，补录促销式标题下遗漏的账单和明细。同卡、同账期、同币种已经存在的账单会保留。',
+        summary: '需要复核 广发银行 60 封邮件，实际修复数量以原文核对结果为准。',
+        ignoreWarning: '忽略后，这批历史广发账单将继续缺失。新邮件按新版标题规则识别。系统将不再提供本次迁移服务。' },
+    ];
+    const current = plan(definitions.map((definition, index) => ({ ...task(definition.key, definition.title),
+      description: definition.description, ignoreWarning: definition.ignoreWarning, targetVersion: '0.8.5', order: index + 1 })));
+    current.fromVersion = '0.8.4';
+    current.toVersion = '0.8.5';
+    current.migrations.forEach((migration, index) => { migration.summary = definitions[index].summary; });
+    apiMocks.get.mockResolvedValue(current);
+    apiMocks.post.mockResolvedValue({ ...current, status: 'executing' });
+    const user = userEvent.setup();
+    render(<App><UpgradePrompt /></App>);
+    await screen.findByText('补齐平安美元明细');
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(3);
+    expect(screen.queryByText('修正平安与民生外币明细')).toBeNull();
+    for (const definition of definitions) {
+      expect(screen.getByText(definition.description)).toBeTruthy();
+      expect(screen.getByText(definition.summary)).toBeTruthy();
+      const choice = within(screen.getByRole('radiogroup', { name: definition.title }));
+      expect((choice.getByRole('radio', { name: '执行' }) as HTMLInputElement).checked).toBe(true);
+      await user.click(choice.getByText('忽略'));
+      expect(screen.getByRole('alert').textContent).toBe(definition.ignoreWarning);
+      for (const other of definitions.filter(candidate => candidate.key !== definition.key)) {
+        const selection = within(screen.getByRole('radiogroup', { name: other.title }));
+        expect((selection.getByRole('radio', { name: '执行' }) as HTMLInputElement).checked).toBe(true);
+      }
+      expect(apiMocks.post).not.toHaveBeenCalled();
+      await user.click(choice.getByText('执行'));
+      expect(screen.queryByRole('alert')).toBeNull();
+    }
+    await user.click(within(screen.getByRole('radiogroup', { name: '补齐平安美元明细' })).getByText('忽略'));
+    await user.click(within(screen.getByRole('radiogroup', { name: '补录广发历史账单' })).getByText('忽略'));
+    expect(screen.getAllByRole('alert')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: '确认并继续' }));
+    expect(apiMocks.post).toHaveBeenCalledWith('/api/upgrades/decisions', { planId: 8, decisions: [
+      { key: 'pab-details-repair-085-v1', action: 'ignore' },
+      { key: 'cmbc-details-repair-085-v1', action: 'approve' },
+      { key: 'cgb-statement-recovery-085-v1', action: 'ignore' },
+    ] });
+  });
+
   it('多个可选项目只在底部确认一次，切换选择不发送请求', async () => {
     const current = plan([task('bill', '修正本期账单状态'), task('card', '修正卡片关系')]);
     current.migrations[0].summary = '平安银行 · 共 2 张卡的本期账单';

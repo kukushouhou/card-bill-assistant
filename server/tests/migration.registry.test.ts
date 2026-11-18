@@ -18,6 +18,18 @@ function migration(overrides: Partial<VersionMigration>): VersionMigration {
 }
 
 describe('版本迁移注册表', () => {
+  it('0.8.5 平安、民生、广发独立可选，跨过版本后不再执行', () => {
+    const tasks = applicableMigrations('0.8.4', '0.8.5');
+    expect(tasks.map(task => task.key)).toEqual(['pab-details-repair-085-v1', 'cmbc-details-repair-085-v1', 'cgb-statement-recovery-085-v1']);
+    expect(tasks.map(task => task.title)).toEqual(['补齐平安美元明细', '修正民生美元明细', '补录广发历史账单']);
+    expect(tasks.every(task => task.mode === 'optional')).toBe(true);
+    expect(tasks.every(task => task.ignoreWarning?.includes('系统将不再提供本次迁移服务'))).toBe(true);
+    expect(tasks[0]!.description).toContain('平安');
+    expect(tasks[0]!.description).not.toContain('民生');
+    expect(tasks[1]!.description).toContain('民生');
+    expect(tasks[1]!.description).not.toContain('平安');
+    expect(applicableMigrations('0.8.5', '0.8.6')).toHaveLength(0);
+  });
   it('0.8.4 农行恢复为独立可选迁移，已越过版本后不再执行', () => {
     const migration = migrationByKey('abc-statement-repair-084-v1');
     expect(migration).toMatchObject({ targetVersion: '0.8.4', mode: 'optional' });

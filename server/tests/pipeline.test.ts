@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyParsedBill,
   applyParsedBills,
+  applyParsedBillsInTransaction,
   applyCurrentCycleTransactions,
   diffCardRule,
   normalizeTransactionDate,
@@ -192,6 +193,21 @@ describe('applyParsedBill 明细元数据落库', () => {
     const arg = tx.bill.upsert.mock.calls[0]![0] as { create: Record<string, unknown>; update: Record<string, unknown> };
     expect(arg.create).toMatchObject({ mailLogId: 55, hasDetails: true, annualFeeAmount: 300, source: 'email' });
     expect(arg.update).toMatchObject({ mailLogId: 55, hasDetails: true, annualFeeAmount: 300, source: 'email' });
+  });
+
+  it.each(['email', 'manual'])('历史补录保留 %s 卡片的当前账期规则，正常合账仍写入账单', async source => {
+    tx.card.findUnique.mockResolvedValue({ id: 7, holderName: '张三', source,
+      statementDay: 1, dueRule: 'fixed', dueDay: 8, dueOffsetDays: null,
+      businessRole: 'primary', businessRelationDate: fromYmd('2026-09-01'),
+      annualFeeDate: null, annualFeeDateManual: false });
+    const protectedIds = source === 'email' ? new Set([7]) : new Set<number>();
+    await applyParsedBillsInTransaction(tx as unknown as Parameters<typeof applyParsedBillsInTransaction>[0], 55, 'cgb2026',
+      [{ ...makeBill(), businessCards: { primaryCardLast4: '1234', supplementaryCards: [] } }], protectedIds);
+    expect(tx.bill.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.card.update.mock.calls.some(([arg]) => ['statementDay', 'dueRule', 'dueDay', 'dueOffsetDays'].some(key => key in arg.data))).toBe(false);
+    expect(tx.card.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      businessPrimaryId: { in: [7] }, id: { notIn: [...protectedIds] }, source: { not: 'manual' },
+    } }));
   });
 
   it('按账单顺序持久化卡片归属、标准日期和原交易币种', async () => {

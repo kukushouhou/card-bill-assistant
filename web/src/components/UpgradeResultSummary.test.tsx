@@ -7,6 +7,14 @@ const result: StatementRepairResult = { kind: 'icbc-foreign', version: '0.8.0', 
     addedTransactions: 0, correctedTransactions: 0, removedTransactions: 0, restoredRepayments: 1,
     fallbackMinimumBills: 0, unavailableMails: 0, uncertainRepayments: 0 }, incomplete: [] };
 describe('工行迁移结果', () => {
+  it('银行补录结果区分新增明细与币种修正，展示未能补齐的邮件', () => {
+    render(<UpgradeResultSummary result={{ ...result, kind: 'bank-statements', version: '0.8.5', counts: {
+      ...result.counts, addedBills: 202, addedTransactions: 157, correctedTransactions: 31, unavailableMails: 1 }, incomplete: [] }} />);
+    expect(screen.getByText('补建账单 202 笔')).toBeTruthy();
+    expect(screen.getByText('新增明细 157 条')).toBeTruthy();
+    expect(screen.getByText('修正明细 31 条')).toBeTruthy();
+    expect(screen.getByText('1 封邮件的账单未补齐')).toBeTruthy();
+  });
   it('农行来源邮件缺失时明确报告账单未补齐', () => {
     render(<UpgradeResultSummary result={{ ...result, kind: 'abc-statement', version: '0.8.4',
       counts: { ...result.counts, unavailableMails: 1 }, incomplete: [{ bankName: '农业银行', billCount: 0, reason: '邮件已删除' }] }} />);

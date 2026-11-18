@@ -18,7 +18,7 @@ const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 
-const parserMocks = vi.hoisted(() => ({ list: vi.fn(), tryParse: vi.fn() }));
+const parserMocks = vi.hoisted(() => ({ list: vi.fn(), tryParse: vi.fn(), match: vi.fn() }));
 const schedulerMocks = vi.hoisted(() => ({ wait: vi.fn() }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma: db }));
@@ -26,6 +26,7 @@ vi.mock('../src/parsers/registry', () => ({
   listBusinessRelationshipParsers: parserMocks.list,
   listAccountBillParsers: vi.fn(() => []),
   tryParse: parserMocks.tryParse,
+  matchParser: parserMocks.match,
 }));
 vi.mock('../src/parsers/pipeline', () => ({ applyParsedBills: vi.fn() }));
 vi.mock('../src/modules/email/email.service', () => ({
@@ -163,8 +164,9 @@ describe('版本升级协调器', () => {
 
   it('主副卡入场条件成立时创建可选任务且不推进游标', async () => {
     db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
-    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { OR?: unknown } }) =>
-      where.OR ? [] : [{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }]);
+    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { parserId?: string | { in?: string[] } } }) =>
+      typeof where.parserId === 'object' && where.parserId.in?.includes('icbc2026')
+        ? [{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }] : []);
     db.upgradeTask.create.mockResolvedValue({ id: 9 });
 
     const result = await initializeUpgradeState(true);
@@ -292,8 +294,9 @@ describe('版本升级协调器', () => {
     db.upgradePlan.findFirst.mockResolvedValue(stored);
     db.upgradePlan.create.mockResolvedValueOnce({ id: 18 });
     db.appSetting.findUnique.mockResolvedValue({ value: '0.1.0' });
-    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { OR?: unknown } }) =>
-      where.OR ? [] : [{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }]);
+    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { parserId?: string | { in?: string[] } } }) =>
+      typeof where.parserId === 'object' && where.parserId.in?.includes('icbc2026')
+        ? [{ accountId: 1, uid: 10, parserId: 'icbc2026', bills: [] }] : []);
     db.upgradeTask.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => (
       where.key === approved.key ? approved : null
     ));
@@ -332,8 +335,8 @@ describe('版本升级协调器', () => {
     expect((await initializeUpgradeState(true)).runtimeMode).toBe('ready');
     expect(repairStatements050Migration.targetVersion).toBe('0.5.0');
     expect(repairStatements050Migration.mode).toBe('optional');
-    // 工行和农行的独立修复仍须盘点，已越过的 0.5 修复不再盘点。
-    expect(db.mailLog.findMany).toHaveBeenCalledTimes(2);
+    // 后续工行、农行与三项银行修复仍须盘点，已越过的 0.5 修复不再盘点。
+    expect(db.mailLog.findMany).toHaveBeenCalledTimes(5);
     expect(db.mailLog.findMany.mock.calls[0][0].where.parserId).toBe('icbc2026');
     expect(db.mailLog.findMany.mock.calls[1][0].where.OR).toEqual(expect.arrayContaining([
       expect.objectContaining({ status: 'error', parserId: { in: ['abc2026', 'abc2019'] } }),
@@ -358,8 +361,9 @@ describe('版本升级协调器', () => {
 
   it('0.8.3 用户通过正常预检进入农行可选修复，等待不阻碍业务且不推进游标', async () => {
     db.appSetting.findUnique.mockResolvedValue({ value: '0.8.3' });
-    db.mailLog.findMany.mockResolvedValue([{ id: 10, accountId: 1, uid: 20,
-      parserId: 'abc2026', status: 'error', processedAt: new Date('2026-11-18T00:00:00+08:00'), bills: [] }]);
+    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { OR?: unknown } }) => where.OR
+      ? [{ id: 10, accountId: 1, uid: 20, parserId: 'abc2026', status: 'error',
+        processedAt: new Date('2026-11-18T00:00:00+08:00'), bills: [] }] : []);
     db.upgradeTask.create.mockResolvedValue({ id: 9 });
 
     expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
@@ -368,6 +372,26 @@ describe('版本升级协调器', () => {
     expect(db.upgradeTask.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       key: 'abc-statement-repair-084-v1', toVersion: '0.8.4', mode: 'optional', status: 'awaiting_decision',
     }) });
+    expect(db.appSetting.upsert).not.toHaveBeenCalled();
+  });
+
+  it('0.8.4 正常升级预检创建平安、民生、广发三项独立可选任务', async () => {
+    db.appSetting.findUnique.mockResolvedValue({ value: '0.8.4' });
+    parserMocks.match.mockReturnValue({ matchedBy: 'sender', parser: { bankName: '广发银行' } });
+    db.mailLog.findMany.mockImplementation(async ({ where }: { where: { parserId?: { in?: string[] }; fromAddress?: unknown } }) => {
+      const common = { accountId: 1, processedAt: new Date('2026-11-18T00:00:00+08:00'), fromAddress: 'bank@example.test', subject: '账单' };
+      if (where.fromAddress) return [{ ...common, id: 3, uid: 30, parserId: null, status: 'unmatched', bills: [] }];
+      const pab = where.parserId?.in?.includes('pab2019');
+      return [{ ...common, id: pab ? 1 : 2, uid: pab ? 10 : 20, parserId: pab ? 'pab2019' : 'cmbc2026', status: 'matched',
+        bills: [{ id: pab ? 11 : 12, cardId: 7, period: '2026-10', currency: 'USD', card: { bankName: pab ? '平安银行' : '民生银行' } }] }];
+    });
+    db.upgradeTask.create.mockResolvedValue({ id: 9 });
+    expect((await initializeUpgradeState(true)).runtimeMode).toBe('optional_wait');
+    expect(isUpgradeBusinessBlocked()).toBe(false);
+    const tasks = db.upgradeTask.create.mock.calls.map(([args]) => args.data);
+    expect(tasks.map(task => task.key)).toEqual(['pab-details-repair-085-v1', 'cmbc-details-repair-085-v1', 'cgb-statement-recovery-085-v1']);
+    expect(tasks.every(task => task.toVersion === '0.8.5' && task.mode === 'optional')).toBe(true);
+    expect(tasks.map(task => task.payload.banks[0].bankName)).toEqual(['平安银行', '民生银行', '广发银行']);
     expect(db.appSetting.upsert).not.toHaveBeenCalled();
   });
 

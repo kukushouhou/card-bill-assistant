@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { STATEMENT_REPAIR_KEY } from './migrations/repair-statements-050';
 import { ICBC_FOREIGN_REPAIR_KEY, emptyIcbcRepairCounts } from './migrations/repair-icbc-foreign-080';
 import { ABC_STATEMENT_REPAIR_KEY } from './migrations/repair-abc-statements-084';
+import { PAB_DETAILS_REPAIR_KEY, CMBC_DETAILS_REPAIR_KEY, CGB_STATEMENT_RECOVERY_KEY } from './migrations/repair-bank-statements-085';
 import { emptyRepairCounts, type RepairCounts } from './migrations/statement-repair';
 
 /** 结果只归属最近完成计划；本轮被忽略/未完成时，不能退回旧修复结果。 */
@@ -10,13 +11,17 @@ export async function latestStatementRepairResult() {
     orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }], include: { tasks: { include: { items: true } } } });
   const current = plan?.tasks.find(task => task.key === ABC_STATEMENT_REPAIR_KEY)
     ?? plan?.tasks.find(task => task.key === ICBC_FOREIGN_REPAIR_KEY);
-  const task = current ?? plan?.tasks.find(task => task.key === STATEMENT_REPAIR_KEY);
-  if (!task || task.status !== 'completed') return null;
+  const legacy = current ?? plan?.tasks.find(task => task.key === STATEMENT_REPAIR_KEY);
+  const bankTasks = plan?.tasks.filter(task => [PAB_DETAILS_REPAIR_KEY, CMBC_DETAILS_REPAIR_KEY, CGB_STATEMENT_RECOVERY_KEY].includes(task.key)) ?? [];
+  const tasks = bankTasks.length ? bankTasks.filter(task => task.status === 'completed')
+    : legacy?.status === 'completed' ? [legacy] : [];
+  const task = tasks[0];
+  if (!task) return null;
   const icbc = task.key === ICBC_FOREIGN_REPAIR_KEY;
   const counts = { ...emptyRepairCounts(), ...(icbc ? emptyIcbcRepairCounts() : {}) };
   const incomplete: Array<{ bankName: string; billCount: number; reason: string }> = [];
   const preserved: Array<{ bankName: string; billCount: number; reason: string }> = [];
-  for (const item of task.items) {
+  for (const item of tasks.flatMap(task => task.items)) {
     const data = item.payload as unknown as { bankName: string; billIds: number[];
       result?: RepairCounts & { uncertainRepayments?: number; skippedBills?: number; reasons?: string[] }; incompleteReason?: string };
     if (data.result) for (const key of Object.keys(counts) as Array<keyof typeof counts>) counts[key]! += data.result[key] ?? 0;
@@ -25,6 +30,7 @@ export async function latestStatementRepairResult() {
       reason: data.result.reasons?.join('；') ?? '目标无法确认，保留原状' });
   }
   const payload = task.payload as unknown as { banks: Array<{ bankName: string; billCount: number; mailCount: number }>; lowerBound?: string };
-  return { kind: task.key === ABC_STATEMENT_REPAIR_KEY ? 'abc-statement' : icbc ? 'icbc-foreign' : 'statement', version: task.toVersion, finishedAt: task.finishedAt,
-    banks: payload.banks, lowerBound: payload.lowerBound, counts, incomplete, ...(icbc ? { preserved } : {}) };
+  const banks = tasks.flatMap(task => (task.payload as unknown as typeof payload).banks);
+  return { kind: bankTasks.length ? 'bank-statements' : task.key === ABC_STATEMENT_REPAIR_KEY ? 'abc-statement' : icbc ? 'icbc-foreign' : 'statement',
+    version: task.toVersion, finishedAt: plan?.finishedAt ?? task.finishedAt, banks, lowerBound: payload.lowerBound, counts, incomplete, ...(icbc ? { preserved } : {}) };
 }

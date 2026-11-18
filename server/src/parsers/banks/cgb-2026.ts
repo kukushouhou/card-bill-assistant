@@ -19,7 +19,7 @@ export const cgb2026Parser: BankParser = {
   id: 'cgb2026',
   bankName: '广发银行',
   senderPatterns: ['@cgbchina.com.cn'],
-  subjectPatterns: [/广发.*电子账单/, /广发信用卡.*账单/],
+  subjectPatterns: [/广发.*电子账单/, /广发信用卡.*账单/, /【广发卡\s*\d{1,2}月账单】/],
   businessRelationships: true,
 
   parse(mail: MailContext): ParsedBill[] {

@@ -26,6 +26,34 @@ describe('最近一次升级计划的修复结果', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    { executed: [] }, { executed: ['平安银行'] }, { executed: ['民生银行'] }, { executed: ['广发银行'] },
+    { executed: ['平安银行', '民生银行'] }, { executed: ['平安银行', '广发银行'] },
+    { executed: ['民生银行', '广发银行'] }, { executed: ['平安银行', '民生银行', '广发银行'] },
+  ])('三家银行只汇总已执行项目 $executed，全部忽略时不显示旧结果', async ({ executed }) => {
+    const pab = repairTask({ key: 'pab-details-repair-085-v1', toVersion: '0.8.5',
+      payload: { banks: [{ bankName: '平安银行', billCount: 8, mailCount: 4 }] },
+      items: [{ payload: { bankName: '平安银行', billIds: [1], result: { addedTransactions: 12 } } }] });
+    const cmbc = repairTask({ key: 'cmbc-details-repair-085-v1', toVersion: '0.8.5',
+      payload: { banks: [{ bankName: '民生银行', billCount: 18, mailCount: 9 }] },
+      items: [{ payload: { bankName: '民生银行', billIds: [2], result: { correctedTransactions: 31 } } }] });
+    const cgb = repairTask({ key: 'cgb-statement-recovery-085-v1', toVersion: '0.8.5',
+      payload: { banks: [{ bankName: '广发银行', billCount: 0, mailCount: 60 }] },
+      items: [{ payload: { bankName: '广发银行', billIds: [], result: { addedBills: 202, addedTransactions: 145 } } }] });
+    const tasks = [pab, cmbc, cgb].map(task => ({ ...task,
+      status: executed.includes(task.payload.banks[0]!.bankName) ? 'completed' : 'ignored' }));
+    db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), ...tasks] });
+    if (!executed.length) {
+      expect(await latestStatementRepairResult()).toBeNull();
+      return;
+    }
+    expect(await latestStatementRepairResult()).toMatchObject({ kind: 'bank-statements', version: '0.8.5',
+      counts: { addedBills: executed.includes('广发银行') ? 202 : 0,
+        addedTransactions: (executed.includes('平安银行') ? 12 : 0) + (executed.includes('广发银行') ? 145 : 0),
+        correctedTransactions: executed.includes('民生银行') ? 31 : 0, correctedBills: 0 },
+      banks: executed.map(bankName => ({ bankName })) });
+  });
+
   it('农行恢复展示本次补单和缺失邮件结果，零张旧账单也能报告', async () => {
     db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), repairTask({
       key: 'abc-statement-repair-084-v1', toVersion: '0.8.4',

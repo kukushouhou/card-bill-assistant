@@ -1,5 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
-import { amountLine, applyTransactionTails, buildBill, dateLine, mailText, parseAmount, parseDate, pick, pickHolder, propagateAccountBillTails, UNKNOWN_CARD_TAIL } from '../_util';
+import { amountLine, applyTransactionTails, buildBill, dateLine, mailText, normalizeCurrency, parseAmount, parseDate, pick, pickHolder, propagateAccountBillTails, UNKNOWN_CARD_TAIL } from '../_util';
 
 /**
  * 民生银行信用卡电子对账单解析器（合并账户账单，卡尾在明细行末）
@@ -59,7 +59,8 @@ export const cmbc2026Parser: BankParser = {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     let currentCurrency = 'CNY';
     for (let i = 0; i + 4 < lines.length; i++) {
-      const currencyLine = lines[i]?.match(/New Balance\s+(RMB|USD)/i);
+      const currencyLine = lines[i]?.match(/^(?:人民币|美元)\s+(RMB|USD)$/i)
+        ?? lines[i]?.match(/New Balance\s+(RMB|USD)/i);
       if (currencyLine) {
         currentCurrency = currencyLine[1]!.toUpperCase() === 'RMB' ? 'CNY' : 'USD';
         continue;
@@ -71,7 +72,10 @@ export const cmbc2026Parser: BankParser = {
       const value = amountLine(lines[i + 3] ?? '');
       const tail = lines[i + 4] ?? '';
       if (!desc || value == null || !/^\d{4}$/.test(tail)) continue;
-      txns.push({ date: d1, description: desc, amount: value, currency: currentCurrency, cardLast4: tail });
+      // 银行将原币金额附在境外交易摘要末尾，例如“UKR150.00 UAH”。
+      const original = desc.match(/(-?[\d,]+\.\d{2})\s+([A-Z]{3})$/);
+      txns.push({ date: d1, description: desc, amount: value, currency: currentCurrency, cardLast4: tail,
+        ...(original ? { originalAmount: parseAmount(original[1]), originalCurrency: normalizeCurrency(original[2]) } : {}) });
       i += 4;
     }
     for (const bill of bills) {

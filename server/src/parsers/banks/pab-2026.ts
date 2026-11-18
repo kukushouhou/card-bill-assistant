@@ -1,4 +1,5 @@
 import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import { pabUsdTransactions } from '../pab-usd-transactions';
 import { applyTransactionTails, buildBill, dateLine, mailText, parseAmount, parseDate, pick, pickHolder, propagateAccountBillTails, UNKNOWN_CARD_TAIL } from '../_util';
 
 /**
@@ -146,6 +147,7 @@ export const pab2026Parser: BankParser = {
       };
     }
     if (Object.keys(holderMap).length > 0) bill.holderMap = holderMap;
+    if (usdBill) applyTransactionTails(usdBill, pabUsdTransactions(mail));
     const bills = usdBill ? [bill, usdBill] : [bill];
     propagateAccountBillTails(bills);
     if (bill.businessCards) {
