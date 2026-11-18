@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
+import { Alert, AutoComplete, Button, Form, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import type { EmailAccount } from '../api/types';
 import { useDraftGuard } from '../lib/draftGuard';
 import { useResponsive, useResetOnModeChange } from '../responsive';
@@ -60,22 +60,44 @@ const PRESETS: Array<{ host: string; label: string }> = [
   { host: 'imap.gmail.com', label: 'Gmail（imap.gmail.com）' },
   { host: 'imap.aliyun.com', label: '阿里云邮箱（imap.aliyun.com）' },
   { host: 'imap.126.com', label: '网易 126（imap.126.com）' },
+  { host: 'imap.exmail.qq.com', label: '腾讯企业邮箱（imap.exmail.qq.com）' },
+  { host: 'imap.qiye.aliyun.com', label: '阿里企业邮箱（imap.qiye.aliyun.com）' },
+  { host: 'imap.qiye.163.com', label: '网易企业邮箱（imap.qiye.163.com）' },
 ];
 
 /** 初次绑定、单邮箱编辑和迁移内多邮箱设置共用同一套连接/登录字段。 */
-export function EmailAccountFields({ existing = false, namePrefix = [] }: { existing?: boolean; namePrefix?: Array<string | number> }) {
+export function EmailAccountFields({ existing = false, namePrefix = [], onAutoFill }: {
+  existing?: boolean;
+  namePrefix?: Array<string | number>;
+  onAutoFill?: () => void;
+}) {
+  const form = Form.useFormInstance();
+  const suggestedHost = useRef<string | undefined>(undefined);
   const field = (name: string) => [...namePrefix, name];
+
+  const suggestHost = (email: string) => {
+    const domain = email.trim().match(/^[^@\s]+@([^@\s]+\.[^@\s]+)$/)?.[1];
+    if (!domain) return;
+    const currentHost = form.getFieldValue(field('imapHost'));
+    // 已保存或手动填写的地址优先，仅跟随更新本次自动带出的地址。
+    if (currentHost && currentHost !== suggestedHost.current) return;
+    const host = `imap.${domain.toLowerCase()}`;
+    suggestedHost.current = host;
+    form.setFieldValue(field('imapHost'), host);
+    onAutoFill?.();
+  };
+
   return (<div className="email-editor-grid"><section><h3>邮箱连接</h3>
         <Form.Item
           name={field('email')}
           label="邮箱地址"
           rules={[{ required: true, type: 'email', message: '邮箱格式错误' }]}
         >
-          <Input placeholder="you@example.com" autoComplete="off" />
+          <Input placeholder="you@example.com" autoComplete="off" onBlur={(event) => suggestHost(event.target.value)} />
         </Form.Item>
         <Form.Item name={field('imapHost')} label="IMAP 服务器" rules={[{ required: true, message: '必填' }]}>
-          <Select
-            showSearch
+          <AutoComplete
+            onChange={() => { suggestedHost.current = undefined; }}
             options={PRESETS.map((p) => ({ value: p.host, label: p.label }))}
             placeholder="选择或输入服务器地址"
           />
@@ -169,6 +191,11 @@ export default function AccountForm({
     onCancel();
   };
 
+  const updateDraft = () => {
+    const values = form.getFieldsValue();
+    onDraftChange({ values, dirty: accountFormChanged(values, baseline) });
+  };
+
   const content = (
     <>
       {disabled && <Alert type="warning" showIcon title="历史拉取进行中，暂时不能变更邮箱账户" />}
@@ -181,11 +208,9 @@ export default function AccountForm({
         layout="vertical"
         autoComplete="off"
         initialValues={formInitialValues}
-        onValuesChange={(_, values) =>
-          onDraftChange({ values, dirty: accountFormChanged(values, baseline) })
-        }
+        onValuesChange={updateDraft}
       >
-        <EmailAccountFields existing={!!initial} />
+        <EmailAccountFields existing={!!initial} onAutoFill={updateDraft} />
       </Form>
     </>
   );
