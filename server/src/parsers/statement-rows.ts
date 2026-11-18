@@ -89,8 +89,10 @@ export function htmlTransactions(mail: MailContext, layout: DetailLayout): Parse
       tail = /^\d{4}$/.test(c[2] ?? '') ? c[2]! : null;
       const amounts = c.map((value, index) => ({ value: money(value), index })).filter((a) => a.index >= 3 && a.value != null);
       const posted = amounts.at(-1);
-      if (posted) { amount = -posted.value!; originalAmount = amounts.at(-2)?.value ?? null; cur = currency(c[posted.index]!);
-        originalCurrency = currency(c[amounts.at(-2)?.index ?? posted.index]!); }
+      if (posted) { amount = -posted.value!; originalAmount = amounts.at(-2)?.value ?? null;
+        cur = normalizeCurrency(c[posted.index]!.match(/\/\s*([A-Z]{3})\s*$/)?.[1] ?? currency(c[posted.index]!));
+        const original = c[amounts.at(-2)?.index ?? posted.index]!;
+        originalCurrency = normalizeCurrency(original.match(/\/\s*([A-Z]{3})\s*$/)?.[1] ?? currency(original)); }
       description = c.slice(3, amounts[0]?.index ?? 3).join(' ');
     } else if (layout === 'five' || layout === 'hxb') {
       description = c[2] ?? '';
@@ -185,9 +187,11 @@ export function abcTextTransactions(text: string): ParsedTransaction[] {
   for (let i = 0; i < heads.length; i++) {
     const h = heads[i]!;
     const segment = text.slice(h.index! + h[0].length, heads[i + 1]?.index ?? text.length);
-    const m = segment.match(/^\s*(?:(\d{4})\s+)?([\s\S]+?)\s+(-?[\d,]+\.\d{2})\s*\/\s*CNY\s+(-?[\d,]+\.\d{2})\s*\/\s*CNY/);
+    const m = segment.match(/^\s*(?:(\d{4})\s+)?([\s\S]+?)\s+(-?[\d,]+\.\d{2})\s*\/\s*([A-Z]{3})\s+(-?[\d,]+\.\d{2})\s*\/\s*([A-Z]{3})\b/);
     if (!m) throw new Error('农行存在未完整读取的交易记录');
-    rows.push({ date: h[1], cardLast4: m[1] ?? null, description: compact(m[2]!), amount: -(parseAmount(m[4]!) ?? 0), currency: 'CNY' });
+    const amount = -parseAmount(m[5]!)!;
+    rows.push({ date: h[1], cardLast4: m[1] ?? null, description: compact(m[2]!), amount: amount === 0 ? 0 : amount,
+      currency: normalizeCurrency(m[6]), originalAmount: parseAmount(m[3]!), originalCurrency: normalizeCurrency(m[4]) });
   }
   return rows;
 }

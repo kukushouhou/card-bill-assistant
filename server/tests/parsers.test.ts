@@ -52,9 +52,9 @@ describe('inferCardRule', () => {
 });
 
 describe('解析器注册表', () => {
-  it('37 个现役及历史解析器全部注册且 id 唯一', () => {
+  it('38 个现役及历史解析器全部注册且 id 唯一', () => {
     const parsers = listParsers();
-    expect(parsers).toHaveLength(37);
+    expect(parsers).toHaveLength(38);
     expect(new Set(parsers.map((parser) => parser.id)).size).toBe(parsers.length);
   });
 

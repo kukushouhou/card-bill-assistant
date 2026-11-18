@@ -1,6 +1,7 @@
-import type { BankParser, MailContext, ParsedBill, ParsedTransaction } from '../types';
+import type { BankParser, MailContext, ParsedBill } from '../types';
 import { abcTextTransactions, attachStatementTransactions, htmlTransactions } from '../statement-rows';
-import { attachTransactions, buildBill, cycleEnd, mailText, parseAmount, parseDate, pick, pickHolder } from '../_util';
+import { buildBill, cycleEnd, mailText, parseDate, pick, pickHolder } from '../_util';
+import { abcSummaryAmounts } from '../abc-summary';
 
 /**
  * 农业银行金穗信用卡电子对账单解析器
@@ -32,28 +33,32 @@ export const abc2026Parser: BankParser = {
     const dueDate = dueRaw ? parseDate(dueRaw) : null;
     if (!statementDate || !dueDate) return [];
 
-    const amountRaw = pick(text, [/本期应还款额\(欠款为-\)\s*New Balance\s*人民币\(CNY\)\s*(-?[\d,]+\.\d{2})/]);
-    const parsedAmount = amountRaw ? parseAmount(amountRaw) : null;
-    const amount = parsedAmount == null ? null : Math.abs(parsedAmount);
-    if (amount == null) return [];
-
-    const minRaw = pick(text, [/最低还款额\(欠款为-\)\s*Min Payment\s*人民币\(CNY\)\s*(-?[\d,]+\.\d{2})/]);
-    const parsedMin = minRaw ? parseAmount(minRaw) : null;
-    const minAmount = parsedMin == null ? null : Math.abs(parsedMin);
-
-    const bill = buildBill({
-      bankName: '农业银行',
-      cardLast4: cardM[2],
-      holderName: pickHolder(text),
-      amount,
-      minAmount,
-      currency: 'CNY',
-      statementDate,
-      dueDate,
-      cardNoFull: `${cardM[1]}******${cardM[2]}`,
-    });
-    if (!bill) return [];
-    attachStatementTransactions([bill], htmlTransactions(mail, 'abc') ?? abcTextTransactions(text));
-    return [bill];
+    const fields = [...text.matchAll(/(本期应还款额|最低还款额)[（(]欠款为-[）)]\s*(?:New\s+Balance|Min\.?\s*Payment)\s*/gi)];
+    const balances = new Map<string, number>();
+    const minimums = new Map<string, number>();
+    for (const [index, field] of fields.entries()) {
+      // 额度和账务汇总表也印有币种，必须限定在应还/最低额字段内。
+      const section = text.slice(field.index! + field[0].length, fields[index + 1]?.index)
+        .split(/信用额度|额度信息|交易明细|交易日期|账务明细|币种\s*Curr/)[0]!;
+      const target = field[1] === '本期应还款额' ? balances : minimums;
+      for (const { currency, amount } of abcSummaryAmounts(section)) {
+        if (target.has(currency) && target.get(currency) !== amount) throw new Error('农行同币种账单摘要金额冲突');
+        target.set(currency, amount);
+      }
+    }
+    if (!balances.size) return [];
+    if ([...minimums.keys()].some(currency => !balances.has(currency))) throw new Error('农行账单缺少对应币种的应还金额');
+    const bills: ParsedBill[] = [];
+    for (const [currency, amount] of balances) {
+      const bill = buildBill({
+        bankName: '农业银行', cardLast4: cardM[2], holderName: pickHolder(text),
+        amount, minAmount: minimums.get(currency), currency, statementDate, dueDate,
+        cardNoFull: `${cardM[1]}******${cardM[2]}`,
+      });
+      if (!bill) return [];
+      bills.push(bill);
+    }
+    attachStatementTransactions(bills, htmlTransactions(mail, 'abc') ?? abcTextTransactions(text));
+    return bills;
   },
 };

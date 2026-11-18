@@ -12,6 +12,7 @@ import { cmb2020Parser } from './banks/cmb-2020';
 import { cmb2016Parser } from './banks/cmb-2016';
 import { icbc2026Parser } from './banks/icbc-2026';
 import { abc2026Parser } from './banks/abc-2026';
+import { abcpdf2026Parser } from './banks/abcpdf-2026';
 import { abc2019Parser } from './banks/abc-2019';
 import { boc2026Parser } from './banks/boc-2026';
 import { boc2020Parser } from './banks/boc-2020';
@@ -58,6 +59,7 @@ const registry: RegisteredParser[] = [
   cmb2016Parser,
   icbc2026Parser,
   abc2026Parser,
+  abcpdf2026Parser,
   abc2019Parser,
   boc2026Parser,
   boc2020Parser,

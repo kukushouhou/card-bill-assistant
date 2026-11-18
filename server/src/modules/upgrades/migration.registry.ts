@@ -7,6 +7,7 @@ import { overdueBasisNoticeMigration } from './migrations/overdue-basis-notice';
 import { supplementaryLinkRepairMigration } from './migrations/supplementary-link-repair';
 import { supplementaryLinkRepairMigrationV2 } from './migrations/supplementary-link-repair-v2';
 import { repairIcbcForeign080Migration } from './migrations/repair-icbc-foreign-080';
+import { repairAbcStatements084Migration } from './migrations/repair-abc-statements-084';
 import type { VersionMigration } from './migration.types';
 
 export const versionMigrations: VersionMigration[] = [
@@ -19,6 +20,7 @@ export const versionMigrations: VersionMigration[] = [
   supplementaryLinkRepairMigration,
   supplementaryLinkRepairMigrationV2,
   repairIcbcForeign080Migration,
+  repairAbcStatements084Migration,
 ];
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

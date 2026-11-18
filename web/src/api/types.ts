@@ -663,7 +663,7 @@ export interface SettingsInfo {
 }
 
 export interface StatementRepairResult {
-  kind?: 'statement' | 'icbc-foreign';
+  kind?: 'statement' | 'icbc-foreign' | 'abc-statement';
   version: string; finishedAt: string; lowerBound: string;
   banks: Array<{ bankName: string; billCount: number; mailCount: number }>;
   counts: { correctedBills: number; addedBills: number; addedTransactions: number; correctedTransactions: number;

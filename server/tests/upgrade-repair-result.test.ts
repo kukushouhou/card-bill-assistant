@@ -26,6 +26,23 @@ describe('最近一次升级计划的修复结果', () => {
     vi.clearAllMocks();
   });
 
+  it('农行恢复展示本次补单和缺失邮件结果，零张旧账单也能报告', async () => {
+    db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), repairTask({
+      key: 'abc-statement-repair-084-v1', toVersion: '0.8.4',
+      payload: { banks: [{ bankName: '农业银行', mailCount: 2, billCount: 0 }] },
+      items: [{ payload: { bankName: '农业银行', billIds: [], result: { addedBills: 1, addedTransactions: 8 } } },
+        { payload: { bankName: '农业银行', billIds: [], result: { unavailableMails: 1 }, incompleteReason: '邮件已删除' } }],
+    })] });
+    expect(await latestStatementRepairResult()).toMatchObject({ kind: 'abc-statement', version: '0.8.4',
+      counts: { addedBills: 1, addedTransactions: 8, unavailableMails: 1, correctedBills: 0 },
+      incomplete: [{ bankName: '农业银行', billCount: 0, reason: '邮件已删除' }] });
+  });
+
+  it('本轮忽略农行恢复时不显示旧迁移结果', async () => {
+    db.upgradePlan.findFirst.mockResolvedValue({ tasks: [repairTask(), repairTask({ key: 'abc-statement-repair-084-v1', status: 'ignored' })] });
+    expect(await latestStatementRepairResult()).toBeNull();
+  });
+
   it('没有已完成的升级计划时返回 null', async () => {
     db.upgradePlan.findFirst.mockResolvedValue(null);
     expect(await latestStatementRepairResult()).toBeNull();

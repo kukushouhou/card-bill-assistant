@@ -18,6 +18,12 @@ function migration(overrides: Partial<VersionMigration>): VersionMigration {
 }
 
 describe('版本迁移注册表', () => {
+  it('0.8.4 农行恢复为独立可选迁移，已越过版本后不再执行', () => {
+    const migration = migrationByKey('abc-statement-repair-084-v1');
+    expect(migration).toMatchObject({ targetVersion: '0.8.4', mode: 'optional' });
+    expect(applicableMigrations('0.8.3', '0.8.4').map(row => row.key)).toEqual([migration!.key]);
+    expect(applicableMigrations('0.8.4', '0.8.5').map(row => row.key)).not.toContain(migration!.key);
+  });
   it('从 0.7.0 升级到 0.7.1 可以执行独立补救迁移', () => {
     expect(applicableMigrations('0.7.0', '0.7.1').map((row) => row.key)).toEqual(['supplementary-link-repair-v2']);
   });

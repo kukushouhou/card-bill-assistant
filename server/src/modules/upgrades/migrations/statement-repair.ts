@@ -69,10 +69,13 @@ function transactionDifference(old: string[], fresh: string[]) {
 /** 单封邮件外层事务负责提交任务状态；此处不调用全量重拉、不清卡、不改手工设置。 */
 export async function repairStatementMail(tx: Prisma.TransactionClient, input: {
   mailLogId: number; billIds: number[]; parserId: string; parsed: ParsedBill[] | null; lowerBound: Date;
+  /** 本次迁移已核实的漏单币种；用于补建解析失败邮件及旧版遗漏的外币。 */
+  allowMissingCurrencies?: string[];
+  preserveRepayments?: boolean;
 }): Promise<RepairCounts & { evidence: BillRepairEvidence[] }> {
   const counts = { ...emptyRepairCounts(), evidence: [] as BillRepairEvidence[] };
   const old = await tx.bill.findMany({ where: { id: { in: input.billIds }, mailLogId: input.mailLogId, source: 'email' }, include: oldInclude });
-  if (!old.length) return counts;
+  if (!old.length && !input.allowMissingCurrencies?.length) return counts;
   const parsed = input.parsed ?? old.map((row) => fallbackStatement(row, input.parserId));
   if (!input.parsed) { counts.unavailableMails = 1; if (input.parserId === 'citic2026') counts.fallbackMinimumBills = old.length; }
   const used = new Set<number>();
@@ -89,14 +92,16 @@ export async function repairStatementMail(tx: Prisma.TransactionClient, input: {
     const row = exact.length === 1 ? exact[0] : !legacyMissing && same.length === 1 ? same[0] : undefined;
     if (!row && same.length && !legacyMissing) throw new Error('修复结果无法唯一对应已有账单');
     // 原币种里已被用户删除的账单不复活；仅补本计划明确涉及的遗漏外币。
-    if (!row && !legacyMissing && (currency === 'CNY' || !['boc2026', 'ceb2017'].includes(input.parserId))) continue;
+    if (!row && !legacyMissing && !input.allowMissingCurrencies?.includes(currency)
+      && (currency === 'CNY' || !['boc2026', 'ceb2017'].includes(input.parserId))) continue;
     if (row) used.add(row.id);
     let owner = await tx.card.findUnique({ where: { bankName_cardLast4: { bankName: bill.bankName, cardLast4: bill.cardLast4 } } });
     if (!owner) owner = await tx.card.create({ data: { bankName: bill.bankName, cardLast4: bill.cardLast4, displayLast4: bill.cardLast4,
       holderName: bill.holderName ?? null, currency, ...inferCardRule(bill.statementDate, bill.dueDate), remindDaysBefore: [3, 1, 0], source: 'email' } });
     if (!row && await tx.bill.findUnique({ where: { cardId_period_currency: { cardId: owner.id, period: bill.period, currency } } })) continue;
     touched.add(owner.id);
-    const payment = row && AMOUNT_REPAIR_PARSERS.has(input.parserId) ? restoredPayment(row, bill.amount, input.lowerBound) : null;
+    const payment = row && !input.preserveRepayments && AMOUNT_REPAIR_PARSERS.has(input.parserId)
+      ? restoredPayment(row, bill.amount, input.lowerBound) : null;
     if (payment) counts.restoredRepayments++;
     const memberCards = await tx.card.findMany({ where: { bankName: bill.bankName, cardLast4: { in: [...tails] } } });
     const preferred = memberCards.find((card) => card.primaryManual && card.isPrimary && card.status === 'active')
@@ -112,7 +117,8 @@ export async function repairStatementMail(tx: Prisma.TransactionClient, input: {
       await tx.bill.update({ where: { id }, data: fields });
     } else {
       const paid = bill.amount <= 0 || bill.dueDate < input.lowerBound;
-      const created = await tx.bill.create({ data: { ...fields, period: bill.period, currency, statementDate: shanghaiMidnight(bill.statementDate),
+      const created = await tx.bill.create({ data: { ...fields, period: bill.period, currency,
+        cycleStartDate: bill.cycleStartDate ? shanghaiMidnight(bill.cycleStartDate) : null, statementDate: shanghaiMidnight(bill.statementDate),
         dueDate: shanghaiMidnight(bill.dueDate), source: 'email', mailLogId: input.mailLogId,
         paidStatus: paid ? 'paid' : 'unpaid', paidAt: paid ? shanghaiMidnight(bill.dueDate) : null, paidAmount: paid ? bill.amount : null } });
       id = created.id; counts.addedBills++;
